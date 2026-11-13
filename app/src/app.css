@@ -1,27 +1,33 @@
 /* Design tokens. Components use only these variables, never raw colors.
-   Dark is the primary look (game launcher); light is a parchment variant.
+   Look: classic fantasy MMO UI — dark stone, bronze frames with a gold inner
+   line, yellow-gold titles, red buttons with gold trim. All original CSS, no
+   game textures. Dark is the primary theme; light is a quest-log parchment.
    --realm-accent is set per selected realm from the catalog (client branding). */
 :root {
   color-scheme: light dark;
-  --bg: #f3eee3;
-  --bg-elevated: #ebe4d4;
-  --surface: #fbf8f1;
-  --surface-muted: #efe9dc;
-  --text: #221d14;
-  --text-muted: #6b6250;
-  --border: #d6ccb6;
-  --border-strong: #b9a983;
-  --accent: #8a5a12;
-  --accent-strong: #6f470b;
-  --accent-text: #fffaf0;
-  --gold-gradient: linear-gradient(180deg, #d9ad55 0%, #b07f26 100%);
-  --ok: #2f7d5b;
-  --warn: #9a6a12;
+  --bg: #e6d7b5;
+  --bg-texture: radial-gradient(ellipse at 50% 0%, #f3e7c9 0%, #e2d0a6 60%, #cdb581 100%);
+  --bg-elevated: #d9c497;
+  --surface: #f1e4c3;
+  --surface-muted: #e6d4a8;
+  --text: #2b1d0e;
+  --text-muted: #6b5634;
+  --title: #6e1d0c;
+  --border: #b49a66;
+  --frame: #7a5a2c;
+  --frame-light: #a8823e;
+  --accent: #7d4f12;
+  --accent-strong: #5c3a0c;
+  --accent-text: #fff3cf;
+  --button-bg: linear-gradient(180deg, #e9dcb8 0%, #cfb98a 100%);
+  --play-bg: linear-gradient(180deg, #b3271a 0%, #7c140b 55%, #5a0d07 100%);
+  --play-text: #ffe28a;
+  --ok: #2f7d3a;
   --danger: #a3261b;
-  --realm-accent: #3d7fb0;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  --realm-accent: #2f6f9f;
+  --panel-shadow: 0 2px 6px rgb(60 40 10 / 0.25);
 
-  --radius: 4px;
+  --radius: 3px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -36,44 +42,58 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b1220;
-    --bg-elevated: #0f1829;
-    --surface: #121d31;
-    --surface-muted: #17243b;
-    --text: #e9e3d4;
-    --text-muted: #9aa3b5;
-    --border: #24324b;
-    --border-strong: #3a4a66;
-    --accent: #d8aa52;
-    --accent-strong: #f0c46e;
+    --bg: #0d0a07;
+    --bg-texture:
+      radial-gradient(ellipse at 50% -10%, rgb(120 84 36 / 0.22) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 120%, rgb(0 0 0 / 0.8) 0%, transparent 60%),
+      repeating-linear-gradient(45deg, rgb(255 255 255 / 0.012) 0 2px, transparent 2px 6px), #120d09;
+    --bg-elevated: #17110b;
+    --surface: linear-gradient(180deg, #211810 0%, #170f09 100%);
+    --surface-muted: #241a11;
+    --text: #eadcc0;
+    --text-muted: #a89272;
+    --title: #ffd25a;
+    --border: #3d2d1b;
+    --frame: #5b4224;
+    --frame-light: #c9a24f;
+    --accent: #e0b04f;
+    --accent-strong: #ffd25a;
     --accent-text: #1a1206;
-    --gold-gradient: linear-gradient(180deg, #e6bd66 0%, #b9862c 100%);
-    --ok: #4fd1a5;
-    --warn: #e7b85a;
+    --button-bg: linear-gradient(180deg, #34261a 0%, #1f160e 100%);
+    --play-bg: linear-gradient(180deg, #b8281a 0%, #7a130a 55%, #520b05 100%);
+    --play-text: #ffd25a;
+    --ok: #5fd068;
     --danger: #f08a7e;
     --realm-accent: #7cc4f0;
-    --shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+    --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b1220;
-  --bg-elevated: #0f1829;
-  --surface: #121d31;
-  --surface-muted: #17243b;
-  --text: #e9e3d4;
-  --text-muted: #9aa3b5;
-  --border: #24324b;
-  --border-strong: #3a4a66;
-  --accent: #d8aa52;
-  --accent-strong: #f0c46e;
+  --bg: #0d0a07;
+  --bg-texture:
+    radial-gradient(ellipse at 50% -10%, rgb(120 84 36 / 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 120%, rgb(0 0 0 / 0.8) 0%, transparent 60%),
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.012) 0 2px, transparent 2px 6px), #120d09;
+  --bg-elevated: #17110b;
+  --surface: linear-gradient(180deg, #211810 0%, #170f09 100%);
+  --surface-muted: #241a11;
+  --text: #eadcc0;
+  --text-muted: #a89272;
+  --title: #ffd25a;
+  --border: #3d2d1b;
+  --frame: #5b4224;
+  --frame-light: #c9a24f;
+  --accent: #e0b04f;
+  --accent-strong: #ffd25a;
   --accent-text: #1a1206;
-  --gold-gradient: linear-gradient(180deg, #e6bd66 0%, #b9862c 100%);
-  --ok: #4fd1a5;
-  --warn: #e7b85a;
+  --button-bg: linear-gradient(180deg, #34261a 0%, #1f160e 100%);
+  --play-bg: linear-gradient(180deg, #b8281a 0%, #7a130a 55%, #520b05 100%);
+  --play-text: #ffd25a;
+  --ok: #5fd068;
   --danger: #f08a7e;
   --realm-accent: #7cc4f0;
-  --shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
 }
 
 *,
@@ -89,11 +109,12 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background: var(--bg-texture);
+  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 button {
@@ -102,68 +123,73 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
 
-/* Small-caps display titles. */
 .display {
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
-/* Panel with gilded corner brackets. */
+/* Framed panel: bronze outer frame, thin gold inner line, gem rivets at the
+   four corners. */
 .panel {
   position: relative;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--frame);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.6),
+    inset 0 0 0 3px color-mix(in srgb, var(--frame-light) 55%, transparent),
+    inset 0 0 28px rgb(0 0 0 / 0.35),
+    var(--panel-shadow);
   padding: var(--space-5) var(--space-6);
-  box-shadow: var(--shadow);
 }
 
 .panel::before,
 .panel::after {
   content: "";
   position: absolute;
-  width: 18px;
-  height: 18px;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, var(--accent-strong), var(--frame));
+  border: 1px solid rgb(0 0 0 / 0.6);
   pointer-events: none;
 }
 
 .panel::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--accent);
-  border-left: 2px solid var(--accent);
+  left: -6px;
 }
 
 .panel::after {
-  right: -1px;
-  bottom: -1px;
-  border-right: 2px solid var(--accent);
-  border-bottom: 2px solid var(--accent);
+  right: -6px;
 }
 
-/* Section title followed by a hairline. */
+/* Centered title between two gold rules, like classic frame headers. */
 .panel-title {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
   margin: 0 0 var(--space-4);
   font-family: var(--font-display);
   font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--title);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.7);
 }
 
+.panel-title::before,
 .panel-title::after {
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--border);
+  background: linear-gradient(90deg, transparent, var(--frame-light), transparent);
 }
 
 .btn {
@@ -171,14 +197,22 @@ button {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  background: var(--surface-muted);
-  border: 1px solid var(--border-strong);
+  background: var(--button-bg);
+  border: 1px solid var(--frame-light);
   border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 1px 2px rgb(0 0 0 / 0.5);
+  color: var(--title);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--accent-strong);
+  filter: brightness(1.15);
 }
 
 .btn:disabled {
@@ -186,17 +220,23 @@ button {
   cursor: not-allowed;
 }
 
+/* Main call to action: red lacquered button with gold trim. */
 .btn-play {
   min-width: 220px;
   justify-content: center;
   padding: var(--space-3) var(--space-8);
-  background: var(--gold-gradient);
-  color: var(--accent-text);
-  border: 1px solid var(--accent-strong);
-  font-family: var(--font-display);
-  font-size: 1.5rem;
+  background: var(--play-bg);
+  color: var(--play-text);
+  border: 2px solid var(--frame-light);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.6),
+    inset 0 2px 0 rgb(255 255 255 / 0.18),
+    0 0 14px rgb(184 40 26 / 0.35),
+    0 3px 8px rgb(0 0 0 / 0.6);
+  font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: 0.12em;
+  text-shadow: 0 2px 2px rgb(0 0 0 / 0.8);
 }
 
 .muted {

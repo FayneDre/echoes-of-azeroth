@@ -3,6 +3,7 @@
   "app.tagline": "Ton propre serveur World of Warcraft, en quelques clics.",
   "nav.language": "Langue",
   "nav.realms": "Versions du jeu",
+  "nav.sections": "Rubriques",
   "nav.home": "Accueil",
   "nav.account": "Compte",
   "nav.settings": "Réglages du serveur",
@@ -31,6 +32,13 @@
   "install.serverData": "Données serveur (cartes, DBC)",
   "install.notSet": "non choisi",
   "install.toDownload": "à télécharger",
+  "guide.title": "Premiers pas",
+  "guide.client.title": "Ton client du jeu",
+  "guide.client.body": "Indique ton propre client {version} (build {build}). Il n'est jamais téléchargé ni partagé.",
+  "guide.install.title": "Installer",
+  "guide.install.body": "Le launcher télécharge les serveurs, la base de données et les données serveur, puis vérifie tout.",
+  "guide.play.title": "Jouer",
+  "guide.play.body": "Un clic démarre les serveurs et le jeu, avec des bots qui peuplent déjà le monde.",
   "modules.title": "Modules",
   "modules.mandatory": "Inclus",
   "modules.optional": "Optionnel",
@@ -48,5 +56,6 @@
   "category.cosmetic": "Cosmétique",
   "category.administration": "Administration",
   "footer.disclaimer": "Projet de fan non officiel, sans lien avec Blizzard Entertainment ni approuvé par Blizzard. World of Warcraft est une marque de Blizzard Entertainment. Tu fournis ton propre client du jeu.",
+  "footer.short": "Projet de fan non officiel, sans lien avec Blizzard Entertainment.",
   "footer.report": "Signaler un problème"
 }

@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Home view of one realm. Until the install engine is wired in, every state
-  // shown is the real one ("not installed"); nothing is faked.
+  // Home view of one realm: designed to fit the window without scrolling.
+  // Until the install engine is wired in, every state shown is the real one
+  // ("not installed"); nothing is faked.
   import type { EmulatorOverview } from "../api";
   import Emblem from "../emblems/Emblem.svelte";
-  import { localized, t, type MessageKey } from "../i18n/i18n.svelte";
+  import { localized, t } from "../i18n/i18n.svelte";
   import { processLabel } from "../labels";
 
   let { realm }: { realm: EmulatorOverview } = $props();
@@ -11,12 +12,20 @@
   const mandatory = $derived(realm.modules.filter((m) => m.mandatory).length);
   const optional = $derived(realm.modules.length - mandatory);
   const servers = $derived(["database", ...realm.processes]);
+  const steps = $derived([
+    {
+      title: t("guide.client.title"),
+      body: t("guide.client.body", { version: realm.client?.version ?? "", build: realm.client?.build ?? "" }),
+    },
+    { title: t("guide.install.title"), body: t("guide.install.body") },
+    { title: t("guide.play.title"), body: t("guide.play.body") },
+  ]);
 </script>
 
 <section class="panel hero">
   <div class="hero-head">
     {#if realm.client}
-      <Emblem emblem={realm.client.emblem} accent={realm.client.accent} label={localized(realm.client.shortName)} size={72} />
+      <Emblem emblem={realm.client.emblem} accent={realm.client.accent} label={localized(realm.client.shortName)} size={68} />
     {/if}
     <div class="hero-title">
       {#if realm.client}
@@ -26,9 +35,7 @@
       <p class="muted">{t("home.status.notInstalledBody", { emulator: realm.name })}</p>
     </div>
     <!-- Start/stop appear once a realm is installed (runtime state, phase 3). -->
-    <div class="actions">
-      <button class="btn btn-play" disabled title={t("common.soon")}>{t("home.action.install")}</button>
-    </div>
+    <button class="btn btn-play" disabled title={t("common.soon")}>{t("home.action.install")}</button>
   </div>
 
   <dl class="stats">
@@ -38,14 +45,7 @@
     </div>
     <div>
       <dt>{t("home.stat.client")}</dt>
-      <dd>
-        {#if realm.client}
-          {t("realm.version", { version: realm.client.version, build: realm.client.build })}
-          <span class="muted"> · {t("home.stat.clientNone")}</span>
-        {:else}
-          —
-        {/if}
-      </dd>
+      <dd>{realm.client ? t("realm.version", { version: realm.client.version, build: realm.client.build }) : "—"}</dd>
     </div>
     <div>
       <dt>{t("home.stat.modules")}</dt>
@@ -59,93 +59,121 @@
 </section>
 
 <div class="columns">
-  <div class="column">
-    <section class="panel">
-      <h3 class="panel-title">{t("servers.title")}</h3>
-      <ul class="rows">
-        {#each servers as id (id)}
-          <li>
-            <span class="dot" aria-hidden="true"></span>
-            <span class="row-name">{processLabel(id)}</span>
-            <span class="muted">{t("servers.notInstalled")}</span>
-          </li>
-        {/each}
-      </ul>
-    </section>
-
-    <section class="panel">
-      <h3 class="panel-title">{t("install.title")}</h3>
-      <ul class="rows">
-        <li><span class="row-name">{t("install.serverDir")}</span><span class="muted">{t("install.notSet")}</span></li>
-        <li><span class="row-name">{t("install.clientDir")}</span><span class="muted">{t("install.notSet")}</span></li>
-        <li><span class="row-name">{t("install.serverData")}</span><span class="muted">{t("install.toDownload")}</span></li>
-      </ul>
-    </section>
-  </div>
-
-  <section class="panel column">
-    <h3 class="panel-title">{t("modules.title")}</h3>
-    <ul class="modules">
-      {#each realm.modules as module (module.id)}
+  <section class="panel">
+    <h3 class="panel-title">{t("servers.title")}</h3>
+    <ul class="rows">
+      {#each servers as id (id)}
         <li>
-          <div class="module-head">
-            <strong>{localized(module.name)}</strong>
-            <span class="tag" class:included={module.mandatory}>
-              {module.mandatory ? t("modules.mandatory") : t("modules.optional")}
-            </span>
-          </div>
-          <p class="muted">{localized(module.description)}</p>
-          <small class="muted">{t(`category.${module.category}` as MessageKey)}</small>
+          <span class="dot" aria-hidden="true"></span>
+          <span class="row-name">{processLabel(id)}</span>
+          <span class="muted">{t("servers.notInstalled")}</span>
         </li>
       {/each}
     </ul>
-    <p class="hint muted">{t("modules.optionalHint")}</p>
+  </section>
+
+  <section class="panel">
+    <h3 class="panel-title">{t("install.title")}</h3>
+    <ul class="rows">
+      <li><span class="row-name">{t("install.serverDir")}</span><span class="muted">{t("install.notSet")}</span></li>
+      <li><span class="row-name">{t("install.clientDir")}</span><span class="muted">{t("install.notSet")}</span></li>
+      <li><span class="row-name">{t("install.serverData")}</span><span class="muted">{t("install.toDownload")}</span></li>
+    </ul>
   </section>
 </div>
 
+<section class="panel">
+  <h3 class="panel-title">{t("guide.title")}</h3>
+  <ol class="steps">
+    {#each steps as step, index (index)}
+      <li>
+        <span class="step-number display" aria-hidden="true">{index + 1}</span>
+        <div>
+          <strong class="display">{step.title}</strong>
+          <p class="muted">{step.body}</p>
+        </div>
+      </li>
+    {/each}
+  </ol>
+</section>
+
 <style>
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  .steps li {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .step-number {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 2px solid var(--frame-light);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--surface-muted), rgb(0 0 0 / 0.6));
+    color: var(--title);
+    box-shadow: 0 0 8px rgb(224 176 79 / 0.25);
+  }
+
+  .steps strong {
+    color: var(--title);
+  }
+
+  .steps p {
+    margin: 2px 0 0;
+    font-size: 0.9rem;
+  }
+
+  .hero {
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
+  }
+
   .hero-head {
     display: flex;
     align-items: center;
     gap: var(--space-5);
-    flex-wrap: wrap;
   }
 
   .hero-title {
     flex: 1;
-    min-width: 260px;
+    min-width: 0;
   }
 
   .realm-name {
     margin: 0;
-    font-size: 0.85rem;
-    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--realm-accent);
   }
 
   h2 {
-    margin: var(--space-1) 0;
-    font-size: 1.8rem;
+    margin: 0;
+    font-size: 1.7rem;
+    color: var(--title);
+    text-shadow: 0 2px 3px rgb(0 0 0 / 0.7);
   }
 
   .hero-title p.muted {
     margin: 0;
-    max-width: 52ch;
-  }
-
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
   }
 
   .stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    margin: var(--space-5) 0 0;
-    padding-top: var(--space-4);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: var(--space-4) 0 0;
+    padding-top: var(--space-3);
     border-top: 1px solid var(--border);
   }
 
@@ -159,25 +187,22 @@
   }
 
   dt {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
 
   dd {
-    margin: var(--space-1) 0 0;
+    margin: 2px 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: var(--space-5);
-  }
-
-  .column {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
   }
 
@@ -191,7 +216,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3) 0;
+    padding: var(--space-2) 0;
     border-bottom: 1px solid var(--border);
   }
 
@@ -204,50 +229,10 @@
   }
 
   .dot {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
-    background: var(--border-strong);
-  }
-
-  .modules {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .modules li {
-    padding: var(--space-3) var(--space-4);
-    background: var(--surface-muted);
-    border-left: 2px solid var(--border-strong);
-  }
-
-  .modules p {
-    margin: var(--space-1) 0;
-  }
-
-  .module-head {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-
-  .tag {
-    font-size: 0.75rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-
-  .tag.included {
-    color: var(--accent);
-  }
-
-  .hint {
-    margin: var(--space-4) 0 0;
-    font-size: 0.85rem;
+    background: var(--frame);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.5);
   }
 </style>

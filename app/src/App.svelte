@@ -3,6 +3,7 @@
   import { catalogOverview, inDesktopApp, type EmulatorOverview } from "./lib/api";
   import Home from "./lib/components/Home.svelte";
   import Rail from "./lib/components/Rail.svelte";
+  import ServerSettings from "./lib/components/ServerSettings.svelte";
   import { i18n, LOCALES, t, type MessageKey } from "./lib/i18n/i18n.svelte";
   import { processLabel } from "./lib/labels";
 
@@ -12,16 +13,19 @@
     | { status: "error"; message: string }
     | { status: "ready"; realms: EmulatorOverview[] };
 
-  const TABS: { id: string; label: MessageKey; ready: boolean }[] = [
+  type TabId = "home" | "account" | "settings" | "bots" | "backups";
+
+  const TABS: { id: TabId; label: MessageKey; ready: boolean }[] = [
     { id: "home", label: "nav.home", ready: true },
     { id: "account", label: "nav.account", ready: false },
-    { id: "settings", label: "nav.settings", ready: false },
+    { id: "settings", label: "nav.settings", ready: true },
     { id: "bots", label: "nav.bots", ready: false },
     { id: "backups", label: "nav.backups", ready: false },
   ];
 
   let catalog = $state<CatalogState>({ status: "loading" });
   let selectedId = $state<string | null>(null);
+  let tab = $state<TabId>("home");
 
   const realms = $derived(catalog.status === "ready" ? catalog.realms : []);
   const realm = $derived(realms.find((r) => r.id === selectedId) ?? realms[0] ?? null);
@@ -51,16 +55,16 @@
         <p class="muted">{t("app.tagline")}</p>
       </div>
 
-      <nav class="tabs" aria-label={t("nav.home")}>
-        {#each TABS as tab (tab.id)}
+      <nav class="tabs" aria-label={t("nav.sections")}>
+        {#each TABS as item (item.id)}
           <button
-            class="tab"
-            class:active={tab.id === "home"}
-            disabled={!tab.ready}
-            title={tab.ready ? undefined : t("common.soon")}
-            aria-current={tab.id === "home" ? "page" : undefined}
+            class:active={tab === item.id}
+            disabled={!item.ready}
+            title={item.ready ? undefined : t("common.soon")}
+            aria-current={tab === item.id ? "page" : undefined}
+            onclick={() => (tab = item.id)}
           >
-            {t(tab.label)}
+            {t(item.label)}
           </button>
         {/each}
       </nav>
@@ -86,10 +90,12 @@
         <p class="muted">{t("modules.unavailable")}</p>
       {:else if catalog.status === "error"}
         <p class="error">{t("modules.error", { message: catalog.message })}</p>
-      {:else if realm}
-        <Home {realm} />
-      {:else}
+      {:else if !realm}
         <p class="muted">{t("modules.empty")}</p>
+      {:else if tab === "settings"}
+        <ServerSettings {realm} />
+      {:else}
+        <Home {realm} />
       {/if}
     </main>
 
@@ -103,7 +109,7 @@
     {/if}
 
     <footer>
-      <small>{t("footer.disclaimer")}</small>
+      <small class="notice" title={t("footer.disclaimer")}>{t("footer.short")}</small>
       <a href="https://github.com/FayneDre/echoes-of-azeroth/issues" target="_blank" rel="noreferrer">
         {t("footer.report")}
       </a>
@@ -129,29 +135,35 @@
     display: flex;
     align-items: center;
     gap: var(--space-6);
-    padding: var(--space-4) var(--space-6);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-6);
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent);
+    border-bottom: 2px solid var(--frame);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--frame-light) 50%, transparent);
+  }
+
+  .brand {
+    flex: none;
   }
 
   .brand h1 {
     margin: 0;
-    font-size: 1.5rem;
-    color: var(--accent);
+    font-size: 1.55rem;
+    color: var(--title);
+    text-shadow:
+      0 0 12px rgb(224 176 79 / 0.25),
+      0 2px 3px rgb(0 0 0 / 0.8);
   }
 
   .brand p {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-style: italic;
   }
 
   .tabs,
   .lang {
     display: flex;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    overflow: hidden;
+    gap: var(--space-1);
   }
 
   .tabs {
@@ -161,38 +173,48 @@
   .tabs button,
   .lang button {
     padding: var(--space-2) var(--space-4);
-    background: var(--surface);
-    border: none;
-    border-right: 1px solid var(--border);
+    background: var(--button-bg);
+    border: 1px solid var(--frame);
+    border-radius: var(--radius) var(--radius) 0 0;
     font-family: var(--font-display);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
     cursor: pointer;
   }
 
-  .tabs button:last-child,
-  .lang button:last-child {
-    border-right: none;
+  .lang button {
+    border-radius: var(--radius);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .tabs button:hover:not(:disabled),
+  .lang button:hover {
+    color: var(--title);
   }
 
   .tabs button:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    opacity: 0.45;
   }
 
   .tabs button.active,
   .lang button.active {
-    color: var(--accent);
-    background: var(--surface-muted);
-    box-shadow: inset 0 -2px 0 var(--accent);
+    color: var(--title);
+    border-color: var(--frame-light);
+    box-shadow:
+      inset 0 -2px 0 var(--accent-strong),
+      0 0 10px rgb(224 176 79 / 0.2);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
   }
 
   main {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: var(--space-6);
+    padding: var(--space-5) var(--space-6);
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
@@ -206,32 +228,38 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-6);
-    border-top: 1px solid var(--border);
-    background: var(--bg-elevated);
-    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-6);
+    border-top: 2px solid var(--frame);
+    background: linear-gradient(0deg, rgb(0 0 0 / 0.35), transparent);
   }
 
   .terminals-title {
     margin-right: var(--space-3);
-    color: var(--accent);
-    font-size: 0.9rem;
+    color: var(--title);
+    font-size: 0.85rem;
     text-transform: uppercase;
   }
 
   footer {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: var(--space-4);
-    padding: var(--space-2) var(--space-6);
+    padding: var(--space-1) var(--space-6);
     border-top: 1px solid var(--border);
     color: var(--text-muted);
   }
 
+  .notice {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   footer a {
     flex: none;
-    color: var(--realm-accent);
-    font-size: 0.85rem;
+    color: var(--accent);
+    font-size: 0.82rem;
   }
 </style>
