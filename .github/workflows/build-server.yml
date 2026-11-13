@@ -1,0 +1,253 @@
+name: Build server
+
+# Phase 1: builds the "full build" of a core flavor (core + every catalog module
+# compiled in, ADR 0003), packages it, then smoke-tests it end to end with a
+# portable MySQL 8.4 and upstream server data.
+#
+# Heavy (~1 h): runs on demand, and when pinned sources or the build scripts change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      emulator:
+        description: Emulator id
+        default: azerothcore
+      flavor:
+        description: Flavor id
+        default: playerbot
+  push:
+    branches: [main]
+    paths:
+      - catalog/emulators/**/flavors/**
+      - catalog/emulators/**/modules/**
+      - catalog/components/**
+      - catalog/clients/**
+      - tools/ci/**
+      - .github/workflows/build-server.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-server-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMULATOR: ${{ inputs.emulator || 'azerothcore' }}
+  FLAVOR: ${{ inputs.flavor || 'playerbot' }}
+  # Toolchain dependencies, aligned with the fork's own Windows CI.
+  BOOST_VERSION: 1.87.0
+  BOOST_ROOT: C:\local\boost_1_87_0
+  # Short path: MSVC and CMake choke on long source paths.
+  AC_SRC: C:\ac
+
+jobs:
+  build:
+    name: Build (${{ inputs.flavor || 'playerbot' }})
+    runs-on: windows-2022
+    timeout-minutes: 180
+    outputs:
+      artifact: ${{ steps.plan.outputs.artifact }}
+      build-key: ${{ steps.plan.outputs.build-key }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build plan (pinned sources from the catalog)
+        id: plan
+        shell: bash
+        run: node tools/ci/build-plan.mjs "$EMULATOR" "$FLAVOR" "$RUNNER_TEMP/plan.json"
+
+      - name: Fetch core and modules at pinned commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch() { # <repo> <commit> <dir>
+            mkdir -p "$3" && cd "$3"
+            git init -q && git remote add origin "$1"
+            git fetch -q --depth 1 origin "$2" && git checkout -q FETCH_HEAD
+            echo "$(git rev-parse HEAD)  $1 -> $3"
+            cd - > /dev/null
+          }
+          src="$(cygpath "$AC_SRC")"
+          fetch "${{ steps.plan.outputs.core-repo }}" "${{ steps.plan.outputs.core-commit }}" "$src"
+          # Module directory name == catalog id == dbimport Updates.AllowedModules name.
+          node -e 'for (const m of require(process.argv[1]).modules) console.log(`${m.repo} ${m.commit} ${m.id}`)' "$RUNNER_TEMP/plan.json" |
+          while read -r repo commit id; do fetch "$repo" "$commit" "$src/modules/$id"; done
+
+      - name: Read MySQL component version
+        id: mysql
+        shell: bash
+        run: echo "version=$(node -p 'require("./catalog/components/mysql-8-4.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Boost and MySQL
+        uses: actions/cache@v6
+        with:
+          path: |
+            C:\local\boost_1_87_0
+            C:\tools\mysql\current
+          key: deps-boost-${{ env.BOOST_VERSION }}-mysql-${{ steps.mysql.outputs.version }}
+
+      - name: Install Boost and MySQL (client libs + portable server)
+        shell: pwsh
+        env:
+          MYSQL_VERSION: ${{ steps.mysql.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Get-Download($uri, $out, $agent, $minMB) {
+            for ($i = 1; $i -le 3; $i++) {
+              try {
+                Invoke-WebRequest -Uri $uri -OutFile $out -UserAgent $agent -ConnectionTimeoutSeconds 60 -OperationTimeoutSeconds 120
+                $mb = (Get-Item $out).Length / 1MB
+                if ($mb -lt $minMB) { throw "got $([int]$mb) MB, expected more than $minMB MB" }
+                return
+              } catch {
+                Write-Host "attempt $i failed for ${uri}: $($_.Exception.Message)"
+                if ($i -eq 3) { throw }
+                Start-Sleep -Seconds 15
+              }
+            }
+          }
+          if (-not (Test-Path "$env:BOOST_ROOT\boost\version.hpp")) {
+            $v = $env:BOOST_VERSION; $u = $v -replace '\.', '_'
+            $exe = Join-Path $env:RUNNER_TEMP 'boost.exe'
+            # SourceForge serves the HTML page to browser user agents.
+            Get-Download "https://downloads.sourceforge.net/project/boost/boost-binaries/$v/boost_$u-msvc-14.3-64.exe" $exe 'eoa-ci' 50
+            $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:BOOST_ROOT" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Boost installer exit code $($p.ExitCode)" }
+          }
+          if (-not (Test-Path 'C:\tools\mysql\current\bin\mysqld.exe')) {
+            $zip = Join-Path $env:RUNNER_TEMP 'mysql.zip'
+            $name = "mysql-$env:MYSQL_VERSION-winx64"
+            # Oracle's CDN wants a browser user agent. The archives keep every version;
+            # dev.mysql.com/get only serves the current GA, used as a fallback.
+            try { Get-Download "https://cdn.mysql.com/archives/mysql-8.4/$name.zip" $zip 'Mozilla/5.0' 50 }
+            catch { Get-Download "https://dev.mysql.com/get/Downloads/MySQL-8.4/$name.zip" $zip 'Mozilla/5.0' 50 }
+            New-Item -ItemType Directory -Force 'C:\tools\mysql' | Out-Null
+            Expand-Archive $zip 'C:\tools\mysql' -Force
+            if (Test-Path 'C:\tools\mysql\current') { Remove-Item -Recurse -Force 'C:\tools\mysql\current' }
+            Rename-Item "C:\tools\mysql\$name" 'current'
+          }
+          if (-not (Test-Path 'C:\tools\mysql\current\lib\mysqlclient.lib')) { throw 'mysqlclient.lib missing' }
+          $ssl = @($env:OPENSSL_ROOT_DIR, 'C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64') |
+            Where-Object { $_ -and (Test-Path (Join-Path $_ 'include\openssl\opensslv.h')) } | Select-Object -First 1
+          if (-not $ssl) { throw 'OpenSSL development files not found on the runner' }
+          "OPENSSL_ROOT_DIR=$ssl" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "OpenSSL: $ssl"
+
+      - name: Configure AzerothCore build
+        shell: bash
+        working-directory: ${{ env.AC_SRC }}
+        run: |
+          mkdir -p conf
+          cat > conf/config.sh <<'EOF'
+          CTYPE="Release"
+          CSCRIPTS="static"
+          CMODULES="static"
+          # dbimport is required by the launcher; map extractors are not (upstream data is used).
+          CTOOLS_BUILD="db-only"
+          EOF
+          cat conf/config.sh
+
+      - name: Build
+        shell: bash
+        working-directory: ${{ env.AC_SRC }}
+        run: ./acore.sh compiler build
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(cygpath "$AC_SRC")"
+          # Runtime DLLs the servers need next to their executables, if the install step did not copy them.
+          bin="$(dirname "$(find "$src/env/dist" -iname worldserver.exe | head -1)")"
+          for dll in /c/tools/mysql/current/lib/libmysql.dll "$(cygpath "$OPENSSL_ROOT_DIR")"/bin/lib{ssl,crypto}-3-x64.dll; do
+            if [ -f "$dll" ] && [ ! -f "$bin/$(basename "$dll")" ]; then cp "$dll" "$bin/" && echo "added $(basename "$dll")"; fi
+          done
+          node tools/ci/package-server.mjs "$RUNNER_TEMP/plan.json" "$src" "$src/env/dist" "$RUNNER_TEMP/staging"
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.plan.outputs.artifact }}
+          path: ${{ runner.temp }}/staging
+          retention-days: 14
+          compression-level: 9
+
+  smoke-test:
+    name: Smoke test
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download server artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: ${{ runner.temp }}/server
+
+      - name: Read component and data versions
+        id: versions
+        shell: bash
+        run: |
+          echo "mysql=$(node -p 'require("./catalog/components/mysql-8-4.json").version')" >> "$GITHUB_OUTPUT"
+          echo "data=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.version')" >> "$GITHUB_OUTPUT"
+          echo "data-url=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.url')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MySQL server and server data
+        uses: actions/cache@v6
+        with:
+          path: |
+            C:\tools\mysql\current
+            C:\serverdata
+          key: smoke-mysql-${{ steps.versions.outputs.mysql }}-data-${{ steps.versions.outputs.data }}
+
+      - name: Fetch MySQL server and upstream server data
+        shell: pwsh
+        env:
+          MYSQL_VERSION: ${{ steps.versions.outputs.mysql }}
+          DATA_URL: ${{ steps.versions.outputs.data-url }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if (-not (Test-Path 'C:\tools\mysql\current\bin\mysqld.exe')) {
+            $zip = Join-Path $env:RUNNER_TEMP 'mysql.zip'; $name = "mysql-$env:MYSQL_VERSION-winx64"
+            try { Invoke-WebRequest "https://cdn.mysql.com/archives/mysql-8.4/$name.zip" -OutFile $zip -UserAgent 'Mozilla/5.0' }
+            catch { Invoke-WebRequest "https://dev.mysql.com/get/Downloads/MySQL-8.4/$name.zip" -OutFile $zip -UserAgent 'Mozilla/5.0' }
+            Expand-Archive $zip 'C:\tools\mysql' -Force
+            Rename-Item "C:\tools\mysql\$name" 'current'
+          }
+          if (-not (Test-Path 'C:\serverdata')) {
+            $zip = Join-Path $env:RUNNER_TEMP 'data.zip'
+            Invoke-WebRequest $env:DATA_URL -OutFile $zip
+            Expand-Archive $zip 'C:\serverdata' -Force
+          }
+          Get-ChildItem 'C:\serverdata' -Depth 1 | Select-Object FullName
+
+      - name: Smoke test (modules off, then on)
+        shell: bash
+        run: >
+          node tools/ci/smoke-test.mjs
+          --staging "$RUNNER_TEMP/server"
+          --mysql "C:/tools/mysql/current"
+          --data "C:/serverdata"
+          --work "$RUNNER_TEMP/instance"
+          --mandatory mod-playerbots
+          --optional mod-ahbot,mod-individual-progression
+
+      - name: Upload smoke-test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-logs-${{ needs.build.outputs.build-key }}
+          path: ${{ runner.temp }}/instance/logs
+          retention-days: 14
