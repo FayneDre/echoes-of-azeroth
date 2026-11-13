@@ -138,7 +138,8 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
 | `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation. Later: signed remote index. |
 | `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`, `eoa store fetch`. |
-| `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback, size + sha256 verification before a blob becomes visible. |
+| `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
+| `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | planned | Step executor: journal, resume, rollback, atomic swap. |
 | `eoa-db` | planned | MySQL component: init, clean start/stop, backup/restore, snapshot restore. |
 | `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. |
@@ -207,14 +208,29 @@ by module assets (e.g. `dbc/Spell.dbc`) are per-instance overlays.
 ## 9. Configuration layering
 
 ```
-.conf.dist (from the build)
-  + module activation / defaults / core overrides (tracked, shown as locked)
-  + user overrides (from UI options or advanced editor)
-  ──────────────── merge ───────────────►  effective .conf
+.conf.dist (from the build, upstream comments kept)
+  + ModuleDefault   module manifest defaults                editable
+  + User            UI options, advanced editor, hand edits  editable
+  + CoreOverride    values a module requires in core files   locked
+  + Launcher        paths, ports, DB credentials,            locked
+                    Updates.EnableDatabases = 0
+  ──────────────── eoa_conf::render ───────────────►  effective .conf
 ```
 
-Updates add new upstream keys without losing user changes. AzerothCore
-environment-variable overrides are a candidate alternative layer (to evaluate).
+- Layers apply by kind (order above), then in the given order within a kind.
+  `render` returns, for every managed key, its **provenance** (which layer and
+  source won, and which values it shadowed), so the UI can show *why* a value is
+  locked ("required by Individual Progression").
+- The effective file is **regenerated**, never patched: after an update of the
+  `.conf.dist`, new upstream keys and documentation appear automatically. Keys
+  absent from the dist are appended under a marked section.
+- **Hand edits survive:** before re-rendering, `manual_changes(last_written,
+  on_disk)` detects keys the player edited or added in the file and stores them
+  as `User` values (spacing/quoting differences are ignored; a deleted line means
+  "back to the upstream default").
+- Verified lossless on the fork's `worldserver.conf.dist` (592 keys),
+  `authserver.conf.dist` and `playerbots.conf.dist` (897 keys):
+  `EOA_CONF_SAMPLES=<files> cargo test -p eoa-conf --test upstream`.
 
 ## 10. Runtime
 

@@ -1,0 +1,14 @@
+[package]
+name = "eoa-conf"
+description = "Lossless parser and layered renderer for TrinityCore-family .conf files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eoa-core.workspace = true
+thiserror.workspace = true

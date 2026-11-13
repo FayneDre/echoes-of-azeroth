@@ -26,10 +26,13 @@ Durations assume one full-time developer and are rough.
 
 ## Phase 2: install engine (~2–3 weeks) — started
 
-- [x] `eoa-store`: parallel resumable downloads, mirrors, sha256 verification
+- [x] `eoa-store`: parallel resumable downloads, mirrors, sha256 verification,
+      per-blob lock, fail-fast on permanent errors
+- [x] `eoa-conf`: lossless `.conf` parser, layered rendering with provenance,
+      hand-edit import
+- [ ] `eoa-db` (MySQL portable: init, clean start/stop, users, backup/restore)
+- [ ] `eoa-engine` (journal, resume, rollback, atomic swap)
 - [ ] Signed remote index
-- `eoa-engine` (journal, resume, rollback, atomic swap), `eoa-db` (MySQL portable)
-- Layered config rendering
 - **Exit:** `eoa install` creates a working instance from scratch
 
 ## Phase 3: runtime + AzerothCore driver (~2 weeks)

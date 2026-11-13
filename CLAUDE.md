@@ -62,6 +62,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | Individual Progression needs `EnablePlayerSettings = 1` and `DBC.EnforceItemAttributes = 0` in worldserver.conf (fork defaults: 0 and 1). Compatible with Playerbots. Optional patches: patch-V / patch-S (mutually exclusive, client MPQ + server `Spell.dbc`), patch-J/U (visual), classic spell DBCs. | module README, `optional/patch-explanations.txt` |
 | AHBot is enabled by `AuctionHouseBot.EnableSeller/EnableBuyer`, needs a dedicated account + character (`AuctionHouseBot.Account`, `AuctionHouseBot.GUID`). SQL in `data/sql/db-world`. | mod_ahbot.conf.dist, README |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
+| MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -90,6 +91,7 @@ reduced in-game settings) unless the user asks.
 ├─ crates/
 │  ├─ eoa-core/              domain model, Catalog, resolver (pure, no I/O)
 │  ├─ eoa-catalog/           load catalog from disk + cross-manifest validation
+│  ├─ eoa-conf/              lossless .conf parser + layered renderer (pure, no I/O)
 │  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ app/
@@ -98,6 +100,7 @@ reduced in-game settings) unless the user asks.
 ├─ tools/
 │  ├─ validate-catalog.mjs   JSON Schema + layout validation of the catalog
 │  ├─ check-i18n.mjs         FR/EN key and placeholder parity
+│  ├─ test-guard.mjs         regression cases for the shell guard hook (npm run test:hooks)
 │  └─ git-hooks/             pre-commit / commit-msg logic (Node, cross-platform)
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
 ├─ .github/workflows/

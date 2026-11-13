@@ -62,4 +62,4 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: tests (core crates only, keeps them portable)
-        run: cargo test --locked -p eoa-core -p eoa-catalog -p eoa-store -p eoa-cli
+        run: cargo test --locked -p eoa-core -p eoa-catalog -p eoa-conf -p eoa-store -p eoa-cli
