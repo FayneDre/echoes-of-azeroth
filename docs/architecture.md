@@ -141,7 +141,7 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | planned | Step executor: journal, resume, rollback, atomic swap. |
-| `eoa-db` | planned | MySQL component: init, clean start/stop, backup/restore, snapshot restore. |
+| `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore (§8). Later: snapshot restore, Job Object. |
 | `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. |
 | `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
 | `drivers/azerothcore` | planned | AzerothCore specifics (see §6). |
@@ -197,11 +197,24 @@ by module assets (e.g. `dbc/Spell.dbc`) are per-instance overlays.
 
 - One MySQL instance per realm, dedicated auto-picked port, bound to `127.0.0.1`.
 - Initialised by restoring the CI snapshot (seconds instead of minutes of dbimport).
-- Random credentials stored with Windows DPAPI / Credential Manager.
-- Durable settings (`innodb_flush_log_at_trx_commit=1`), buffer pool sized for
-  performance, not minimised.
-- Clean shutdown only (`mysqladmin shutdown`); Job Object prevents orphans;
-  PID + lock file; refuse datadirs inside cloud-synced folders (OneDrive).
+- **Credentials:** root gets a random 32-character password during bootstrap
+  (`--initialize-insecure` + `--init-file`, so the server never listens without
+  one); service accounts (`acore`) get their own random passwords. They live in
+  files under the user's profile (`client.cnf` for the MySQL tools, never on a
+  command line). DPAPI would add nothing: upstream servers read their DB
+  password in clear text from their `.conf` files. Protection = `127.0.0.1`
+  bind + per-user profile ACL.
+- `my.ini` (rendered by `eoa-db`): `mysqlx=OFF` (no port 33060 shared between
+  realms), `disable-log-bin` (no replication: binary logs only cost disk and
+  import speed), utf8mb4, durable `innodb_flush_log_at_trx_commit=1`, buffer
+  pool 1 GiB and redo log 512 MiB by default (performance, not minimised).
+- "Running" means an **authenticated** query succeeds, so another MySQL on the
+  same port is never mistaken for the instance; a busy port is reported as such.
+- Clean shutdown only (`mysqladmin shutdown`, wait until the port is free).
+  Planned: Job Object (orphans), refuse datadirs inside cloud-synced folders.
+- Backups: `mysqldump --single-transaction` (routines, triggers, events), written
+  atomically; restore replays them. Covered by a real-MySQL lifecycle test
+  (`EOA_MYSQL_BASEDIR`, run in Windows CI).
 - Automatic backups before every migration and on a schedule.
 - Optional "external database" mode for advanced users (MySQL 8.4 required).
 

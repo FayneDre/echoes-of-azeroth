@@ -1,0 +1,18 @@
+[package]
+name = "eoa-db"
+description = "Portable MySQL management: initialise, start/stop cleanly, provision, back up and restore."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+getrandom.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

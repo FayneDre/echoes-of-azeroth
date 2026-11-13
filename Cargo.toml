@@ -20,6 +20,7 @@ eoa-store = { path = "crates/eoa-store" }
 # External crates
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+getrandom = "0.3"
 futures-util = "0.3"
 hex = "0.4"
 reqwest = { version = "0.13", features = ["stream"] }
@@ -28,7 +29,7 @@ serde_json = "1"
 sha2 = "0.11"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "sync", "time"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 

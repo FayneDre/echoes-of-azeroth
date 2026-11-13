@@ -30,7 +30,8 @@ Durations assume one full-time developer and are rough.
       per-blob lock, fail-fast on permanent errors
 - [x] `eoa-conf`: lossless `.conf` parser, layered rendering with provenance,
       hand-edit import
-- [ ] `eoa-db` (MySQL portable: init, clean start/stop, users, backup/restore)
+- [x] `eoa-db` (MySQL portable: secure init, clean start/stop, users, backup/restore)
+- [ ] `eoa-db`: CI database snapshot restore, Job Object, cloud-folder check
 - [ ] `eoa-engine` (journal, resume, rollback, atomic swap)
 - [ ] Signed remote index
 - **Exit:** `eoa install` creates a working instance from scratch

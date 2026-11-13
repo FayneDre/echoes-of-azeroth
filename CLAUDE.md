@@ -92,6 +92,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ eoa-core/              domain model, Catalog, resolver (pure, no I/O)
 │  ├─ eoa-catalog/           load catalog from disk + cross-manifest validation
 │  ├─ eoa-conf/              lossless .conf parser + layered renderer (pure, no I/O)
+│  ├─ eoa-db/                portable MySQL instance: init, start/stop, accounts, backup/restore
 │  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ app/
@@ -137,7 +138,10 @@ When a hook blocks you, fix the cause; never work around it.
 | `new-adr` | record an architecture decision |
 
 Planned crates (create only when their phase starts): `eoa-engine`,
-`eoa-db`, `eoa-runtime`, `eoa-client`, `drivers/azerothcore`.
+`eoa-runtime`, `eoa-client`, `drivers/azerothcore`.
+
+`eoa-db` integration tests need a real MySQL: set `EOA_MYSQL_BASEDIR` to an
+unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
 
 ## 7. Commands
 

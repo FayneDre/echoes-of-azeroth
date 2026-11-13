@@ -47,7 +47,24 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: tests
+      - name: MySQL version (for the eoa-db integration tests)
+        id: mysql
+        shell: bash
+        run: echo "key=$(node -p 'const c=require("./catalog/components/mysql-8-4.json"); c.version + "-" + c.platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MySQL
+        uses: actions/cache@v6
+        with:
+          path: C:\tools\mysql\current
+          key: ci-mysql-${{ steps.mysql.outputs.key }}
+
+      - name: Fetch MySQL (pinned sha256)
+        shell: pwsh
+        run: ./tools/ci/fetch-mysql.ps1 -Manifest catalog/components/mysql-8-4.json -Destination 'C:\tools\mysql\current'
+
+      - name: tests (incl. real MySQL lifecycle)
+        env:
+          EOA_MYSQL_BASEDIR: C:\tools\mysql\current
         run: cargo test --workspace --locked
 
       - name: Catalog cross-reference validation
@@ -62,4 +79,4 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: tests (core crates only, keeps them portable)
-        run: cargo test --locked -p eoa-core -p eoa-catalog -p eoa-conf -p eoa-store -p eoa-cli
+        run: cargo test --locked -p eoa-core -p eoa-catalog -p eoa-conf -p eoa-db -p eoa-store -p eoa-cli
