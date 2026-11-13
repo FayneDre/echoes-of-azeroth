@@ -225,13 +225,29 @@ jobs:
         working-directory: ${{ env.AC_SRC }}
         run: ./acore.sh compiler build
 
+      # acore.sh only runs `cmake --install` when $OSTYPE is msys*/linux*/darwin*;
+      # the runner's Git Bash reports "cygwin", so nothing would be installed and
+      # the binaries would stay in var/build/obj/bin/Release. Install explicitly.
+      - name: Install build output
+        shell: bash
+        working-directory: ${{ env.AC_SRC }}
+        run: |
+          set -euo pipefail
+          echo "OSTYPE=$OSTYPE"
+          cmake --install var/build/obj --config Release --prefix "$(cygpath -m "$AC_SRC")/env/dist"
+
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
           src="$(cygpath "$AC_SRC")"
           # Runtime DLLs the servers need next to their executables, if the install step did not copy them.
-          bin="$(dirname "$(find "$src/env/dist" -iname worldserver.exe | head -1)")"
+          world="$(find "$src/env/dist" -iname worldserver.exe | head -1)"
+          if [ -z "$world" ]; then
+            echo "::error::worldserver.exe not found under env/dist"
+            exit 1
+          fi
+          bin="$(dirname "$world")"
           for dll in /c/tools/mysql/current/lib/libmysql.dll "$(cygpath "$OPENSSL_ROOT_DIR")"/bin/lib{ssl,crypto}-3-x64.dll; do
             if [ -f "$dll" ] && [ ! -f "$bin/$(basename "$dll")" ]; then cp "$dll" "$bin/" && echo "added $(basename "$dll")"; fi
           done
