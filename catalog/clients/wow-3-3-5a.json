@@ -7,6 +7,11 @@
     "fr": "World of Warcraft : Wrath of the Lich King 3.3.5a"
   },
   "game": "wow",
+  "branding": {
+    "shortName": { "en": "Wrath of the Lich King", "fr": "Wrath of the Lich King" },
+    "emblem": "frost-shield",
+    "accent": "#7cc4f0"
+  },
   "version": "3.3.5a",
   "build": 12340,
   "detection": {

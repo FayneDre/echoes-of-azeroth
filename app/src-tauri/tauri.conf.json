@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Echoes of Azeroth",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 800,
-        "minHeight": 560
+        "width": 1280,
+        "height": 860,
+        "minWidth": 1024,
+        "minHeight": 680
       }
     ],
     "security": {

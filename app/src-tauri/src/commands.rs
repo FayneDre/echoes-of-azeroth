@@ -17,11 +17,27 @@ pub struct ModuleSummary {
     mandatory: bool,
 }
 
+/// How the side bar presents the client an emulator serves.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientSummary {
+    id: String,
+    name: LocalizedText,
+    short_name: LocalizedText,
+    version: String,
+    build: u32,
+    emblem: String,
+    accent: String,
+}
+
 #[derive(Serialize)]
 pub struct EmulatorOverview {
     id: String,
     name: String,
     description: LocalizedText,
+    client: Option<ClientSummary>,
+    /// Server processes in start order (the database is implicit and first).
+    processes: Vec<String>,
     modules: Vec<ModuleSummary>,
 }
 
@@ -64,10 +80,29 @@ pub fn catalog_overview(app: AppHandle) -> Result<Vec<EmulatorOverview>, String>
                 .collect();
             // Mandatory modules first, then alphabetical by id.
             modules.sort_by(|a, b| b.mandatory.cmp(&a.mandatory).then_with(|| a.id.cmp(&b.id)));
+            let client = catalog
+                .clients
+                .get(&entry.manifest.client)
+                .map(|c| ClientSummary {
+                    id: c.id.clone(),
+                    name: c.name.clone(),
+                    short_name: c.branding.short_name.clone(),
+                    version: c.version.clone(),
+                    build: c.build,
+                    emblem: c.branding.emblem.clone(),
+                    accent: c.branding.accent.clone(),
+                });
             EmulatorOverview {
                 id: entry.manifest.id.clone(),
                 name: entry.manifest.name.clone(),
                 description: entry.manifest.description.clone(),
+                client,
+                processes: entry
+                    .manifest
+                    .processes
+                    .iter()
+                    .map(|p| p.id.clone())
+                    .collect(),
                 modules,
             }
         })

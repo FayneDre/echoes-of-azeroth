@@ -15,11 +15,33 @@
     "locales",
     "realmlist",
     "patches",
-    "serverData"
+    "serverData",
+    "branding"
   ],
   "properties": {
     "$schema": {
       "type": "string"
+    },
+    "branding": {
+      "description": "How the launcher presents this client (side bar, accent colour). Emblems are original artwork shipped with the launcher, never Blizzard logos (principle 7).",
+      "type": "object",
+      "required": ["shortName", "emblem", "accent"],
+      "properties": {
+        "shortName": {
+          "description": "Expansion name shown next to the emblem.",
+          "$ref": "common.schema.json#/$defs/localizedText"
+        },
+        "emblem": {
+          "description": "Id of an emblem bundled with the launcher (app/src/lib/emblems). Unknown ids fall back to a generic emblem.",
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "accent": {
+          "description": "Accent colour of the expansion, as #rrggbb.",
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "additionalProperties": false
     },
     "schemaVersion": {
       "$ref": "common.schema.json#/$defs/schemaVersion"

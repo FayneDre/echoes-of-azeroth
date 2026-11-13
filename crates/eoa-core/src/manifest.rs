@@ -318,6 +318,7 @@ pub struct ClientManifest {
     pub id: String,
     pub name: LocalizedText,
     pub game: Game,
+    pub branding: Branding,
     pub version: String,
     pub build: u32,
     pub detection: ClientDetection,
@@ -327,6 +328,16 @@ pub struct ClientManifest {
     #[serde(default)]
     pub cache: Option<DirectoryRef>,
     pub server_data: ServerData,
+}
+
+/// Presentation of a client in the launcher. Emblems are original artwork
+/// bundled with the launcher, never Blizzard logos.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Branding {
+    pub short_name: LocalizedText,
+    pub emblem: String,
+    pub accent: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
