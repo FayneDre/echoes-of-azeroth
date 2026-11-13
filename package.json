@@ -1,0 +1,21 @@
+{
+  "name": "echoes-of-azeroth",
+  "private": true,
+  "description": "Echoes of Azeroth: one-click installer and launcher for World of Warcraft emulators.",
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "app"
+  ],
+  "scripts": {
+    "validate:catalog": "node tools/validate-catalog.mjs",
+    "check:i18n": "node tools/check-i18n.mjs",
+    "dev": "npm run tauri dev --workspace app",
+    "build": "npm run tauri build --workspace app",
+    "check": "npm run check --workspace app && npm run validate:catalog && npm run check:i18n",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

@@ -1,0 +1,24 @@
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+app/dist/
+
+# Tauri generated
+app/src-tauri/gen/schemas/
+
+# Local runtime data (never commit an installed server or client)
+/.local/
+*.log
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code: per-user settings stay local, shared settings are committed
+.claude/settings.local.json
