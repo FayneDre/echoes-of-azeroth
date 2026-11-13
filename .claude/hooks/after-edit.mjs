@@ -8,7 +8,8 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findPrivateWords } from "../../tools/git-hooks/private-words.mjs";
 
 let input;
@@ -43,7 +44,14 @@ try {
 
 if (rel.startsWith("catalog/")) run("Catalog validation (npm run validate:catalog)", "node", ["tools/validate-catalog.mjs"]);
 if (rel.includes("i18n/locales/")) run("i18n parity (npm run check:i18n)", "node", ["tools/check-i18n.mjs"]);
-if (rel.endsWith(".rs")) run("rustfmt", "rustfmt", ["--edition", "2021", absolute]);
+if (rel.endsWith(".rs")) {
+  // rustup may not be on PATH yet (e.g. installed during the session): try ~/.cargo/bin too.
+  const local = join(homedir(), ".cargo", "bin", process.platform === "win32" ? "rustfmt.exe" : "rustfmt");
+  const rustfmt = existsSync(local) ? local : "rustfmt";
+  if (spawnSync(rustfmt, ["--version"], { shell: process.platform === "win32" }).status === 0) {
+    run("rustfmt", rustfmt, ["--edition", "2021", absolute]);
+  }
+}
 
 if (problems.length > 0) {
   console.error(problems.join("\n\n"));
