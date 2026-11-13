@@ -91,7 +91,7 @@ jobs:
             C:\tools\mysql\current
           key: deps-boost-${{ env.BOOST_VERSION }}-mysql-${{ steps.mysql.outputs.version }}
 
-      - name: Install Boost and MySQL (client libs + portable server)
+      - name: Install Boost and MySQL (client libs)
         shell: pwsh
         env:
           MYSQL_VERSION: ${{ steps.mysql.outputs.version }}
@@ -119,19 +119,7 @@ jobs:
             $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:BOOST_ROOT" -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Boost installer exit code $($p.ExitCode)" }
           }
-          if (-not (Test-Path 'C:\tools\mysql\current\bin\mysqld.exe')) {
-            $zip = Join-Path $env:RUNNER_TEMP 'mysql.zip'
-            $name = "mysql-$env:MYSQL_VERSION-winx64"
-            # Oracle's CDN wants a browser user agent. The archives keep every version;
-            # dev.mysql.com/get only serves the current GA, used as a fallback.
-            try { Get-Download "https://cdn.mysql.com/archives/mysql-8.4/$name.zip" $zip 'Mozilla/5.0' 50 }
-            catch { Get-Download "https://dev.mysql.com/get/Downloads/MySQL-8.4/$name.zip" $zip 'Mozilla/5.0' 50 }
-            New-Item -ItemType Directory -Force 'C:\tools\mysql' | Out-Null
-            Expand-Archive $zip 'C:\tools\mysql' -Force
-            if (Test-Path 'C:\tools\mysql\current') { Remove-Item -Recurse -Force 'C:\tools\mysql\current' }
-            Rename-Item "C:\tools\mysql\$name" 'current'
-          }
-          if (-not (Test-Path 'C:\tools\mysql\current\lib\mysqlclient.lib')) { throw 'mysqlclient.lib missing' }
+          & ./tools/ci/fetch-mysql.ps1 -Version $env:MYSQL_VERSION -Destination 'C:\tools\mysql\current'
           $ssl = @($env:OPENSSL_ROOT_DIR, 'C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64') |
             Where-Object { $_ -and (Test-Path (Join-Path $_ 'include\openssl\opensslv.h')) } | Select-Object -First 1
           if (-not $ssl) { throw 'OpenSSL development files not found on the runner' }
@@ -202,6 +190,7 @@ jobs:
           echo "mysql=$(node -p 'require("./catalog/components/mysql-8-4.json").version')" >> "$GITHUB_OUTPUT"
           echo "data=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.version')" >> "$GITHUB_OUTPUT"
           echo "data-url=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.url')" >> "$GITHUB_OUTPUT"
+          echo "data-sha256=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.sha256')" >> "$GITHUB_OUTPUT"
 
       - name: Cache MySQL server and server data
         uses: actions/cache@v6
@@ -216,19 +205,18 @@ jobs:
         env:
           MYSQL_VERSION: ${{ steps.versions.outputs.mysql }}
           DATA_URL: ${{ steps.versions.outputs.data-url }}
+          DATA_SHA256: ${{ steps.versions.outputs.data-sha256 }}
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
-          if (-not (Test-Path 'C:\tools\mysql\current\bin\mysqld.exe')) {
-            $zip = Join-Path $env:RUNNER_TEMP 'mysql.zip'; $name = "mysql-$env:MYSQL_VERSION-winx64"
-            try { Invoke-WebRequest "https://cdn.mysql.com/archives/mysql-8.4/$name.zip" -OutFile $zip -UserAgent 'Mozilla/5.0' }
-            catch { Invoke-WebRequest "https://dev.mysql.com/get/Downloads/MySQL-8.4/$name.zip" -OutFile $zip -UserAgent 'Mozilla/5.0' }
-            Expand-Archive $zip 'C:\tools\mysql' -Force
-            Rename-Item "C:\tools\mysql\$name" 'current'
-          }
+          & ./tools/ci/fetch-mysql.ps1 -Version $env:MYSQL_VERSION -Destination 'C:\tools\mysql\current'
           if (-not (Test-Path 'C:\serverdata')) {
             $zip = Join-Path $env:RUNNER_TEMP 'data.zip'
             Invoke-WebRequest $env:DATA_URL -OutFile $zip
+            # Same integrity rule as the launcher (ADR 0006): pinned sha256 or abort.
+            $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $env:DATA_SHA256) { throw "server data sha256 mismatch: $hash" }
+            Write-Host "server data sha256 verified"
             Expand-Archive $zip 'C:\serverdata' -Force
           }
           Get-ChildItem 'C:\serverdata' -Depth 1 | Select-Object FullName
