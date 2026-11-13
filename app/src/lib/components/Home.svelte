@@ -120,9 +120,9 @@
     height: 34px;
     border: 2px solid var(--frame-light);
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, var(--surface-muted), rgb(0 0 0 / 0.6));
+    background: radial-gradient(circle at 35% 30%, var(--surface-muted), var(--shade-deep));
     color: var(--title);
-    box-shadow: 0 0 8px rgb(224 176 79 / 0.25);
+    box-shadow: 0 0 8px var(--glow);
   }
 
   .steps strong {
@@ -162,7 +162,7 @@
     margin: 0;
     font-size: 1.7rem;
     color: var(--title);
-    text-shadow: 0 2px 3px rgb(0 0 0 / 0.7);
+    text-shadow: var(--text-shadow);
   }
 
   .hero-title p.muted {
@@ -233,6 +233,6 @@
     height: 9px;
     border-radius: 50%;
     background: var(--frame);
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.5);
+    box-shadow: inset 0 0 0 1px var(--shade-deep);
   }
 </style>

@@ -51,7 +51,7 @@
     align-items: center;
     gap: var(--space-4);
     padding: var(--space-4) 0;
-    background: linear-gradient(90deg, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.2));
+    background: linear-gradient(90deg, var(--shade), var(--shade-soft));
     border-right: 2px solid var(--frame);
     box-shadow: 1px 0 0 color-mix(in srgb, var(--frame-light) 50%, transparent);
   }
@@ -78,10 +78,10 @@
     gap: var(--space-1);
     width: 76px;
     padding: var(--space-2) 0;
-    background: rgb(0 0 0 / 0.35);
+    background: var(--shade);
     border: 2px solid var(--frame);
     border-radius: var(--radius);
-    box-shadow: inset 0 0 12px rgb(0 0 0 / 0.6);
+    box-shadow: inset 0 0 12px var(--shade-deep);
     cursor: pointer;
     opacity: 0.7;
     transition:
@@ -96,9 +96,9 @@
   .realm.active {
     opacity: 1;
     border-color: var(--frame-light);
-    background: color-mix(in srgb, var(--item-accent) 12%, rgb(0 0 0 / 0.35));
+    background: color-mix(in srgb, var(--item-accent) 12%, var(--shade));
     box-shadow:
-      inset 0 0 12px rgb(0 0 0 / 0.5),
+      inset 0 0 12px var(--shade-deep),
       0 0 12px color-mix(in srgb, var(--item-accent) 45%, transparent);
   }
 

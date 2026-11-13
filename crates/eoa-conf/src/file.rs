@@ -53,8 +53,9 @@ impl ConfFile {
     }
 
     /// Raw value as written (quotes included), if the key is present.
+    /// With duplicates, this is the first occurrence: the one the servers use.
     pub fn raw(&self, key: &str) -> Option<&str> {
-        self.lines.iter().rev().find_map(|line| match line {
+        self.lines.iter().find_map(|line| match line {
             Line::Entry {
                 key: k, raw_value, ..
             } if k == key => Some(raw_value.as_str()),
@@ -73,11 +74,11 @@ impl ConfFile {
         validate_key(key)?;
         let raw_value = format_value(key, value)?;
         let text = format!("{key} = {raw_value}");
-        // Duplicate keys are legal upstream; the last occurrence wins, so update that one.
+        // AzerothCore keeps the *first* occurrence of a duplicated key and
+        // ignores the others (Config.cpp, IsDuplicateOption): update that one.
         if let Some(line) = self
             .lines
             .iter_mut()
-            .rev()
             .find(|line| matches!(line, Line::Entry { key: k, .. } if k == key))
         {
             *line = Line::Entry {
@@ -227,11 +228,11 @@ Updates.EnableDatabases = 7
     }
 
     #[test]
-    fn duplicate_keys_update_the_last_occurrence() {
+    fn duplicate_keys_follow_the_server_first_occurrence_wins() {
         let mut file = ConfFile::parse("A = 1\nA = 2\n");
-        assert_eq!(file.get("A"), Some("2"));
+        assert_eq!(file.get("A"), Some("1"));
         file.set("A", &ConfigValue::Integer(3)).unwrap();
-        assert_eq!(file.render(), "A = 1\nA = 3\n");
+        assert_eq!(file.render(), "A = 3\nA = 2\n");
     }
 
     #[test]

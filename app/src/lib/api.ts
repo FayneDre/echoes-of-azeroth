@@ -1,6 +1,7 @@
 // Typed wrappers around Tauri commands. Keep in sync with app/src-tauri/src/commands.rs.
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { LocalizedText } from "./i18n/i18n.svelte";
 
 export type ModuleCategory =
@@ -42,7 +43,26 @@ export interface EmulatorOverview {
   modules: ModuleSummary[];
 }
 
+/** Failure returned by a command: `code` maps to the `error.<code>` message. */
+export interface CommandError {
+  code: string;
+  detail: string;
+}
+
+/** Normalises anything a command may reject with into a CommandError. */
+export function asCommandError(error: unknown): CommandError {
+  if (typeof error === "object" && error !== null && "code" in error && "detail" in error) {
+    return { code: String(error.code), detail: String(error.detail) };
+  }
+  return { code: "unknown", detail: String(error) };
+}
+
 export const inDesktopApp = isTauri;
+
+/** Opens a web page in the default browser (allowed URLs: capabilities/default.json). */
+export function openExternal(url: string): Promise<void> {
+  return openUrl(url);
+}
 
 export function catalogOverview(): Promise<EmulatorOverview[]> {
   return invoke<EmulatorOverview[]>("catalog_overview");

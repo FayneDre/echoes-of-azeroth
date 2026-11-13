@@ -216,8 +216,10 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 
 ## 9. Current status
 
-Phase 0 (foundations) — see `docs/roadmap.md`. Done: workspace, schemas,
-first manifests, core model + resolver, catalog loader/validator, CLI, UI
-skeleton listing catalog modules, license, CI checks, hooks, skills, public
-GitHub repository. Next: phase 1 (Windows CI build of the Playerbot fork with
-all catalog modules, see `docs/roadmap.md`).
+See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 in progress: the
+server build workflow compiles the Playerbot fork with every catalog module and
+reuses artifacts by build key; packaging and the smoke test are not green yet.
+Phase 2 started: `eoa-store`, `eoa-conf` and `eoa-db` are done; `eoa-engine`
+is next. UI: left rail of realms, Home (real "not installed" states) and Server
+settings (modules) tabs; Account, Bots and Backups are placeholders until
+their phases.

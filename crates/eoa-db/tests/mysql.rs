@@ -116,3 +116,33 @@ async fn occupied_port_is_reported() {
     let error = instance.start().await.unwrap_err();
     assert!(error.to_string().contains(&port.to_string()), "{error}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn interrupted_initialisation_is_redone() {
+    let Some(basedir) = std::env::var_os("EOA_MYSQL_BASEDIR") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("mysql");
+    // State left by a crash during bootstrap: marker, credentials, partial data.
+    std::fs::create_dir_all(root.join("data")).unwrap();
+    std::fs::write(root.join("data").join("ibdata1"), b"partial").unwrap();
+    std::fs::write(root.join("init.pending"), b"").unwrap();
+    std::fs::write(root.join("client.cnf"), b"[client]\nuser=root\n").unwrap();
+    let instance = Instance::new(
+        &root,
+        Binaries::from_basedir(basedir),
+        ServerSettings {
+            port: free_port(),
+            buffer_pool_mib: 128,
+            ..Default::default()
+        },
+    );
+    assert!(!instance.is_initialized());
+    instance.initialize().await.unwrap();
+    assert!(instance.is_initialized());
+    assert!(!root.join("init.pending").exists());
+    instance.start().await.unwrap();
+    assert!(instance.ping().await, "new credentials work");
+    instance.stop().await.unwrap();
+}

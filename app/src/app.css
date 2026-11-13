@@ -26,6 +26,11 @@
   --danger: #a3261b;
   --realm-accent: #2f6f9f;
   --panel-shadow: 0 2px 6px rgb(60 40 10 / 0.25);
+  --shade: rgb(60 40 10 / 0.1);
+  --shade-soft: rgb(60 40 10 / 0.05);
+  --shade-deep: rgb(60 40 10 / 0.25);
+  --glow: rgb(125 79 18 / 0.2);
+  --text-shadow: 0 1px 0 rgb(255 255 255 / 0.45);
 
   --radius: 3px;
   --space-1: 4px;
@@ -66,6 +71,11 @@
     --danger: #f08a7e;
     --realm-accent: #7cc4f0;
     --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
+    --shade: rgb(0 0 0 / 0.35);
+    --shade-soft: rgb(0 0 0 / 0.2);
+    --shade-deep: rgb(0 0 0 / 0.6);
+    --glow: rgb(224 176 79 / 0.25);
+    --text-shadow: 0 2px 3px rgb(0 0 0 / 0.75);
   }
 }
 
@@ -94,6 +104,11 @@
   --danger: #f08a7e;
   --realm-accent: #7cc4f0;
   --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
+  --shade: rgb(0 0 0 / 0.35);
+  --shade-soft: rgb(0 0 0 / 0.2);
+  --shade-deep: rgb(0 0 0 / 0.6);
+  --glow: rgb(224 176 79 / 0.25);
+  --text-shadow: 0 2px 3px rgb(0 0 0 / 0.75);
 }
 
 *,

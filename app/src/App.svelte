@@ -1,6 +1,13 @@
 <script lang="ts">
   import "@fontsource-variable/cinzel";
-  import { catalogOverview, inDesktopApp, type EmulatorOverview } from "./lib/api";
+  import {
+    asCommandError,
+    catalogOverview,
+    inDesktopApp,
+    openExternal,
+    type CommandError,
+    type EmulatorOverview,
+  } from "./lib/api";
   import Home from "./lib/components/Home.svelte";
   import Rail from "./lib/components/Rail.svelte";
   import ServerSettings from "./lib/components/ServerSettings.svelte";
@@ -10,8 +17,13 @@
   type CatalogState =
     | { status: "loading" }
     | { status: "unavailable" }
-    | { status: "error"; message: string }
+    | { status: "error"; error: CommandError }
     | { status: "ready"; realms: EmulatorOverview[] };
+
+  const ISSUES_URL = "https://github.com/FayneDre/echoes-of-azeroth/issues";
+  const KNOWN_ERRORS = new Set(["catalog.missing", "catalog.unreadable", "catalog.invalid"]);
+  const errorMessage = (error: CommandError) =>
+    t((KNOWN_ERRORS.has(error.code) ? `error.${error.code}` : "error.unknown") as MessageKey);
 
   type TabId = "home" | "account" | "settings" | "bots" | "backups";
 
@@ -41,7 +53,7 @@
     }
     catalogOverview()
       .then((list) => (catalog = { status: "ready", realms: list }))
-      .catch((error: unknown) => (catalog = { status: "error", message: String(error) }));
+      .catch((error: unknown) => (catalog = { status: "error", error: asCommandError(error) }));
   });
 </script>
 
@@ -89,7 +101,13 @@
       {:else if catalog.status === "unavailable"}
         <p class="muted">{t("modules.unavailable")}</p>
       {:else if catalog.status === "error"}
-        <p class="error">{t("modules.error", { message: catalog.message })}</p>
+        <div class="panel" role="alert">
+          <p class="error">{errorMessage(catalog.error)}</p>
+          <details>
+            <summary class="muted">{t("error.details")}</summary>
+            <pre>{catalog.error.code}: {catalog.error.detail}</pre>
+          </details>
+        </div>
       {:else if !realm}
         <p class="muted">{t("modules.empty")}</p>
       {:else if tab === "settings"}
@@ -110,7 +128,13 @@
 
     <footer>
       <small class="notice" title={t("footer.disclaimer")}>{t("footer.short")}</small>
-      <a href="https://github.com/FayneDre/echoes-of-azeroth/issues" target="_blank" rel="noreferrer">
+      <a
+        href={ISSUES_URL}
+        onclick={(event) => {
+          event.preventDefault();
+          void openExternal(ISSUES_URL);
+        }}
+      >
         {t("footer.report")}
       </a>
     </footer>
@@ -136,7 +160,7 @@
     align-items: center;
     gap: var(--space-6);
     padding: var(--space-3) var(--space-6);
-    background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent);
+    background: linear-gradient(180deg, var(--shade), transparent);
     border-bottom: 2px solid var(--frame);
     box-shadow: 0 1px 0 color-mix(in srgb, var(--frame-light) 50%, transparent);
   }
@@ -150,8 +174,8 @@
     font-size: 1.55rem;
     color: var(--title);
     text-shadow:
-      0 0 12px rgb(224 176 79 / 0.25),
-      0 2px 3px rgb(0 0 0 / 0.8);
+      0 0 12px var(--glow),
+      var(--text-shadow);
   }
 
   .brand p {
@@ -206,8 +230,8 @@
     border-color: var(--frame-light);
     box-shadow:
       inset 0 -2px 0 var(--accent-strong),
-      0 0 10px rgb(224 176 79 / 0.2);
-    text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+      0 0 10px var(--glow);
+    text-shadow: var(--text-shadow);
   }
 
   main {
@@ -221,7 +245,14 @@
   }
 
   .error {
+    margin: 0 0 var(--space-3);
     color: var(--danger);
+  }
+
+  pre {
+    white-space: pre-wrap;
+    font-size: 0.8rem;
+    color: var(--text-muted);
   }
 
   .terminals {
@@ -230,7 +261,7 @@
     gap: var(--space-3);
     padding: var(--space-2) var(--space-6);
     border-top: 2px solid var(--frame);
-    background: linear-gradient(0deg, rgb(0 0 0 / 0.35), transparent);
+    background: linear-gradient(0deg, var(--shade), transparent);
   }
 
   .terminals-title {

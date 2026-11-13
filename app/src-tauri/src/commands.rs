@@ -41,21 +41,59 @@ pub struct EmulatorOverview {
     modules: Vec<ModuleSummary>,
 }
 
-/// Catalog location: bundled resource in release builds, repository copy in dev.
+/// Failure reported to the UI: `code` selects a translated message
+/// (`error.<code>` in the locales); `detail` is technical context, shown
+/// folded for bug reports, never as the main message.
+#[derive(Serialize)]
+pub struct CommandError {
+    code: &'static str,
+    detail: String,
+}
+
+impl CommandError {
+    fn new(code: &'static str, detail: impl ToString) -> Self {
+        Self {
+            code,
+            detail: detail.to_string(),
+        }
+    }
+}
+
+/// Catalog location: the bundled resource. Debug builds fall back to the
+/// repository copy (the path is compiled into debug binaries only).
 /// Phase 2 replaces this with the signed remote index cached on disk.
-fn catalog_dir(app: &AppHandle) -> PathBuf {
+fn catalog_dir(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(resources) = app.path().resource_dir() {
         let bundled = resources.join("catalog");
         if bundled.join("emulators").is_dir() {
-            return bundled;
+            return Some(bundled);
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../catalog")
+    #[cfg(debug_assertions)]
+    {
+        Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../catalog"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        None
+    }
 }
 
 #[tauri::command]
-pub fn catalog_overview(app: AppHandle) -> Result<Vec<EmulatorOverview>, String> {
-    let catalog = eoa_catalog::load_dir(&catalog_dir(&app)).map_err(|e| e.to_string())?;
+pub fn catalog_overview(app: AppHandle) -> Result<Vec<EmulatorOverview>, CommandError> {
+    let dir = catalog_dir(&app)
+        .ok_or_else(|| CommandError::new("catalog.missing", "bundled catalog not found"))?;
+    let catalog =
+        eoa_catalog::load_dir(&dir).map_err(|e| CommandError::new("catalog.unreadable", e))?;
+    let issues = eoa_catalog::validate(&catalog);
+    if !issues.is_empty() {
+        let detail = issues
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(CommandError::new("catalog.invalid", detail));
+    }
     Ok(catalog
         .emulators
         .values()

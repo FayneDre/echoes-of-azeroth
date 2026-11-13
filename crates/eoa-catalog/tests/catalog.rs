@@ -74,3 +74,23 @@ fn unknown_module_is_rejected() {
         ResolveError::UnknownModule("mod-does-not-exist".into())
     );
 }
+
+#[test]
+fn modules_pulled_in_by_a_required_module_must_not_be_removable() {
+    let mut catalog = catalog();
+    let entry = catalog.emulators.get_mut("azerothcore").unwrap();
+    // Make Playerbots depend on a removable optional module.
+    entry
+        .modules
+        .get_mut("mod-playerbots")
+        .unwrap()
+        .requires
+        .push("mod-ah-bot".into());
+    let issues = eoa_catalog::validate(&catalog);
+    assert!(
+        issues.iter().any(|i| i
+            .message
+            .contains("'mod-ah-bot' is required through a required module")),
+        "{issues:?}"
+    );
+}

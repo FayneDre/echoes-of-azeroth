@@ -82,6 +82,23 @@ pub fn validate(catalog: &Catalog) -> Vec<Issue> {
                     Some(_) => {}
                 }
             }
+            // Whatever a required module pulls in is mandatory too (the UI
+            // shows it as included), so it must not be removable either.
+            for id in catalog.mandatory_modules(emu_id, &flavor.id) {
+                if flavor.required_modules.contains(&id) {
+                    continue;
+                }
+                if let Some(m) = entry.modules.get(&id) {
+                    if m.removable {
+                        push(
+                            here.clone(),
+                            format!(
+                                "module '{id}' is required through a required module and must be \"removable\": false"
+                            ),
+                        );
+                    }
+                }
+            }
         }
 
         for module in entry.modules.values() {

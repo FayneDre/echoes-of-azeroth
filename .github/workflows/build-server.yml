@@ -43,8 +43,10 @@ permissions:
 
 concurrency:
   # One queue per flavor: building another flavor must not cancel this one.
+  # Queue instead of cancelling: an hour of compilation is not thrown away
+  # because another push arrived (GitHub keeps only the newest pending run).
   group: build-server-${{ github.ref }}-${{ inputs.emulator || 'azerothcore' }}-${{ inputs.flavor || 'playerbot' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   EMULATOR: ${{ inputs.emulator || 'azerothcore' }}
@@ -318,7 +320,14 @@ jobs:
           & ./tools/ci/fetch-mysql.ps1 -Manifest $env:DB_MANIFEST -Destination 'C:\tools\mysql\current'
           if (-not (Test-Path 'C:\serverdata')) {
             $zip = Join-Path $env:RUNNER_TEMP 'data.zip'
-            Invoke-WebRequest $env:DATA_URL -OutFile $zip
+            for ($i = 1; $i -le 3; $i++) {
+              try { Invoke-WebRequest $env:DATA_URL -OutFile $zip; break }
+              catch {
+                Write-Host "attempt $i failed: $($_.Exception.Message)"
+                if ($i -eq 3) { throw }
+                Start-Sleep -Seconds 30
+              }
+            }
             # Same integrity rule as the launcher (ADR 0006): pinned sha256 or abort.
             $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
             if ($hash -ne $env:DATA_SHA256) { throw "server data sha256 mismatch: $hash" }

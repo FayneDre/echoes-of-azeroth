@@ -9,6 +9,7 @@
 //! <root>/client.cnf    root credentials for the MySQL tools (never on a command line)
 //! <root>/data/         data directory
 //! <root>/mysqld.log    server error log (shown in support bundles)
+//! <root>/init.pending  only while initialising (an interrupted init is redone)
 //! ```
 //!
 //! - **Secure by default:** root gets a random password at initialisation
