@@ -90,6 +90,7 @@ reduced in-game settings) unless the user asks.
 ├─ crates/
 │  ├─ eoa-core/              domain model, Catalog, resolver (pure, no I/O)
 │  ├─ eoa-catalog/           load catalog from disk + cross-manifest validation
+│  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ app/
 │  ├─ src/                   Svelte 5 UI (lib/api.ts, lib/i18n/)
@@ -132,7 +133,7 @@ When a hook blocks you, fix the cause; never work around it.
 | `commit` | checks + Conventional Commit + push, following the privacy and no-co-author rules |
 | `new-adr` | record an architecture decision |
 
-Planned crates (create only when their phase starts): `eoa-store`, `eoa-engine`,
+Planned crates (create only when their phase starts): `eoa-engine`,
 `eoa-db`, `eoa-runtime`, `eoa-client`, `drivers/azerothcore`.
 
 ## 7. Commands
@@ -148,6 +149,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cargo run -p eoa-cli -- catalog validate
 cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ahbot
+cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,

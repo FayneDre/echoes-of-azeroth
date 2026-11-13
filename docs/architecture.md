@@ -137,8 +137,8 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 |---|---|---|
 | `eoa-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
 | `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation. Later: signed remote index. |
-| `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`. |
-| `eoa-store` | planned | Content-addressed store, parallel resumable downloads, hash verification. |
+| `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`, `eoa store fetch`. |
+| `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback, size + sha256 verification before a blob becomes visible. |
 | `eoa-engine` | planned | Step executor: journal, resume, rollback, atomic swap. |
 | `eoa-db` | planned | MySQL component: init, clean start/stop, backup/restore, snapshot restore. |
 | `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. |

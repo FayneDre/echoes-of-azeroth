@@ -24,9 +24,10 @@ Durations assume one full-time developer and are rough.
 - [ ] Prototype AHBot account/character creation without a client
 - **Exit:** a downloadable artifact that works when installed by hand
 
-## Phase 2: install engine (~2–3 weeks)
+## Phase 2: install engine (~2–3 weeks) — started
 
-- `eoa-store` (parallel resumable downloads, hashes), signed remote index
+- [x] `eoa-store`: parallel resumable downloads, mirrors, sha256 verification
+- [ ] Signed remote index
 - `eoa-engine` (journal, resume, rollback, atomic swap), `eoa-db` (MySQL portable)
 - Layered config rendering
 - **Exit:** `eoa install` creates a working instance from scratch
