@@ -1,0 +1,16 @@
+[package]
+name = "eoa-catalog"
+description = "Loads the Echoes of Azeroth catalog and validates cross-manifest consistency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eoa-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
