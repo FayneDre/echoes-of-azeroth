@@ -357,10 +357,15 @@ pub struct DirectoryRef {
     pub directory: String,
 }
 
+/// Pre-extracted server data, downloaded from the pinned upstream release and
+/// verified by sha256. Never re-hosted by the project (ADR 0006).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerData {
-    pub artifact: String,
+    pub url: String,
+    pub version: String,
+    pub size: u64,
+    pub sha256: String,
     pub contents: Vec<String>,
 }
 
