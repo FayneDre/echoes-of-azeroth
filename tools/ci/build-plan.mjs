@@ -16,9 +16,12 @@ if (!emulator || !flavorId || !out) {
   process.exit(2);
 }
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..", "..");
 const emulatorDir = join(root, "catalog", "emulators", emulator);
 const read = (path) => JSON.parse(readFileSync(path, "utf8"));
+const text = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 const flavor = read(join(emulatorDir, "flavors", `${flavorId}.json`));
 const modules = readdirSync(join(emulatorDir, "modules"))
@@ -41,11 +44,7 @@ for (const required of flavor.requiredModules) {
   }
 }
 
-// The build key identifies the exact sources; identical inputs => identical key.
-const keyInput = JSON.stringify({ core: flavor.source.commit, modules: modules.map((m) => [m.id, m.commit]) });
-const buildKey = createHash("sha256").update(keyInput).digest("hex").slice(0, 16);
-
-// Runtime dependencies used by the smoke test, as declared by the emulator.
+// Runtime dependencies, as declared by the emulator.
 const emulatorManifest = read(join(emulatorDir, "emulator.json"));
 const components = emulatorManifest.components.map((c) => `catalog/components/${c.id}.json`);
 const database = components.find((path) => read(join(root, path)).kind === "database");
@@ -54,6 +53,41 @@ if (!database) {
   process.exit(1);
 }
 const client = `catalog/clients/${emulatorManifest.client}.json`;
+
+// The build key covers every input that changes the artifact: identical inputs
+// => identical key => the existing artifact is reused instead of compiling.
+// Recipe = the workflow's global env (toolchain versions) + its `build` job
+// (comment lines ignored) + every script the build job runs. Smoke-test-only
+// edits do not change the key.
+const workflow = text(join(root, ".github", "workflows", "build-server.yml"));
+const section = (from, to) => {
+  const start = workflow.indexOf(from);
+  const end = start < 0 ? -1 : workflow.indexOf(to, start + from.length);
+  if (end < 0) {
+    console.error(`build-server.yml: section '${from.trim()}' .. '${to.trim()}' not found`);
+    process.exit(1);
+  }
+  return workflow.slice(start, end);
+};
+const withoutComments = (yaml) =>
+  yaml
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+const recipe = [
+  withoutComments(section("\nenv:\n", "\njobs:\n")),
+  withoutComments(section("\n  build:\n", "\n  smoke-test:\n")),
+  ...["build-plan.mjs", "package-server.mjs", "fetch-mysql.ps1"].map((f) => text(join(here, f))),
+].join("\n");
+const keyInput = JSON.stringify({
+  core: [flavor.source.repo, flavor.source.commit],
+  // Whole plan entries: package-server.mjs writes them into build-info.json.
+  modules,
+  // MySQL client libraries linked into the Windows servers.
+  database: read(join(root, database)).platforms["windows-x86_64"] ?? null,
+  recipe: sha256(recipe),
+});
+const buildKey = sha256(keyInput).slice(0, 16);
 
 const plan = {
   emulator,

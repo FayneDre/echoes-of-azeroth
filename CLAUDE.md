@@ -107,7 +107,8 @@ reduced in-game settings) unless the user asks.
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
 ├─ .github/workflows/
 │  ├─ ci.yml                 Windows full checks + Linux portable crates
-│  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / pin changes)
+│  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
+│                            changes; reuses the artifact when the build key is unchanged)
 ├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
 ├─ .claude/

@@ -4,7 +4,16 @@ name: Build server
 # compiled in, ADR 0003), packages it, then smoke-tests it end to end with a
 # portable MySQL 8.4 and upstream server data.
 #
-# Heavy (~1 h): runs on demand, and when pinned sources or the build scripts change.
+# Heavy (~1 h to compile), so it avoids compiling whenever it can:
+# - the "plan" job computes the build key (hash of every input that affects
+#   the binaries, see tools/ci/build-plan.mjs). If a trusted run on main already
+#   produced that artifact (tools/ci/find-artifact.sh), the build is skipped and
+#   the smoke test runs on the existing one. `force-build` compiles anyway.
+# - on push it runs only for files that affect what is built or tested; a
+#   smoke-test-only change therefore costs ~20 min, not a rebuild.
+#
+# Keep the `build` job immediately followed by `smoke-test`: build-plan.mjs
+# hashes the text in between as part of the build recipe.
 
 on:
   workflow_dispatch:
@@ -15,11 +24,14 @@ on:
       flavor:
         description: Flavor id
         default: playerbot
+      force-build:
+        description: Compile even if an artifact with the same build key exists
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
-      - catalog/emulators/**/flavors/**
-      - catalog/emulators/**/modules/**
+      - catalog/emulators/**
       - catalog/components/**
       - catalog/clients/**
       - tools/ci/**
@@ -27,6 +39,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # find and download artifacts of previous runs
 
 concurrency:
   # One queue per flavor: building another flavor must not cancel this one.
@@ -43,10 +56,10 @@ env:
   AC_SRC: C:\ac
 
 jobs:
-  build:
-    name: Build (${{ inputs.flavor || 'playerbot' }})
-    runs-on: windows-2022
-    timeout-minutes: 180
+  plan:
+    name: Plan (reuse or build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       artifact: ${{ steps.plan.outputs.artifact }}
       build-key: ${{ steps.plan.outputs.build-key }}
@@ -54,6 +67,7 @@ jobs:
       optional: ${{ steps.plan.outputs.optional }}
       database-manifest: ${{ steps.plan.outputs.database-manifest }}
       client-manifest: ${{ steps.plan.outputs.client-manifest }}
+      reuse-run-id: ${{ steps.reuse.outputs.run-id }}
     steps:
       - uses: actions/checkout@v7
 
@@ -61,10 +75,50 @@ jobs:
         with:
           node-version: 24
 
-      - name: Build plan (pinned sources from the catalog)
+      - name: Build plan and key
+        id: plan
+        run: node tools/ci/build-plan.mjs "$EMULATOR" "$FLAVOR" "$RUNNER_TEMP/plan.json"
+
+      - name: Look for a trusted artifact with this build key
+        id: reuse
+        if: ${{ !inputs.force-build }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ steps.plan.outputs.artifact }}
+        run: |
+          run_id="$(bash tools/ci/find-artifact.sh "$ARTIFACT")"
+          if [ -n "$run_id" ]; then
+            echo "Reusing $ARTIFACT from run $run_id: no compilation needed." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No reusable $ARTIFACT: compiling." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ inputs.flavor || 'playerbot' }})
+    needs: plan
+    if: needs.plan.outputs.reuse-run-id == ''
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build plan (must reproduce the plan job's key)
         id: plan
         shell: bash
-        run: node tools/ci/build-plan.mjs "$EMULATOR" "$FLAVOR" "$RUNNER_TEMP/plan.json"
+        env:
+          EXPECTED_KEY: ${{ needs.plan.outputs.build-key }}
+        run: |
+          node tools/ci/build-plan.mjs "$EMULATOR" "$FLAVOR" "$RUNNER_TEMP/plan.json"
+          key="$(node -p 'require(process.argv[1]).buildKey' "$RUNNER_TEMP/plan.json")"
+          if [ "$key" != "$EXPECTED_KEY" ]; then
+            echo "::error::build key $key differs from the plan job's $EXPECTED_KEY (non-deterministic inputs?)"
+            exit 1
+          fi
 
       - name: Fetch core and modules at pinned commits
         shell: bash
@@ -186,14 +240,18 @@ jobs:
       - name: Upload server artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.plan.outputs.artifact }}
+          name: ${{ needs.plan.outputs.artifact }}
           path: ${{ runner.temp }}/staging
-          retention-days: 14
+          # Public repo maximum. Reuse does not extend it: a key unchanged for
+          # 90 days is compiled once more (release artifacts are kept elsewhere).
+          retention-days: 90
           compression-level: 9
 
   smoke-test:
     name: Smoke test
-    needs: build
+    needs: [plan, build]
+    # Runs after a fresh build, or directly on a reused artifact (build skipped).
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -206,15 +264,17 @@ jobs:
       - name: Download server artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build.outputs.artifact }}
+          name: ${{ needs.plan.outputs.artifact }}
           path: ${{ runner.temp }}/server
+          run-id: ${{ needs.plan.outputs.reuse-run-id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Read component and data versions
         id: versions
         shell: bash
         env:
-          DB_MANIFEST: ${{ needs.build.outputs.database-manifest }}
-          CLIENT_MANIFEST: ${{ needs.build.outputs.client-manifest }}
+          DB_MANIFEST: ${{ needs.plan.outputs.database-manifest }}
+          CLIENT_MANIFEST: ${{ needs.plan.outputs.client-manifest }}
         run: |
           read_json() { node -p "require('./' + process.env.$1).$2"; }
           echo "mysql=$(read_json DB_MANIFEST version)-$(read_json DB_MANIFEST 'platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
@@ -233,7 +293,7 @@ jobs:
       - name: Fetch MySQL server and upstream server data
         shell: pwsh
         env:
-          DB_MANIFEST: ${{ needs.build.outputs.database-manifest }}
+          DB_MANIFEST: ${{ needs.plan.outputs.database-manifest }}
           DATA_URL: ${{ steps.versions.outputs.data-url }}
           DATA_SHA256: ${{ steps.versions.outputs.data-sha256 }}
         run: |
@@ -254,8 +314,8 @@ jobs:
       - name: Smoke test (modules off, then on)
         shell: bash
         env:
-          MANDATORY: ${{ needs.build.outputs.mandatory }}
-          OPTIONAL: ${{ needs.build.outputs.optional }}
+          MANDATORY: ${{ needs.plan.outputs.mandatory }}
+          OPTIONAL: ${{ needs.plan.outputs.optional }}
         run: >
           node tools/ci/smoke-test.mjs
           --staging "$RUNNER_TEMP/server"
@@ -269,6 +329,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: smoke-logs-${{ needs.build.outputs.build-key }}
+          name: smoke-logs-${{ needs.plan.outputs.build-key }}
           path: ${{ runner.temp }}/instance/logs
           retention-days: 14

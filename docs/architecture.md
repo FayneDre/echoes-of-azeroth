@@ -102,9 +102,9 @@ Server processes always run with cwd = the instance root, which contains `config
 
 ## 4. Build & distribution pipeline (CI)
 
-```
 Implemented in `.github/workflows/build-server.yml` (scripts in `tools/ci/`):
 
+```
 catalog release ─► GitHub Actions (Windows runner)
                     ├─ checkout flavor@commit + all modules@commit
                     ├─ MSVC Release build (vcpkg + sccache caches)
@@ -113,6 +113,26 @@ catalog release ─► GitHub Actions (Windows runner)
                     ├─ zstd packaging + per-file hash manifest
                     └─ sign (ed25519) + publish + update the catalog index
 ```
+
+**Avoiding rebuilds.** Compiling takes about an hour, so the workflow compiles
+only when the binaries would differ:
+
+- On push it runs only for files that affect what is built or tested (catalog
+  emulators, components, clients, `tools/ci/`, the workflow). Thanks to the key
+  below, a smoke-test-only change costs ~20 min instead of a rebuild.
+- A *plan* job computes the **build key**: a hash of the core and module repos
+  and commits (whole plan entries), the Windows database client libraries, the
+  global `env` and `build` job of the workflow, and the scripts the build runs
+  (`build-plan.mjs`, `package-server.mjs`, `fetch-mysql.ps1`). If an
+  unexpired artifact with that key exists from a run on `main`, the build job
+  is skipped and the smoke test runs on that artifact. Smoke-test-only edits keep
+  the key, and so do comment lines. `force-build` compiles anyway (e.g. runner image changed OpenSSL).
+- Only artifacts from this repository's `build-server` workflow, produced by a
+  push or manual run on `main`, are reused (`tools/ci/find-artifact.sh`):
+  artifact names are predictable, so a fork PR could otherwise plant one.
+  Lookup errors fall back to compiling.
+- Server artifacts are kept 90 days; reuse does not extend that, so an
+  unchanged key is compiled again after 90 days.
 
 | Artifact | Frequency | Content |
 |---|---|---|
