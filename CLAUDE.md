@@ -53,7 +53,12 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | AzerothCore requires **MySQL 8.4 LTS**. MariaDB and MySQL 5.7/8.1 dropped 2024-09-19; 9.x/26.x unsupported. | azerothcore.org/wiki/requirements, PR #19451 |
 | mod-playerbots **requires the fork** `mod-playerbots/azerothcore-wotlk`, branch `Playerbot`. Official repo does not work. | mod-playerbots README |
 | Playerbots uses an extra database `acore_playerbots` (`PlayerbotsDatabaseInfo` in `playerbots.conf`). | playerbots.conf.dist |
-| dbimport supports `Updates.AllowedModules` (`""` none, `"all"`, or a comma list). Exact module naming still to verify. | fork `src/tools/dbimport/dbimport.conf.dist` |
+| dbimport `Updates.AllowedModules` takes module **directory names** (`modules/<dir>`), reads SQL from `<SourceDirectory>/modules/<dir>/data/sql/*{auth,characters,world}*`. | fork `UpdateFetcher.cpp`, dbimport `Main.cpp` |
+| worldserver auto-applies SQL of **all compiled modules** → instances use `Updates.EnableDatabases = 0` and the launcher runs dbimport. Playerbots DB is updated by worldserver (`Playerbots.Updates.EnableDatabases`). | worldserver `Main.cpp`, playerbots.conf.dist |
+| On Windows, configs are read from `configs/` **relative to the working directory**; module configs from `configs/modules/`. Servers run with cwd = instance root. | `Config.cpp` `GetConfigPath()` |
+| dbimport/worldserver need `MySQLExecutable` (path to `mysql.exe`) to apply SQL files. | conf.dist |
+| Server data: `wowgaming/client-data` v20.0 `Data.zip` (1 196 168 257 B, sha256 pinned in catalog), downloaded from upstream, never re-hosted (ADR 0006). | acore.sh, GitHub release API |
+| Fork Windows build: VS 2022, Boost 1.87 (msvc-14.3), MySQL 8.4 client libs at `C:\tools\mysql\current`, runner OpenSSL, `./acore.sh compiler build`, `CTOOLS_BUILD=db-only` for dbimport. | fork `.github/workflows/windows_build.yml` |
 | Individual Progression needs `EnablePlayerSettings = 1` and `DBC.EnforceItemAttributes = 0` in worldserver.conf (fork defaults: 0 and 1). Compatible with Playerbots. Optional patches: patch-V / patch-S (mutually exclusive, client MPQ + server `Spell.dbc`), patch-J/U (visual), classic spell DBCs. | module README, `optional/patch-explanations.txt` |
 | AHBot is enabled by `AuctionHouseBot.EnableSeller/EnableBuyer`, needs a dedicated account + character (`AuctionHouseBot.Account`, `AuctionHouseBot.GUID`). SQL in `data/sql/db-world`. | mod_ahbot.conf.dist, README |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
@@ -69,6 +74,7 @@ Update this table when a fact is (re)verified; date it.
   `world` DB regenerated on module removal.
 - **0004** Declarative manifests + per-emulator Rust drivers; closed step vocabulary.
 - **0005** Public GitHub repo, GitHub Releases + mirror list, SignPath signing.
+- **0006** Server data downloaded from the pinned upstream release, never re-hosted.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -93,7 +99,10 @@ reduced in-game settings) unless the user asks.
 │  ├─ check-i18n.mjs         FR/EN key and placeholder parity
 │  └─ git-hooks/             pre-commit / commit-msg logic (Node, cross-platform)
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
-├─ .github/workflows/ci.yml  Windows full checks + Linux portable crates
+├─ .github/workflows/
+│  ├─ ci.yml                 Windows full checks + Linux portable crates
+│  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / pin changes)
+├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
 ├─ .claude/
 │  ├─ settings.json          shared permissions + hooks, co-author attribution off

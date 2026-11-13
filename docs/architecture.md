@@ -79,9 +79,32 @@ can add or remove modules at any time, building one binary per combination
 
 Modules outside the catalog will require a local build (advanced users, later).
 
+### How module SQL is controlled (verified in the fork's source, 2026-11-13)
+
+- dbimport reads module SQL from `<SourceDirectory>/modules/<dir>/data/sql/<db-dir>/`,
+  where `<dir>` is the module's **directory name** in `modules/` and `<db-dir>`
+  contains `auth`, `characters` or `world` (e.g. `db-world`). `Updates.AllowedModules`
+  takes those directory names. CI clones each module into `modules/<catalog id>`,
+  so `dbimportId` == catalog id.
+- `worldserver` also auto-applies SQL for **all compiled modules** on startup.
+  Instances therefore set `Updates.EnableDatabases = 0` in `worldserver.conf`
+  and the launcher runs dbimport itself with the instance's allowed modules.
+- The Playerbots database is updated by worldserver itself
+  (`Playerbots.Updates.EnableDatabases`); Playerbots is mandatory so this is fine.
+- The server artifact ships the SQL tree (`sql/data/sql`, `sql/modules/<id>/data/sql`)
+  and instances point `SourceDirectory` at it; dbimport needs `MySQLExecutable`.
+
+### Instance working directory (Windows)
+
+AzerothCore on Windows resolves its config directory as `configs/` relative to
+the **working directory**, and module configs as `configs/modules/<file>.conf`.
+Server processes always run with cwd = the instance root, which contains `configs/`.
+
 ## 4. Build & distribution pipeline (CI)
 
 ```
+Implemented in `.github/workflows/build-server.yml` (scripts in `tools/ci/`):
+
 catalog release ─► GitHub Actions (Windows runner)
                     ├─ checkout flavor@commit + all modules@commit
                     ├─ MSVC Release build (vcpkg + sccache caches)
@@ -95,12 +118,11 @@ catalog release ─► GitHub Actions (Windows runner)
 |---|---|---|
 | `server-<flavor>-<release>` | per catalog release | worldserver, authserver, dbimport, DLLs, `.conf.dist` |
 | `dbsnapshot-<flavor>-<release>` | per catalog release | databases pre-populated by dbimport |
-| `<client>/server-data` | rare | dbc, maps, vmaps, mmaps, Cameras (~1.5–2 GB, chunked) |
+| server data | rare | **not ours**: downloaded from the pinned upstream release (`wowgaming/client-data`, ~1.1 GB, sha256-verified), ADR 0006 |
 | `mysql-8-4` | rare | MySQL portable, trimmed to server + admin tools |
 | module assets | per module release | e.g. Individual Progression MPQ patches / DBC overrides |
 
-Hosting: GitHub Releases first (public repository, free; 2 GB per file, so the
-data pack is chunked). The signed index lists **several mirrors per artifact**
+Hosting: GitHub Releases first (public repository, free; 2 GB per file). The signed index lists **several mirrors per artifact**
 so Cloudflare R2 (or others) can be added without changing the launcher.
 
 Licensing: AzerothCore and the fork are GPL-2.0; distributed binaries link to
@@ -161,7 +183,7 @@ runtime, UI and updates are reused unchanged.
 %LOCALAPPDATA%\EchoesOfAzeroth\
 ├─ store\                 blobs by hash (shared cache)
 ├─ components\mysql-8-4\
-├─ instances\<id>\        bin\ data\ conf\ db\ logs\ instance.json
+├─ instances\<id>\        bin\ sql\ data\ configs\ db\ logs\ instance.json  (cwd of the servers)
 ├─ clients\<id>\          metadata + managed patches (the client stays where it is)
 ├─ backups\<id>\
 └─ state\                 operation journal, locks
@@ -224,6 +246,6 @@ hardening) is v1.x.
 
 ## 14. Open questions (tracked)
 
-- Exact `Updates.AllowedModules` naming (directory name vs `mod_` name) — verify in phase 1.
+- ~~Exact `Updates.AllowedModules` naming~~ — resolved: module directory name (see §3).
 - Creating the AHBot character without a client (driver command vs SQL template) — prototype in phase 1.
 - Whether each catalog module is truly inert when compiled in and disabled — CI test.
