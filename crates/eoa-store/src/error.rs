@@ -26,6 +26,17 @@ pub enum StoreError {
 }
 
 impl StoreError {
+    /// Errors a retry on the same source cannot fix (wrong size, client errors).
+    pub(crate) fn is_permanent(&self) -> bool {
+        match self {
+            StoreError::SizeMismatch { .. } => true,
+            StoreError::Status { status } => {
+                (400..500).contains(status) && *status != 408 && *status != 429
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn io(path: &Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ {
         move |source| StoreError::Io {
             path: path.to_path_buf(),

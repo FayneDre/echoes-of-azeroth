@@ -128,22 +128,14 @@ async fn segmented(
         })
         .buffer_unordered(store.options.connections);
 
-    let mut first_error = None;
     while let Some((index, result)) = results.next().await {
-        match result {
-            Ok(()) => {
-                state.done[index] = true;
-                save_state(state_path, &state)?;
-            }
-            Err(error) => {
-                first_error.get_or_insert(error);
-            }
-        }
+        // Stop at the first failure: in-flight segments are dropped (the caller
+        // retracts their progress) and the next mirror resumes from the state.
+        result?;
+        state.done[index] = true;
+        save_state(state_path, &state)?;
     }
-    match first_error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
+    Ok(())
 }
 
 async fn segment_with_retries(
@@ -154,20 +146,34 @@ async fn segment_with_retries(
     end: u64,
     progress: &dyn Progress,
 ) -> Result<(), StoreError> {
+    with_retries(store, || segment(store, url, part, start, end, progress)).await
+}
+
+/// Runs `operation` up to `attempts` times with exponential backoff, giving up
+/// immediately on errors that cannot fix themselves.
+async fn with_retries<F, Fut>(store: &Store, mut operation: F) -> Result<(), StoreError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), StoreError>>,
+{
     let mut delay = store.options.retry_delay;
     let mut attempt = 1;
     loop {
-        match segment(store, url, part, start, end, progress).await {
+        match operation().await {
             Ok(()) => return Ok(()),
-            Err(error) if attempt >= store.options.attempts => return Err(error),
+            Err(error) if error.is_permanent() || attempt >= store.options.attempts => {
+                return Err(error)
+            }
             Err(_) => {
                 tokio::time::sleep(delay).await;
-                delay *= 2;
+                delay = (delay * 2).min(MAX_RETRY_DELAY);
                 attempt += 1;
             }
         }
     }
 }
+
+const MAX_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
 
 async fn segment(
     store: &Store,
@@ -236,9 +242,7 @@ async fn single(
     part: &Path,
     progress: &dyn Progress,
 ) -> Result<(), StoreError> {
-    let mut delay = store.options.retry_delay;
-    let mut attempt = 1;
-    loop {
+    with_retries(store, || async {
         let mut written = 0u64;
         let result = async {
             let response = store.client.get(url).send().await?;
@@ -281,22 +285,12 @@ async fn single(
             Ok(())
         }
         .await;
-        match result {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                progress.retract(written);
-                // A wrong size or a client error will not fix itself: fail fast.
-                let permanent = matches!(error, StoreError::SizeMismatch { .. })
-                    || matches!(error, StoreError::Status { status } if (400..500).contains(&status));
-                if permanent || attempt >= store.options.attempts {
-                    return Err(error);
-                }
-                tokio::time::sleep(delay).await;
-                delay *= 2;
-                attempt += 1;
-            }
+        if result.is_err() {
+            progress.retract(written);
         }
-    }
+        result
+    })
+    .await
 }
 
 fn part_len(part: &Path) -> Option<u64> {

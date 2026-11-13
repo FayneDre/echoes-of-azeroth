@@ -43,8 +43,18 @@ const note = (line) => {
   console.log(line);
   summary.push(line);
 };
+// Synchronous cleanup actions, run in reverse order when the test fails
+// (fail() exits immediately, so it cannot rely on the final try/finally).
+const cleanups = [];
 const fail = (message) => {
   note(`❌ ${message}`);
+  for (const cleanup of cleanups.reverse()) {
+    try {
+      cleanup();
+    } catch (error) {
+      console.error(`cleanup failed: ${error}`);
+    }
+  }
   flushSummary();
   process.exit(1);
 };
@@ -193,6 +203,9 @@ note("ℹ️ initialising MySQL");
 const init = runSync("mysql-init", mysqld, ["--initialize-insecure", `--basedir=${mysqlRoot}`, `--datadir=${datadir}`, "--console"], work);
 if (init.status !== 0) fail("mysqld --initialize-insecure failed (see mysql-init.log)");
 const mysql = startProcess("mysqld", mysqld, [`--basedir=${mysqlRoot}`, `--datadir=${datadir}`, "--port=3306", "--bind-address=127.0.0.1", "--console"], work);
+cleanups.push(() => {
+  if (mysql.exitCodeValue === null) spawnSync(mysqladmin, ["-uroot", "--host=127.0.0.1", "--port=3306", "shutdown"], { windowsHide: true });
+});
 await waitReady("mysqld", mysql, 3306);
 const sql = (statement, database) => {
   const argv = ["-uroot", "--host=127.0.0.1", "--port=3306", "-N", "-B", "-e", statement];
@@ -211,6 +224,9 @@ for (const host of ["localhost", "127.0.0.1"]) {
 
 const tableExists = (db, table) => sql(`SHOW TABLES LIKE '${table}'`, db) === table;
 const children = [];
+cleanups.push(() => {
+  for (const child of children) if (child.exitCodeValue === null) child.kill();
+});
 const stopServers = async () => {
   for (const child of children.splice(0)) if (child.exitCodeValue === null) child.kill();
   await sleep(3000);

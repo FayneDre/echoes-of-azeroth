@@ -22,12 +22,22 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["upstream", "executables"],
+        "required": ["upstream", "size", "sha256", "executables"],
         "properties": {
           "upstream": {
-            "description": "Official download that CI repackages. The launcher downloads the CI artifact, never this URL directly.",
+            "description": "Official download (used by CI to build and smoke-test servers).",
             "type": "string",
             "format": "uri"
+          },
+          "size": {
+            "description": "Exact size of the upstream download in bytes.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "description": "sha256 of the upstream download, computed once and cross-checked against the vendor's published checksum. Anything else is rejected.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           },
           "executables": {
             "type": "object",

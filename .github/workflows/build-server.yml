@@ -29,7 +29,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-server-${{ github.ref }}
+  # One queue per flavor: building another flavor must not cancel this one.
+  group: build-server-${{ github.ref }}-${{ inputs.emulator || 'azerothcore' }}-${{ inputs.flavor || 'playerbot' }}
   cancel-in-progress: true
 
 env:
@@ -49,6 +50,10 @@ jobs:
     outputs:
       artifact: ${{ steps.plan.outputs.artifact }}
       build-key: ${{ steps.plan.outputs.build-key }}
+      mandatory: ${{ steps.plan.outputs.mandatory }}
+      optional: ${{ steps.plan.outputs.optional }}
+      database-manifest: ${{ steps.plan.outputs.database-manifest }}
+      client-manifest: ${{ steps.plan.outputs.client-manifest }}
     steps:
       - uses: actions/checkout@v7
 
@@ -81,7 +86,11 @@ jobs:
       - name: Read MySQL component version
         id: mysql
         shell: bash
-        run: echo "version=$(node -p 'require("./catalog/components/mysql-8-4.json").version')" >> "$GITHUB_OUTPUT"
+        env:
+          MANIFEST: ${{ steps.plan.outputs.database-manifest }}
+        run: |
+          echo "version=$(node -p 'require("./" + process.env.MANIFEST).version')" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(node -p 'require("./" + process.env.MANIFEST).platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Boost and MySQL
         uses: actions/cache@v6
@@ -89,12 +98,12 @@ jobs:
           path: |
             C:\local\boost_1_87_0
             C:\tools\mysql\current
-          key: deps-boost-${{ env.BOOST_VERSION }}-mysql-${{ steps.mysql.outputs.version }}
+          key: deps-boost-${{ env.BOOST_VERSION }}-mysql-${{ steps.mysql.outputs.version }}-${{ steps.mysql.outputs.sha256 }}
 
       - name: Install Boost and MySQL (client libs)
         shell: pwsh
         env:
-          MYSQL_VERSION: ${{ steps.mysql.outputs.version }}
+          DB_MANIFEST: ${{ steps.plan.outputs.database-manifest }}
         run: |
           $ErrorActionPreference = 'Stop'
           function Get-Download($uri, $out, $agent, $minMB) {
@@ -119,7 +128,7 @@ jobs:
             $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:BOOST_ROOT" -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Boost installer exit code $($p.ExitCode)" }
           }
-          & ./tools/ci/fetch-mysql.ps1 -Version $env:MYSQL_VERSION -Destination 'C:\tools\mysql\current'
+          & ./tools/ci/fetch-mysql.ps1 -Manifest $env:DB_MANIFEST -Destination 'C:\tools\mysql\current'
           $ssl = @($env:OPENSSL_ROOT_DIR, 'C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64') |
             Where-Object { $_ -and (Test-Path (Join-Path $_ 'include\openssl\opensslv.h')) } | Select-Object -First 1
           if (-not $ssl) { throw 'OpenSSL development files not found on the runner' }
@@ -186,11 +195,15 @@ jobs:
       - name: Read component and data versions
         id: versions
         shell: bash
+        env:
+          DB_MANIFEST: ${{ needs.build.outputs.database-manifest }}
+          CLIENT_MANIFEST: ${{ needs.build.outputs.client-manifest }}
         run: |
-          echo "mysql=$(node -p 'require("./catalog/components/mysql-8-4.json").version')" >> "$GITHUB_OUTPUT"
-          echo "data=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.version')" >> "$GITHUB_OUTPUT"
-          echo "data-url=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.url')" >> "$GITHUB_OUTPUT"
-          echo "data-sha256=$(node -p 'require("./catalog/clients/wow-3-3-5a.json").serverData.sha256')" >> "$GITHUB_OUTPUT"
+          read_json() { node -p "require('./' + process.env.$1).$2"; }
+          echo "mysql=$(read_json DB_MANIFEST version)-$(read_json DB_MANIFEST 'platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
+          echo "data=$(read_json CLIENT_MANIFEST serverData.version)" >> "$GITHUB_OUTPUT"
+          echo "data-url=$(read_json CLIENT_MANIFEST serverData.url)" >> "$GITHUB_OUTPUT"
+          echo "data-sha256=$(read_json CLIENT_MANIFEST serverData.sha256)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MySQL server and server data
         uses: actions/cache@v6
@@ -203,13 +216,13 @@ jobs:
       - name: Fetch MySQL server and upstream server data
         shell: pwsh
         env:
-          MYSQL_VERSION: ${{ steps.versions.outputs.mysql }}
+          DB_MANIFEST: ${{ needs.build.outputs.database-manifest }}
           DATA_URL: ${{ steps.versions.outputs.data-url }}
           DATA_SHA256: ${{ steps.versions.outputs.data-sha256 }}
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
-          & ./tools/ci/fetch-mysql.ps1 -Version $env:MYSQL_VERSION -Destination 'C:\tools\mysql\current'
+          & ./tools/ci/fetch-mysql.ps1 -Manifest $env:DB_MANIFEST -Destination 'C:\tools\mysql\current'
           if (-not (Test-Path 'C:\serverdata')) {
             $zip = Join-Path $env:RUNNER_TEMP 'data.zip'
             Invoke-WebRequest $env:DATA_URL -OutFile $zip
@@ -223,14 +236,17 @@ jobs:
 
       - name: Smoke test (modules off, then on)
         shell: bash
+        env:
+          MANDATORY: ${{ needs.build.outputs.mandatory }}
+          OPTIONAL: ${{ needs.build.outputs.optional }}
         run: >
           node tools/ci/smoke-test.mjs
           --staging "$RUNNER_TEMP/server"
           --mysql "C:/tools/mysql/current"
           --data "C:/serverdata"
           --work "$RUNNER_TEMP/instance"
-          --mandatory mod-playerbots
-          --optional mod-ahbot,mod-individual-progression
+          --mandatory "$MANDATORY"
+          --optional "$OPTIONAL"
 
       - name: Upload smoke-test logs
         if: always()

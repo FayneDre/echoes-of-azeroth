@@ -400,5 +400,7 @@ pub enum ComponentKind {
 #[serde(deny_unknown_fields)]
 pub struct PlatformBuild {
     pub upstream: String,
+    pub size: u64,
+    pub sha256: String,
     pub executables: BTreeMap<String, String>,
 }

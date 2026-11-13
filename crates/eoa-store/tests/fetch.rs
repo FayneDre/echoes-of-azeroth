@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use eoa_store::{FetchRequest, NoProgress, Progress, Store, StoreError, StoreOptions};
+
 use sha2::{Digest, Sha256};
 
 /// Behaviour knobs of the test server.
@@ -18,6 +19,8 @@ struct Behaviour {
     not_found: bool,
     /// After this many *ranged segment* requests, answer 500 (simulates an outage).
     fail_after_segments: Option<usize>,
+    /// Answer 403 to every ranged segment request (expired signed URL).
+    forbid_segments: bool,
 }
 
 struct TestServer {
@@ -76,6 +79,9 @@ fn serve(data: Arc<Vec<u8>>, behaviour: Behaviour) -> TestServer {
                 match range {
                     Some((start, end)) if behaviour.ranges => {
                         let is_segment = end > start; // the 0-0 probe is not a segment
+                        if is_segment && behaviour.forbid_segments {
+                            return respond(&mut stream, "403 Forbidden", String::new(), b"");
+                        }
                         if is_segment {
                             let n = segments.fetch_add(1, Ordering::SeqCst);
                             if behaviour.fail_after_segments.is_some_and(|max| n >= max)
@@ -128,6 +134,15 @@ fn options() -> StoreOptions {
     }
 }
 
+/// Partial files left behind (lock files are permanent and excluded).
+fn leftovers(root: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(root.join("partial"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.ends_with(".lock"))
+        .collect()
+}
+
 #[derive(Default)]
 struct Counter(AtomicU64);
 impl Progress for Counter {
@@ -162,13 +177,7 @@ async fn segmented_download_is_verified_and_stored() {
     assert_eq!(std::fs::read(&path).unwrap(), *data);
     assert_eq!(progress.0.load(Ordering::SeqCst), data.len() as u64);
     assert!(store.contains(&request.sha256));
-    assert!(
-        std::fs::read_dir(dir.path().join("partial"))
-            .unwrap()
-            .next()
-            .is_none(),
-        "partial dir cleaned"
-    );
+    assert!(leftovers(dir.path()).is_empty(), "partial dir cleaned");
 
     // Second fetch is a cache hit: no new bytes over the network.
     let before = server.body_bytes_sent.load(Ordering::SeqCst);
@@ -216,15 +225,10 @@ async fn hash_mismatch_is_rejected_and_cleaned() {
         sha256: wrong.clone(),
     };
     let error = store.fetch(&request, &NoProgress).await.unwrap_err();
-    assert!(matches!(error, StoreError::HashMismatch { .. }), "{error}");
+    assert!(matches!(error, StoreError::AllSourcesFailed(_)), "{error}");
+    assert!(error.to_string().contains("sha256"), "{error}");
     assert!(!store.contains(&wrong));
-    assert!(
-        std::fs::read_dir(dir.path().join("partial"))
-            .unwrap()
-            .next()
-            .is_none(),
-        "partial data removed"
-    );
+    assert!(leftovers(dir.path()).is_empty(), "partial data removed");
 }
 
 #[tokio::test]
@@ -317,4 +321,102 @@ async fn size_mismatch_reported_by_server_fails_fast() {
     };
     let error = store.fetch(&request, &NoProgress).await.unwrap_err();
     assert!(error.to_string().contains("size"), "{error}");
+}
+
+#[tokio::test]
+async fn corrupted_mirror_is_skipped_and_progress_stays_exact() {
+    let data = payload(400_000);
+    let mut tampered = (*data).clone();
+    tampered[123_456] ^= 0xff;
+    let corrupt = serve(
+        Arc::new(tampered),
+        Behaviour {
+            ranges: true,
+            ..Default::default()
+        },
+    );
+    let good = serve(
+        data.clone(),
+        Behaviour {
+            ranges: true,
+            ..Default::default()
+        },
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::with_options(dir.path(), options()).unwrap();
+    let request = FetchRequest {
+        urls: vec![corrupt.url, good.url],
+        size: data.len() as u64,
+        sha256: sha256(&data),
+    };
+    let progress = Counter::default();
+    let path = store.fetch(&request, &progress).await.unwrap();
+    assert_eq!(std::fs::read(path).unwrap(), *data);
+    assert_eq!(progress.0.load(Ordering::SeqCst), data.len() as u64);
+}
+
+#[tokio::test]
+async fn concurrent_fetches_of_the_same_blob_download_once() {
+    let data = payload(1_500_000);
+    let server = serve(
+        data.clone(),
+        Behaviour {
+            ranges: true,
+            ..Default::default()
+        },
+    );
+    let dir = tempfile::tempdir().unwrap();
+    // Two stores on one root behave like two launcher processes.
+    let a = Store::with_options(dir.path(), options()).unwrap();
+    let b = Store::with_options(dir.path(), options()).unwrap();
+    let request = FetchRequest {
+        urls: vec![server.url.clone()],
+        size: data.len() as u64,
+        sha256: sha256(&data),
+    };
+    let (ra, rb) = tokio::join!(
+        a.fetch(&request, &NoProgress),
+        b.fetch(&request, &NoProgress)
+    );
+    assert_eq!(std::fs::read(ra.unwrap()).unwrap(), *data);
+    assert_eq!(std::fs::read(rb.unwrap()).unwrap(), *data);
+    // One download (+ the 1-byte range probe), not two.
+    let sent = server.body_bytes_sent.load(Ordering::SeqCst);
+    assert!(sent < 2 * data.len() as u64, "sent {sent} bytes");
+    assert!(leftovers(dir.path()).is_empty());
+}
+
+#[tokio::test]
+async fn permanent_errors_on_segments_fail_fast() {
+    let data = payload(2_000_000);
+    let server = serve(
+        data.clone(),
+        Behaviour {
+            ranges: true,
+            forbid_segments: true,
+            ..Default::default()
+        },
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::with_options(
+        dir.path(),
+        StoreOptions {
+            attempts: 5,
+            retry_delay: Duration::from_secs(2),
+            ..options()
+        },
+    )
+    .unwrap();
+    let request = FetchRequest {
+        urls: vec![server.url],
+        size: data.len() as u64,
+        sha256: sha256(&data),
+    };
+    let started = std::time::Instant::now();
+    let error = store.fetch(&request, &NoProgress).await.unwrap_err();
+    assert!(error.to_string().contains("403"), "{error}");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "no retry on 403"
+    );
 }

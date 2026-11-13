@@ -26,7 +26,13 @@ const modules = readdirSync(join(emulatorDir, "modules"))
   .sort()
   .map((f) => read(join(emulatorDir, "modules", f)))
   .filter((m) => m.compatibleFlavors.includes(flavorId))
-  .map((m) => ({ id: m.id, repo: m.source.repo, commit: m.source.commit, dbimportId: m.database.dbimportId }));
+  .map((m) => ({
+    id: m.id,
+    repo: m.source.repo,
+    commit: m.source.commit,
+    dbimportId: m.database.dbimportId,
+    mandatory: flavor.requiredModules.includes(m.id) || m.removable === false,
+  }));
 
 for (const required of flavor.requiredModules) {
   if (!modules.some((m) => m.id === required)) {
@@ -39,12 +45,24 @@ for (const required of flavor.requiredModules) {
 const keyInput = JSON.stringify({ core: flavor.source.commit, modules: modules.map((m) => [m.id, m.commit]) });
 const buildKey = createHash("sha256").update(keyInput).digest("hex").slice(0, 16);
 
+// Runtime dependencies used by the smoke test, as declared by the emulator.
+const emulatorManifest = read(join(emulatorDir, "emulator.json"));
+const components = emulatorManifest.components.map((c) => `catalog/components/${c.id}.json`);
+const database = components.find((path) => read(join(root, path)).kind === "database");
+if (!database) {
+  console.error(`${emulator} declares no database component`);
+  process.exit(1);
+}
+const client = `catalog/clients/${emulatorManifest.client}.json`;
+
 const plan = {
   emulator,
   flavor: flavorId,
   buildKey,
   core: { repo: flavor.source.repo, commit: flavor.source.commit },
   modules,
+  database,
+  client,
 };
 writeFileSync(out, JSON.stringify(plan, null, 2) + "\n");
 console.log(JSON.stringify(plan, null, 2));
@@ -57,6 +75,10 @@ if (process.env.GITHUB_OUTPUT) {
       `core-repo=${flavor.source.repo}`,
       `core-commit=${flavor.source.commit}`,
       `artifact=server-${emulator}-${flavorId}-${buildKey}`,
+      `mandatory=${modules.filter((m) => m.mandatory).map((m) => m.id).join(",")}`,
+      `optional=${modules.filter((m) => !m.mandatory).map((m) => m.id).join(",")}`,
+      `database-manifest=${database}`,
+      `client-manifest=${client}`,
       "",
     ].join("\n"),
   );

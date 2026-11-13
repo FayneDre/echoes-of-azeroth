@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 export function privateWords() {
-  const gitDir = execFileSync("git", ["rev-parse", "--git-dir"], { encoding: "utf8" }).trim();
+  const gitDir = execFileSync("git", ["rev-parse", "--git-common-dir"], { encoding: "utf8" }).trim();
   const file = join(gitDir, "info", "private-words");
   if (!existsSync(file)) return [];
   return readFileSync(file, "utf8")
