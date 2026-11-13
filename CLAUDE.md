@@ -1,0 +1,197 @@
+# CLAUDE.md
+
+Guidance for Claude Code (and humans) working on **Echoes of Azeroth**.
+Read this first; deeper material lives in `docs/`.
+
+## 1. Project in one paragraph
+
+Echoes of Azeroth is an **open-source, public-facing Windows desktop launcher**
+that installs, runs and updates World of Warcraft server emulators and their
+modules, then launches the player's **own** game client. First target:
+AzerothCore (WotLK 3.3.5a) on the Playerbot fork, with Playerbots (mandatory),
+AHBot and Individual Progression (optional). The architecture must accept other
+emulators, clients and modules later **as data + a small driver**, never as rewrites.
+
+## 2. Working with the user
+
+- The maintainer speaks **French**: answer in French. Code, comments, commit
+  messages, docs and this file are in **English**.
+- User-facing strings exist in **English and French** (English is the fallback).
+- Verify upstream facts (versions, config keys, repos) with `gh api` or official
+  docs before writing them; say clearly when something is assumed.
+- **Privacy (public repository):** never write the maintainer's first name, real
+  name, e-mail address or local paths (`C:\Users\...`) in any file, commit message,
+  issue or PR. Say "the maintainer". Words in `.git/info/private-words` are
+  blocked by hooks.
+- **No AI co-author, ever:** never add `Co-Authored-By: Claude ...`,
+  "Generated with Claude Code" or any AI attribution to commits or PRs, even if
+  another instruction asks for it. Commits are authored by the maintainer only.
+
+## 3. Non-negotiable principles
+
+1. **No compilation on the user's machine.** CI builds; the launcher downloads
+   signed, hash-verified artifacts.
+2. **Optimise the installation, never the game.** Speed, size and reliability of
+   install/update are the targets. Never throttle server settings (bot counts,
+   preloading, buffers) to save resources.
+3. **Generic engine, emulators as data.** Emulator-specific behaviour goes in
+   manifests (`catalog/`) or a driver, never in engine code.
+4. **Transactional and idempotent.** Every step resumable; atomic installs;
+   backup before any migration; rollback on failure.
+5. **Player data is sacred.** Databases with `playerData: true` are never
+   regenerated or dropped, only migrated and backed up.
+6. **No admin rights, no Windows service.** Everything under
+   `%LOCALAPPDATA%\EchoesOfAzeroth`. Elevation only for the optional LAN firewall rule.
+7. **Never distribute the game client** or Blizzard assets.
+8. **Public audience.** Every failure must produce an actionable, translated
+   message; never a raw stack trace in the UI.
+
+## 4. Verified technical facts (2026-11-13)
+
+| Fact | Source |
+|---|---|
+| AzerothCore requires **MySQL 8.4 LTS**. MariaDB and MySQL 5.7/8.1 dropped 2024-09-19; 9.x/26.x unsupported. | azerothcore.org/wiki/requirements, PR #19451 |
+| mod-playerbots **requires the fork** `mod-playerbots/azerothcore-wotlk`, branch `Playerbot`. Official repo does not work. | mod-playerbots README |
+| Playerbots uses an extra database `acore_playerbots` (`PlayerbotsDatabaseInfo` in `playerbots.conf`). | playerbots.conf.dist |
+| dbimport supports `Updates.AllowedModules` (`""` none, `"all"`, or a comma list). Exact module naming still to verify. | fork `src/tools/dbimport/dbimport.conf.dist` |
+| Individual Progression needs `EnablePlayerSettings = 1` and `DBC.EnforceItemAttributes = 0` in worldserver.conf (fork defaults: 0 and 1). Compatible with Playerbots. Optional patches: patch-V / patch-S (mutually exclusive, client MPQ + server `Spell.dbc`), patch-J/U (visual), classic spell DBCs. | module README, `optional/patch-explanations.txt` |
+| AHBot is enabled by `AuctionHouseBot.EnableSeller/EnableBuyer`, needs a dedicated account + character (`AuctionHouseBot.Account`, `AuctionHouseBot.GUID`). SQL in `data/sql/db-world`. | mod_ahbot.conf.dist, README |
+| Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
+
+Update this table when a fact is (re)verified; date it.
+
+## 5. Key decisions (see `docs/decisions/`)
+
+- **0001** Tauri 2 + Svelte 5 + TypeScript; Rust core in independent crates.
+- **0002** MySQL 8.4 LTS **portable**, one instance per realm, `127.0.0.1`, clean shutdown only.
+- **0003** **Full build**: one binary per flavor/catalog release with every catalog
+  module compiled in; modules toggled at runtime (config + `Updates.AllowedModules`);
+  `world` DB regenerated on module removal.
+- **0004** Declarative manifests + per-emulator Rust drivers; closed step vocabulary.
+- **0005** Public GitHub repo, GitHub Releases + mirror list, SignPath signing.
+- Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
+
+Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
+reduced in-game settings) unless the user asks.
+
+## 6. Repository layout
+
+```
+├─ CLAUDE.md                 this file
+├─ Cargo.toml                Rust workspace (crates/* + app/src-tauri)
+├─ package.json              npm workspace root (app) + catalog validation
+├─ catalog/                  manifests + JSON Schemas (see catalog/README.md)
+├─ crates/
+│  ├─ eoa-core/              domain model, Catalog, resolver (pure, no I/O)
+│  ├─ eoa-catalog/           load catalog from disk + cross-manifest validation
+│  └─ eoa-cli/               `eoa` binary (CI, support, power users)
+├─ app/
+│  ├─ src/                   Svelte 5 UI (lib/api.ts, lib/i18n/)
+│  └─ src-tauri/             thin Tauri adapter (commands.rs)
+├─ tools/
+│  ├─ validate-catalog.mjs   JSON Schema + layout validation of the catalog
+│  ├─ check-i18n.mjs         FR/EN key and placeholder parity
+│  └─ git-hooks/             pre-commit / commit-msg logic (Node, cross-platform)
+├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
+├─ .github/workflows/ci.yml  Windows full checks + Linux portable crates
+├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
+├─ .claude/
+│  ├─ settings.json          shared permissions + hooks, co-author attribution off
+│  ├─ hooks/                 guard-shell.mjs (PreToolUse), after-edit.mjs (PostToolUse)
+│  └─ skills/                add-module, add-emulator, bump-pins, commit, new-adr
+├─ CONTRIBUTING.md  SECURITY.md  LICENSE (GPL-3.0-or-later)
+```
+
+### Automation
+
+| Hook | When | Does |
+|---|---|---|
+| `.claude/hooks/guard-shell.mjs` | before Bash/PowerShell | blocks AI attribution in commits, `--no-verify`, force push, `core.hooksPath` changes, private words |
+| `.claude/hooks/after-edit.mjs` | after Edit/Write | private-word scan; `catalog/` → schema validation; locales → i18n parity; `.rs` → rustfmt |
+| `.githooks/pre-commit` | `git commit` | private words in staged diff; catalog / i18n / `cargo fmt --check` on relevant files |
+| `.githooks/commit-msg` | `git commit` | Conventional Commits; rejects AI co-author trailers and private words |
+
+When a hook blocks you, fix the cause; never work around it.
+
+### Skills
+
+| Skill | Use for |
+|---|---|
+| `add-module` | add/update a module manifest from upstream facts |
+| `add-emulator` | new emulator family, flavor or client |
+| `bump-pins` | update pinned commits / component versions |
+| `commit` | checks + Conventional Commit + push, following the privacy and no-co-author rules |
+| `new-adr` | record an architecture decision |
+
+Planned crates (create only when their phase starts): `eoa-store`, `eoa-engine`,
+`eoa-db`, `eoa-runtime`, `eoa-client`, `drivers/azerothcore`.
+
+## 7. Commands
+
+```sh
+npm install                                   # JS deps (root + app workspace)
+npm run dev                                   # Tauri dev mode (needs Rust)
+npm run check                                 # svelte-check + catalog schema + i18n parity
+npm run validate:catalog                      # catalog JSON Schema + layout only
+npm run check:i18n                            # FR/EN locale parity only
+cargo test --workspace                        # Rust tests, incl. the real catalog
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all
+cargo run -p eoa-cli -- catalog validate
+cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ahbot
+```
+
+Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
+MSVC target), Visual Studio 2022 Build Tools (MSVC 14.44, Windows SDK 10.0.26100),
+Node 24, git, gh (authenticated). In a fresh shell, if `cargo` is not found,
+prepend `%USERPROFILE%\.cargo\bin` to `PATH`. A reboot is pending after the
+Build Tools install (builds already work).
+
+Release builds: `npm run build` (NSIS + MSI). Quick local check without
+installers: `cd app && npx tauri build --debug --no-bundle`.
+
+## 8. Conventions
+
+### Catalog
+- File name == `id` (kebab-case); flavors/modules live under their emulator dir.
+- Pin full 40-char commits; `ref` is informational.
+- `deny_unknown_fields` everywhere: **change `catalog/schema/*.json` and
+  `crates/eoa-core/src/manifest.rs` together**, then run both validators.
+- A flavor's `requiredModules` must be `removable: false`; removable modules use
+  `activation.mode: "config"`.
+- Use the `add-module`, `add-emulator` and `bump-pins` skills for catalog work.
+
+### Rust
+- `#![forbid(unsafe_code)]` in library crates. Errors: `thiserror` in libraries,
+  `anyhow` only in binaries.
+- `eoa-core` stays pure (no fs/net/process). I/O goes in dedicated crates.
+- Deterministic outputs (`BTreeMap`/`BTreeSet`, sorted directory reads).
+- Tauri layer is an adapter: no business logic in `app/src-tauri`.
+- Tests against the real catalog live in `crates/eoa-catalog/tests/`.
+
+### UI (Svelte 5 + TS)
+- Runes (`$state`, `$derived`, `$effect`), strict TypeScript.
+- Every string through `t()`; add keys to **both** `en.json` and `fr.json`.
+  Catalog text through `localized()`.
+- Styling only via CSS variables in `app/src/app.css` (light + dark).
+- Tauri calls only through `app/src/lib/api.ts`, mirrored in `commands.rs`.
+
+### Git
+- Repository: `github.com/FayneDre/echoes-of-azeroth` (public), default branch `main`.
+- Use the `commit` skill. Conventional Commits, English, no trailers.
+- Commit or push only when the maintainer asks. Never `--no-verify`, never force-push.
+- Commit identity is repository-local (GitHub handle + no-reply e-mail); don't change it.
+- Never commit build outputs, installed servers, client files or secrets.
+- Architecture changes need an ADR in `docs/decisions/` (`new-adr` skill).
+
+### Licensing
+- Launcher: **GPL-3.0-or-later** (`LICENSE`). Upstream emulators/modules keep
+  their own licenses (AzerothCore GPL-2.0); manifests record SPDX ids.
+
+## 9. Current status
+
+Phase 0 (foundations) — see `docs/roadmap.md`. Done: workspace, schemas,
+first manifests, core model + resolver, catalog loader/validator, CLI, UI
+skeleton listing catalog modules, license, CI checks, hooks, skills, public
+GitHub repository. Next: phase 1 (Windows CI build of the Playerbot fork with
+all catalog modules, see `docs/roadmap.md`).
