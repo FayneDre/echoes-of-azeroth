@@ -29,7 +29,8 @@ if (isAbsolute(rel) || rel.startsWith("..") || rel.startsWith(".git/") || !exist
 
 const problems = [];
 const run = (label, command, args) => {
-  const result = spawnSync(command, args, { cwd: root, encoding: "utf8", shell: process.platform === "win32" });
+  // No shell: paths may contain spaces (e.g. "World of Warcraft") and every tool here is a real executable.
+  const result = spawnSync(command, args, { cwd: root, encoding: "utf8" });
   if (result.status !== 0) problems.push(`${label} failed:\n${(result.stdout ?? "") + (result.stderr ?? "")}`.trim());
 };
 
@@ -48,7 +49,7 @@ if (rel.endsWith(".rs")) {
   // rustup may not be on PATH yet (e.g. installed during the session): try ~/.cargo/bin too.
   const local = join(homedir(), ".cargo", "bin", process.platform === "win32" ? "rustfmt.exe" : "rustfmt");
   const rustfmt = existsSync(local) ? local : "rustfmt";
-  if (spawnSync(rustfmt, ["--version"], { shell: process.platform === "win32" }).status === 0) {
+  if (spawnSync(rustfmt, ["--version"]).status === 0) {
     run("rustfmt", rustfmt, ["--edition", "2021", absolute]);
   }
 }
