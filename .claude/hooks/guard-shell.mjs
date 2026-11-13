@@ -28,7 +28,11 @@ if (isCommit) {
   if (/co-authored-by:.*(claude|anthropic)|noreply@anthropic\.com|generated with \[?claude/i.test(command)) {
     block("commits in this repository must not contain AI co-author or attribution lines. Remove the trailer and retry.");
   }
-  if (/--no-verify\b|\s-n\b/.test(command)) block("git hooks must not be bypassed (--no-verify).");
+  // Only inspect the arguments of the git commit/push itself (not e.g. `grep -n` elsewhere).
+  const gitSegments = command.split(/\|\||&&|[|;&\n]/).filter((s) => /\bgit\b.*\b(commit|push)\b/.test(s));
+  if (gitSegments.some((s) => /\s--no-verify\b/.test(s) || /\bcommit\b.*\s-n\b/.test(s))) {
+    block("git hooks must not be bypassed (--no-verify).");
+  }
 }
 if (/\bgit\b.*\bpush\b.*(--force\b|--force-with-lease\b|\s-f\b)/.test(command)) {
   block("force pushes are not allowed. Ask the maintainer.");
