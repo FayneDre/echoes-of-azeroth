@@ -1,7 +1,7 @@
 {
   "$schema": "../../../schema/module.schema.json",
   "schemaVersion": 1,
-  "id": "mod-ahbot",
+  "id": "mod-ah-bot",
   "emulator": "azerothcore",
   "name": {
     "en": "Auction House Bot",
@@ -12,10 +12,10 @@
     "fr": "Remplit les hôtels des ventes d'objets et achète les enchères des joueurs pour une économie vivante."
   },
   "category": "economy",
-  "homepage": "https://github.com/azerothcore/mod-ahbot",
+  "homepage": "https://github.com/azerothcore/mod-ah-bot",
   "license": "NOASSERTION",
   "source": {
-    "repo": "https://github.com/azerothcore/mod-ahbot",
+    "repo": "https://github.com/azerothcore/mod-ah-bot",
     "ref": "master",
     "commit": "c11d8318cbd8714a9980f9464f78e07d3d48a70a"
   },
@@ -39,7 +39,7 @@
     }
   },
   "database": {
-    "dbimportId": "mod-ahbot",
+    "dbimportId": "mod-ah-bot",
     "touches": ["world"]
   },
   "config": {

@@ -12,6 +12,7 @@ open questions instead of guessing.
 
 ```sh
 gh api repos/<owner>/<repo> --jq '.default_branch, .license.spdx_id, .archived'
+gh api repos/<owner>/<repo> --jq .full_name     # canonical name (renames redirect)
 gh api repos/<owner>/<repo>/commits/<branch> --jq .sha
 gh api "repos/<owner>/<repo>/git/trees/<branch>?recursive=1" --jq '.tree[].path' | grep -E 'conf|sql|optional'
 gh api repos/<owner>/<repo>/contents/conf/<file>.conf.dist -H "Accept: application/vnd.github.raw"
@@ -24,9 +25,14 @@ files (MPQ) or server DBC overrides, accounts/characters it needs.
 
 ## 2. Write `catalog/emulators/<emulator>/modules/<id>.json`
 
-- Start from an existing manifest (`mod-ahbot.json` = config activation + post-install,
+- Start from an existing manifest (`mod-ah-bot.json` = config activation + post-install,
   `mod-individual-progression.json` = core overrides + choice options + assets).
-- `id` = file name = upstream repo name. Pin `source.commit` (40 chars).
+- `id` = file name = module directory = `dbimportId`. It must match the loader
+  function the module defines: AzerothCore calls `Add<id with - -> _>Scripts()`.
+  Check it: `grep -rn "void Add.*Scripts()" src/*loader*` in the repo. Use the
+  **canonical** repo name (`gh api repos/<owner>/<repo> --jq .full_name`): a
+  renamed repo (e.g. `mod-ahbot` -> `mod-ah-bot`) still redirects but its loader
+  follows the new name. Pin `source.commit` (40 chars).
 - `compatibleFlavors`: only flavors you verified.
 - `removable: true` requires `activation.mode: "config"` with `enable` and `disable`.
 - `database.touches` lists every database receiving SQL; `dbimportId` is the

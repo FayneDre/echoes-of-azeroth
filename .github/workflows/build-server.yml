@@ -83,6 +83,23 @@ jobs:
           node -e 'for (const m of require(process.argv[1]).modules) console.log(`${m.repo} ${m.commit} ${m.id}`)' "$RUNNER_TEMP/plan.json" |
           while read -r repo commit id; do fetch "$repo" "$commit" "$src/modules/$id"; done
 
+      - name: Check module loader names (fails in seconds instead of at link time)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # modules/CMakeLists.txt calls Add<directory name, '-' -> '_'>Scripts().
+          src="$(cygpath "$AC_SRC")"
+          for dir in "$src"/modules/*/; do
+            id="$(basename "$dir")"
+            fn="Add${id//-/_}Scripts"
+            if grep -rqE "void[[:space:]]+${fn}[[:space:]]*\(" "$dir"; then
+              echo "ok  $id -> $fn()"
+            else
+              echo "::error::module directory '$id' needs $fn(), which it does not define. The catalog id must equal the upstream directory name."
+              exit 1
+            fi
+          done
+
       - name: Read MySQL component version
         id: mysql
         shell: bash

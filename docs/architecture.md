@@ -47,7 +47,7 @@ Component     = shared third-party runtime (MySQL 8.4 LTS, VC++ redistributable)
 |---|---|---|
 | Emulator | `azerothcore` | Has a driver, a client, components, databases, processes, ports. |
 | CoreFlavor | `playerbot` | A concrete source tree. Playerbots **requires** the `mod-playerbots/azerothcore-wotlk` fork (`Playerbot` branch). |
-| Module | `mod-ahbot` | Optional unless listed in the flavor's `requiredModules`. |
+| Module | `mod-ah-bot` | Optional unless listed in the flavor's `requiredModules`. |
 | ClientSpec | `wow-3-3-5a` | Detection rules, realmlist format, patch directory, matching server data. |
 | Component | `mysql-8-4` | AzerothCore requires MySQL 8.4 LTS (MariaDB unsupported since Sept 2024). |
 | Instance | "My solo realm" | Fully independent; a user may have several. |

@@ -51,12 +51,12 @@ fn optional_modules_resolve_with_core_overrides() {
         &catalog(),
         "azerothcore",
         None,
-        &["mod-ahbot", "mod-individual-progression"],
+        &["mod-ah-bot", "mod-individual-progression"],
     )
     .expect("resolves");
     assert_eq!(
         resolution.modules,
-        vec!["mod-ahbot", "mod-individual-progression", "mod-playerbots"]
+        vec!["mod-ah-bot", "mod-individual-progression", "mod-playerbots"]
     );
     let worldserver = &resolution.core_overrides["worldserver.conf"];
     assert_eq!(

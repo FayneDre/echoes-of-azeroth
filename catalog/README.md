@@ -29,5 +29,5 @@ catalog/
 ```sh
 npm run validate:catalog                      # JSON Schema + layout
 cargo run -p eoa-cli -- catalog validate      # cross-manifest references
-cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ahbot
+cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 ```

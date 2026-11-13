@@ -54,6 +54,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | mod-playerbots **requires the fork** `mod-playerbots/azerothcore-wotlk`, branch `Playerbot`. Official repo does not work. | mod-playerbots README |
 | Playerbots uses an extra database `acore_playerbots` (`PlayerbotsDatabaseInfo` in `playerbots.conf`). | playerbots.conf.dist |
 | dbimport `Updates.AllowedModules` takes module **directory names** (`modules/<dir>`), reads SQL from `<SourceDirectory>/modules/<dir>/data/sql/*{auth,characters,world}*`. | fork `UpdateFetcher.cpp`, dbimport `Main.cpp` |
+| A module is loaded through `Add<dir with - → _>Scripts()`, so the module **directory must be the name the module itself expects** (usually its canonical repo name: `mod-ah-bot`, not the redirect `mod-ahbot`). Catalog `id` = directory = `dbimportId`. CI checks it right after fetching sources. | fork `modules/CMakeLists.txt` L163-168; link error `Addmod_ahbotScripts` (2026-11-13) |
 | worldserver auto-applies SQL of **all compiled modules** → instances use `Updates.EnableDatabases = 0` and the launcher runs dbimport. Playerbots DB is updated by worldserver (`Playerbots.Updates.EnableDatabases`). | worldserver `Main.cpp`, playerbots.conf.dist |
 | On Windows, configs are read from `configs/` **relative to the working directory**; module configs from `configs/modules/`. Servers run with cwd = instance root. | `Config.cpp` `GetConfigPath()` |
 | dbimport/worldserver need `MySQLExecutable` (path to `mysql.exe`) to apply SQL files. | conf.dist |
@@ -155,7 +156,7 @@ cargo test --workspace                        # Rust tests, incl. the real catal
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cargo run -p eoa-cli -- catalog validate
-cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ahbot
+cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
 ```
 

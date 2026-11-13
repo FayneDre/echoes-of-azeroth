@@ -33,7 +33,7 @@ const staging = resolve(args.staging);
 const mysqlRoot = resolve(args.mysql);
 const work = resolve(args.work);
 const mandatory = (args.mandatory ?? "mod-playerbots").split(",").filter(Boolean);
-const optional = (args.optional ?? "mod-ahbot,mod-individual-progression").split(",").filter(Boolean);
+const optional = (args.optional ?? "mod-ah-bot,mod-individual-progression").split(",").filter(Boolean);
 const timeoutMs = Number(args["timeout-min"] ?? 25) * 60_000;
 const logs = join(work, "logs");
 mkdirSync(logs, { recursive: true });
@@ -181,7 +181,7 @@ if (existsSync(playerbotsConf)) {
   setConf(playerbotsConf, { "Playerbots.MinRandomBots": 10, "Playerbots.MaxRandomBots": 10 });
 }
 const moduleToggles = {
-  "mod-ahbot": ["mod_ahbot.conf", { "AuctionHouseBot.EnableSeller": 1, "AuctionHouseBot.EnableBuyer": 1 }, { "AuctionHouseBot.EnableSeller": 0, "AuctionHouseBot.EnableBuyer": 0 }],
+  "mod-ah-bot": ["mod_ahbot.conf", { "AuctionHouseBot.EnableSeller": 1, "AuctionHouseBot.EnableBuyer": 1 }, { "AuctionHouseBot.EnableSeller": 0, "AuctionHouseBot.EnableBuyer": 0 }],
   "mod-individual-progression": ["individualProgression.conf", { "IndividualProgression.Enable": 1 }, { "IndividualProgression.Enable": 0 }],
 };
 const toggle = (enabled) => {
@@ -242,10 +242,10 @@ async function round(label, allowed, enabled) {
   note(`✅ dbimport with AllowedModules="${allowed.join(",")}" in ${Math.round((Date.now() - started) / 1000)} s`);
 
   const ahbotTable = tableExists("acore_world", "mod_auctionhousebot");
-  if (optional.includes("mod-ahbot")) {
-    if (enabled && !ahbotTable) fail("mod-ahbot SQL was not applied although allowed");
-    if (!enabled && ahbotTable) fail("mod-ahbot SQL was applied although not allowed");
-    note(`✅ mod-ahbot SQL ${enabled ? "applied" : "not applied"} as expected`);
+  if (optional.includes("mod-ah-bot")) {
+    if (enabled && !ahbotTable) fail("mod-ah-bot SQL was not applied although allowed");
+    if (!enabled && ahbotTable) fail("mod-ah-bot SQL was applied although not allowed");
+    note(`✅ mod-ah-bot SQL ${enabled ? "applied" : "not applied"} as expected`);
   }
 
   const auth = startProcess(`authserver-${label}`, exe.authserver, ["-c", confFile("authserver.conf")], work);

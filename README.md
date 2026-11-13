@@ -12,7 +12,7 @@ updates World of Warcraft server emulators and their modules, then launches
 
 - [AzerothCore](https://www.azerothcore.org) (WotLK 3.3.5a), Playerbot fork
 - Modules: [Playerbots](https://github.com/mod-playerbots/mod-playerbots) (always installed),
-  [Auction House Bot](https://github.com/azerothcore/mod-ahbot) and
+  [Auction House Bot](https://github.com/azerothcore/mod-ah-bot) and
   [Individual Progression](https://github.com/ZhengPeiRu21/mod-individual-progression)
   (optional, add or remove at any time)
 - Solo and LAN play
