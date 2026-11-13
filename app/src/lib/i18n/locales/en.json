@@ -1,0 +1,23 @@
+{
+  "app.title": "Echoes of Azeroth",
+  "app.tagline": "Your own World of Warcraft server, installed in a few clicks.",
+  "nav.language": "Language",
+  "home.install.title": "Install a server",
+  "home.install.body": "Pick an emulator, choose your modules, point to your game client: the launcher does the rest.",
+  "home.install.cta": "Start installation",
+  "home.install.soon": "Coming soon",
+  "modules.title": "Available modules",
+  "modules.mandatory": "Always installed",
+  "modules.optional": "Optional, add or remove at any time",
+  "modules.loading": "Loading catalog…",
+  "modules.unavailable": "The catalog is only available inside the desktop app.",
+  "modules.error": "Could not load the catalog: {message}",
+  "category.bots": "Bots",
+  "category.economy": "Economy",
+  "category.progression": "Progression",
+  "category.gameplay": "Gameplay",
+  "category.quality-of-life": "Quality of life",
+  "category.cosmetic": "Cosmetic",
+  "category.administration": "Administration",
+  "footer.client": "World of Warcraft is a trademark of Blizzard Entertainment. The game client is never distributed: you provide your own."
+}

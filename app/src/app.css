@@ -1,0 +1,71 @@
+/* Design tokens. Components use only these variables, never raw colors. */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --surface-muted: #ece8df;
+  --text: #1d1b17;
+  --text-muted: #5f5a50;
+  --border: #d8d2c4;
+  --accent: #8a5a12;
+  --accent-text: #ffffff;
+  --danger: #a3261b;
+  --radius: 10px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14130f;
+    --surface: #1e1c17;
+    --surface-muted: #2a2720;
+    --text: #f1ede4;
+    --text-muted: #b1aa9a;
+    --border: #3a362d;
+    --accent: #e0a64a;
+    --accent-text: #1d1b17;
+    --danger: #f08a7e;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14130f;
+  --surface: #1e1c17;
+  --surface-muted: #2a2720;
+  --text: #f1ede4;
+  --text-muted: #b1aa9a;
+  --border: #3a362d;
+  --accent: #e0a64a;
+  --accent-text: #1d1b17;
+  --danger: #f08a7e;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+}
