@@ -1,0 +1,521 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/module.schema.json",
+  "title": "Module manifest",
+  "description": "A server module. All catalog modules are compiled into the 'full build' of a flavor; the launcher installs/removes them by toggling configuration and applying their SQL. Lives at catalog/emulators/<emulator>/modules/<id>.json.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "emulator",
+    "name",
+    "description",
+    "category",
+    "homepage",
+    "license",
+    "source",
+    "compatibleFlavors",
+    "removable",
+    "activation",
+    "database",
+    "config"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "emulator": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.schema.json#/$defs/localizedText"
+    },
+    "description": {
+      "$ref": "common.schema.json#/$defs/localizedText"
+    },
+    "category": {
+      "enum": [
+        "bots",
+        "economy",
+        "progression",
+        "gameplay",
+        "quality-of-life",
+        "cosmetic",
+        "administration"
+      ]
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "license": {
+      "$ref": "common.schema.json#/$defs/spdxLicense"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/gitSource"
+    },
+    "compatibleFlavors": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "removable": {
+      "description": "false for modules that cannot be uninstalled once installed (e.g. modules mandated by the flavor).",
+      "type": "boolean"
+    },
+    "activation": {
+      "$ref": "#/$defs/activation"
+    },
+    "database": {
+      "$ref": "#/$defs/database"
+    },
+    "config": {
+      "$ref": "#/$defs/config"
+    },
+    "options": {
+      "description": "Simplified settings exposed in the launcher UI. Advanced users can still edit every key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/option"
+      }
+    },
+    "assets": {
+      "description": "Optional packaged files (client MPQ patches, server DBC overrides) built by CI from the module repository.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "postInstall": {
+      "description": "Steps run once after the module is first enabled on an instance.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/postInstallStep"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "activation": {
+      "oneOf": [
+        {
+          "description": "The module is always active when compiled in (only valid for non-removable modules).",
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "const": "always"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The module is enabled/disabled through config keys. CI must prove that 'disable' makes the module inert.",
+          "type": "object",
+          "required": [
+            "mode",
+            "enable",
+            "disable"
+          ],
+          "properties": {
+            "mode": {
+              "const": "config"
+            },
+            "enable": {
+              "$ref": "#/$defs/configChanges"
+            },
+            "disable": {
+              "$ref": "#/$defs/configChanges"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "configChanges": {
+      "description": "Config file -> key -> value.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "common.schema.json#/$defs/configFilePath"
+      },
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/configMap"
+      }
+    },
+    "database": {
+      "type": "object",
+      "required": [
+        "dbimportId",
+        "touches"
+      ],
+      "properties": {
+        "dbimportId": {
+          "description": "Name used in dbimport 'Updates.AllowedModules' to allow this module's SQL.",
+          "type": "string",
+          "minLength": 1
+        },
+        "touches": {
+          "description": "Databases (core or extra) receiving SQL from this module.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "extraDatabases": {
+          "description": "Databases owned by this module, created when it is installed.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "playerData",
+              "connections"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "common.schema.json#/$defs/id"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$"
+              },
+              "playerData": {
+                "type": "boolean"
+              },
+              "connections": {
+                "$ref": "common.schema.json#/$defs/dbConnections"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "files"
+      ],
+      "properties": {
+        "files": {
+          "description": "Config files owned by the module, rendered from their .conf.dist plus launcher defaults.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "file",
+              "dist"
+            ],
+            "properties": {
+              "file": {
+                "$ref": "common.schema.json#/$defs/configFilePath"
+              },
+              "dist": {
+                "type": "string",
+                "pattern": "\\.conf\\.dist$"
+              },
+              "defaults": {
+                "$ref": "common.schema.json#/$defs/configMap"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "coreOverrides": {
+          "description": "Settings the module imposes on core config files while installed. Shown as locked in the UI.",
+          "$ref": "#/$defs/configChanges"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configTarget": {
+      "type": "object",
+      "required": [
+        "file",
+        "key"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "common.schema.json#/$defs/configFilePath"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "option": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "label",
+            "target",
+            "default"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "type": {
+              "const": "boolean"
+            },
+            "label": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "help": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "target": {
+              "$ref": "#/$defs/configTarget"
+            },
+            "default": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "label",
+            "target",
+            "default"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "type": {
+              "const": "integer"
+            },
+            "label": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "help": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "target": {
+              "$ref": "#/$defs/configTarget"
+            },
+            "default": {
+              "type": "integer"
+            },
+            "min": {
+              "type": "integer"
+            },
+            "max": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Mutually exclusive choice. Each choice may install assets and set config values.",
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "label",
+            "choices",
+            "default"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "type": {
+              "const": "choice"
+            },
+            "label": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "help": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "default": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "choices": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "common.schema.json#/$defs/id"
+                  },
+                  "label": {
+                    "$ref": "common.schema.json#/$defs/localizedText"
+                  },
+                  "help": {
+                    "$ref": "common.schema.json#/$defs/localizedText"
+                  },
+                  "assets": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                      "$ref": "common.schema.json#/$defs/id"
+                    }
+                  },
+                  "config": {
+                    "$ref": "#/$defs/configChanges"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "artifact": {
+          "description": "Artifact name published by CI.",
+          "type": "string"
+        },
+        "client": {
+          "description": "Files copied into the client 'Data' directory (tracked and removable).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "server": {
+          "description": "Files overlaid on the instance server data directory (e.g. 'dbc/Spell.dbc').",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "postInstallStep": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "step",
+            "as",
+            "username"
+          ],
+          "properties": {
+            "step": {
+              "const": "create-account"
+            },
+            "as": {
+              "description": "Binding name reusable in later steps as ${<as>.id}.",
+              "type": "string"
+            },
+            "username": {
+              "type": "string",
+              "pattern": "^[A-Z0-9_]{3,16}$"
+            },
+            "gmLevel": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "step",
+            "as",
+            "account",
+            "name"
+          ],
+          "properties": {
+            "step": {
+              "const": "create-character"
+            },
+            "as": {
+              "description": "Binding name reusable as ${<as>.guid}.",
+              "type": "string"
+            },
+            "account": {
+              "description": "Binding of a previous create-account step.",
+              "type": "string"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Z][a-z]{1,11}$"
+            },
+            "race": {
+              "type": "string"
+            },
+            "class": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "step",
+            "values"
+          ],
+          "properties": {
+            "step": {
+              "const": "set-config"
+            },
+            "values": {
+              "$ref": "#/$defs/configChanges"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

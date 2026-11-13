@@ -1,0 +1,66 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-playerbots",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Playerbots",
+    "fr": "Playerbots"
+  },
+  "description": {
+    "en": "AI-controlled player characters that quest, group, run dungeons and populate the world.",
+    "fr": "Personnages joueurs contrôlés par l'IA qui font des quêtes, se groupent, font des donjons et peuplent le monde."
+  },
+  "category": "bots",
+  "homepage": "https://github.com/mod-playerbots/mod-playerbots",
+  "license": "GPL-2.0",
+  "source": {
+    "repo": "https://github.com/mod-playerbots/mod-playerbots",
+    "ref": "master",
+    "commit": "405f81196161017eebae3ee7a612d786a3ed2a9d"
+  },
+  "compatibleFlavors": ["playerbot"],
+  "requires": [],
+  "conflicts": [],
+  "removable": false,
+  "activation": { "mode": "always" },
+  "database": {
+    "dbimportId": "mod-playerbots",
+    "touches": ["characters", "world", "playerbots"],
+    "extraDatabases": [
+      {
+        "id": "playerbots",
+        "name": "acore_playerbots",
+        "playerData": true,
+        "connections": [
+          { "file": "modules/playerbots.conf", "key": "PlayerbotsDatabaseInfo" }
+        ]
+      }
+    ]
+  },
+  "config": {
+    "files": [
+      { "file": "modules/playerbots.conf", "dist": "modules/playerbots.conf.dist" }
+    ]
+  },
+  "options": [
+    {
+      "id": "min-random-bots",
+      "type": "integer",
+      "label": { "en": "Minimum random bots", "fr": "Nombre minimum de bots aléatoires" },
+      "target": { "file": "modules/playerbots.conf", "key": "Playerbots.MinRandomBots" },
+      "default": 500,
+      "min": 0,
+      "max": 5000
+    },
+    {
+      "id": "max-random-bots",
+      "type": "integer",
+      "label": { "en": "Maximum random bots", "fr": "Nombre maximum de bots aléatoires" },
+      "target": { "file": "modules/playerbots.conf", "key": "Playerbots.MaxRandomBots" },
+      "default": 500,
+      "min": 0,
+      "max": 5000
+    }
+  ]
+}

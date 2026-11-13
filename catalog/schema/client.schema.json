@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/client.schema.json",
+  "title": "Game client manifest",
+  "description": "Describes a game client version the launcher can detect, configure and start. The client itself is always provided by the user and never distributed. Lives at catalog/clients/<id>.json.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "game", "version", "build", "detection", "locales", "realmlist", "patches", "serverData"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "$ref": "common.schema.json#/$defs/localizedText" },
+    "game": { "enum": ["wow"] },
+    "version": { "type": "string" },
+    "build": { "type": "integer", "minimum": 1 },
+    "detection": {
+      "type": "object",
+      "required": ["executable", "build"],
+      "properties": {
+        "executable": { "description": "Executable relative to the client root.", "type": "string" },
+        "build": { "description": "Build number expected in the executable version info.", "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "locales": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z]{2}[A-Z]{2}$" }
+    },
+    "realmlist": {
+      "type": "object",
+      "required": ["file", "line"],
+      "properties": {
+        "file": { "description": "Path template relative to the client root; {locale} is replaced.", "type": "string" },
+        "line": { "description": "Line template; {address} is replaced.", "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "patches": {
+      "type": "object",
+      "required": ["directory"],
+      "properties": {
+        "directory": { "description": "Directory receiving MPQ patches, relative to the client root.", "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "cache": {
+      "type": "object",
+      "required": ["directory"],
+      "properties": {
+        "directory": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "serverData": {
+      "description": "Pre-extracted server data matching this client, published by CI.",
+      "type": "object",
+      "required": ["artifact", "contents"],
+      "properties": {
+        "artifact": { "type": "string" },
+        "contents": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

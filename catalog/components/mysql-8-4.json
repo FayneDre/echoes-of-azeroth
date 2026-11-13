@@ -1,0 +1,21 @@
+{
+  "$schema": "../schema/component.schema.json",
+  "schemaVersion": 1,
+  "id": "mysql-8-4",
+  "name": "MySQL Community Server",
+  "kind": "database",
+  "version": "8.4.13",
+  "channel": "lts",
+  "license": "GPL-2.0",
+  "homepage": "https://dev.mysql.com/downloads/mysql/8.4.html",
+  "platforms": {
+    "windows-x86_64": {
+      "upstream": "https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.13-winx64.zip",
+      "executables": {
+        "server": "bin/mysqld.exe",
+        "admin": "bin/mysqladmin.exe",
+        "client": "bin/mysql.exe"
+      }
+    }
+  }
+}

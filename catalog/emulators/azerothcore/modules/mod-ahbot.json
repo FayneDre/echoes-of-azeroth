@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-ahbot",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Auction House Bot",
+    "fr": "Bot de l'hôtel des ventes"
+  },
+  "description": {
+    "en": "Fills the auction houses with items and buys player auctions, so the economy feels alive.",
+    "fr": "Remplit les hôtels des ventes d'objets et achète les enchères des joueurs pour une économie vivante."
+  },
+  "category": "economy",
+  "homepage": "https://github.com/azerothcore/mod-ahbot",
+  "license": "NOASSERTION",
+  "source": {
+    "repo": "https://github.com/azerothcore/mod-ahbot",
+    "ref": "master",
+    "commit": "c11d8318cbd8714a9980f9464f78e07d3d48a70a"
+  },
+  "compatibleFlavors": ["playerbot"],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/mod_ahbot.conf": {
+        "AuctionHouseBot.EnableSeller": 1,
+        "AuctionHouseBot.EnableBuyer": 1
+      }
+    },
+    "disable": {
+      "modules/mod_ahbot.conf": {
+        "AuctionHouseBot.EnableSeller": 0,
+        "AuctionHouseBot.EnableBuyer": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-ahbot",
+    "touches": ["world"]
+  },
+  "config": {
+    "files": [
+      { "file": "modules/mod_ahbot.conf", "dist": "modules/mod_ahbot.conf.dist" }
+    ]
+  },
+  "options": [
+    {
+      "id": "seller",
+      "type": "boolean",
+      "label": { "en": "Bot posts auctions", "fr": "Le bot met des objets en vente" },
+      "target": { "file": "modules/mod_ahbot.conf", "key": "AuctionHouseBot.EnableSeller" },
+      "default": true
+    },
+    {
+      "id": "buyer",
+      "type": "boolean",
+      "label": { "en": "Bot buys player auctions", "fr": "Le bot achète les enchères des joueurs" },
+      "target": { "file": "modules/mod_ahbot.conf", "key": "AuctionHouseBot.EnableBuyer" },
+      "default": true
+    },
+    {
+      "id": "items-per-cycle",
+      "type": "integer",
+      "label": { "en": "Items posted per cycle", "fr": "Objets mis en vente par cycle" },
+      "target": { "file": "modules/mod_ahbot.conf", "key": "AuctionHouseBot.ItemsPerCycle" },
+      "default": 200,
+      "min": 1,
+      "max": 5000
+    }
+  ],
+  "postInstall": [
+    { "step": "create-account", "as": "ahbot_account", "username": "AHBOT", "gmLevel": 0 },
+    { "step": "create-character", "as": "ahbot_character", "account": "ahbot_account", "name": "Auctioneer" },
+    {
+      "step": "set-config",
+      "values": {
+        "modules/mod_ahbot.conf": {
+          "AuctionHouseBot.Account": "${ahbot_account.id}",
+          "AuctionHouseBot.GUID": "${ahbot_character.guid}"
+        }
+      }
+    }
+  ]
+}

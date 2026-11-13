@@ -1,0 +1,125 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-individual-progression",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Individual Progression",
+    "fr": "Progression individuelle"
+  },
+  "description": {
+    "en": "Each character progresses through Vanilla, The Burning Crusade and Wrath of the Lich King content in order, with era-accurate tuning.",
+    "fr": "Chaque personnage progresse dans l'ordre à travers le contenu Vanilla, The Burning Crusade puis Wrath of the Lich King, avec un équilibrage fidèle à chaque époque."
+  },
+  "category": "progression",
+  "homepage": "https://github.com/ZhengPeiRu21/mod-individual-progression",
+  "license": "NOASSERTION",
+  "source": {
+    "repo": "https://github.com/ZhengPeiRu21/mod-individual-progression",
+    "ref": "master",
+    "commit": "e1795553d381e561ab5f37585566c22e23cdff73"
+  },
+  "compatibleFlavors": ["playerbot"],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/individualProgression.conf": { "IndividualProgression.Enable": 1 }
+    },
+    "disable": {
+      "modules/individualProgression.conf": { "IndividualProgression.Enable": 0 }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-individual-progression",
+    "touches": ["auth", "characters", "world"]
+  },
+  "config": {
+    "files": [
+      { "file": "modules/individualProgression.conf", "dist": "modules/individualProgression.conf.dist" }
+    ],
+    "coreOverrides": {
+      "worldserver.conf": {
+        "EnablePlayerSettings": 1,
+        "DBC.EnforceItemAttributes": 0
+      }
+    }
+  },
+  "options": [
+    {
+      "id": "enforce-group-rules",
+      "type": "boolean",
+      "label": { "en": "Enforce group progression rules", "fr": "Imposer les règles de progression en groupe" },
+      "target": { "file": "modules/individualProgression.conf", "key": "IndividualProgression.EnforceGroupRules" },
+      "default": false
+    },
+    {
+      "id": "mana-costs",
+      "type": "choice",
+      "label": { "en": "Spell mana costs during Vanilla and TBC", "fr": "Coût en mana des sorts pendant Vanilla et TBC" },
+      "default": "unchanged",
+      "choices": [
+        {
+          "id": "unchanged",
+          "label": { "en": "No patch (module default)", "fr": "Aucun patch (par défaut du module)" }
+        },
+        {
+          "id": "era-adjusted",
+          "label": { "en": "Era-adjusted mana costs (patch-V)", "fr": "Coûts adaptés à l'époque (patch-V)" },
+          "assets": ["patch-v"]
+        },
+        {
+          "id": "keep-wotlk",
+          "label": { "en": "Keep WotLK mana costs (patch-S)", "fr": "Conserver les coûts de WotLK (patch-S)" },
+          "assets": ["patch-s"]
+        }
+      ]
+    },
+    {
+      "id": "vanilla-visuals",
+      "type": "choice",
+      "label": { "en": "Vanilla login and loading screens", "fr": "Écrans de connexion et de chargement Vanilla" },
+      "default": "off",
+      "choices": [
+        { "id": "off", "label": { "en": "Off", "fr": "Désactivé" } },
+        { "id": "on", "label": { "en": "On", "fr": "Activé" }, "assets": ["vanilla-visuals"] }
+      ]
+    },
+    {
+      "id": "classic-spells",
+      "type": "choice",
+      "label": { "en": "Restore Vanilla/TBC spells, recipes and reagents", "fr": "Restaurer les sorts, recettes et composants de Vanilla/TBC" },
+      "default": "off",
+      "choices": [
+        { "id": "off", "label": { "en": "Off", "fr": "Désactivé" } },
+        { "id": "on", "label": { "en": "On", "fr": "Activé" }, "assets": ["classic-spells"] }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "patch-v",
+      "artifact": "mod-individual-progression/patch-v",
+      "client": ["patch-V.mpq"],
+      "server": ["dbc/Spell.dbc"]
+    },
+    {
+      "id": "patch-s",
+      "artifact": "mod-individual-progression/patch-s",
+      "client": ["patch-S.mpq"],
+      "server": ["dbc/Spell.dbc"]
+    },
+    {
+      "id": "vanilla-visuals",
+      "artifact": "mod-individual-progression/vanilla-visuals",
+      "client": ["patch-J.mpq", "patch-U.mpq"]
+    },
+    {
+      "id": "classic-spells",
+      "artifact": "mod-individual-progression/classic-spells",
+      "server": ["dbc/SkillLine.dbc", "dbc/SkillLineAbility.dbc", "dbc/SkillRaceClassInfo.dbc", "dbc/SpellItemEnchantment.dbc"]
+    }
+  ]
+}

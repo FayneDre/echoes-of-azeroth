@@ -1,0 +1,67 @@
+{
+  "$schema": "../../schema/emulator.schema.json",
+  "schemaVersion": 1,
+  "id": "azerothcore",
+  "name": "AzerothCore",
+  "description": {
+    "en": "Open-source World of Warcraft: Wrath of the Lich King (3.3.5a) server emulator.",
+    "fr": "Émulateur de serveur open source pour World of Warcraft: Wrath of the Lich King (3.3.5a)."
+  },
+  "homepage": "https://www.azerothcore.org",
+  "license": "GPL-2.0",
+  "driver": "azerothcore",
+  "client": "wow-3-3-5a",
+  "components": [
+    { "id": "mysql-8-4" }
+  ],
+  "defaultFlavor": "playerbot",
+  "databases": [
+    {
+      "id": "auth",
+      "name": "acore_auth",
+      "playerData": true,
+      "connections": [
+        { "file": "authserver.conf", "key": "LoginDatabaseInfo" },
+        { "file": "worldserver.conf", "key": "LoginDatabaseInfo" },
+        { "file": "dbimport.conf", "key": "LoginDatabaseInfo" }
+      ]
+    },
+    {
+      "id": "characters",
+      "name": "acore_characters",
+      "playerData": true,
+      "connections": [
+        { "file": "worldserver.conf", "key": "CharacterDatabaseInfo" },
+        { "file": "dbimport.conf", "key": "CharacterDatabaseInfo" }
+      ]
+    },
+    {
+      "id": "world",
+      "name": "acore_world",
+      "playerData": false,
+      "connections": [
+        { "file": "worldserver.conf", "key": "WorldDatabaseInfo" },
+        { "file": "dbimport.conf", "key": "WorldDatabaseInfo" }
+      ]
+    }
+  ],
+  "ports": {
+    "auth": 3724,
+    "world": 8085,
+    "soap": 7878
+  },
+  "processes": [
+    {
+      "id": "authserver",
+      "executable": "bin/authserver.exe",
+      "configFile": "authserver.conf",
+      "readiness": { "type": "tcp", "port": "auth" }
+    },
+    {
+      "id": "worldserver",
+      "executable": "bin/worldserver.exe",
+      "configFile": "worldserver.conf",
+      "readiness": { "type": "tcp", "port": "world" }
+    }
+  ]
+}

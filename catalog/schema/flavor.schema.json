@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/flavor.schema.json",
+  "title": "Core flavor manifest",
+  "description": "A concrete core source tree of an emulator (official repository or a fork). Lives at catalog/emulators/<emulator>/flavors/<id>.json.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "emulator", "name", "description", "source", "requiredModules"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "emulator": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "$ref": "common.schema.json#/$defs/localizedText" },
+    "description": { "$ref": "common.schema.json#/$defs/localizedText" },
+    "source": { "$ref": "common.schema.json#/$defs/gitSource" },
+    "requiredModules": {
+      "description": "Modules that are always installed with this flavor and can never be removed.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/id" }
+    }
+  },
+  "additionalProperties": false
+}

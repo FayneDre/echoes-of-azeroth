@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/component.schema.json",
+  "title": "Component manifest",
+  "description": "A shared third-party runtime (database server, redistributable...). Lives at catalog/components/<id>.json.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "kind", "version", "license", "homepage", "platforms"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "type": "string" },
+    "kind": { "enum": ["database", "runtime"] },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "channel": { "description": "Upstream release channel, e.g. 'lts'.", "type": "string" },
+    "license": { "$ref": "common.schema.json#/$defs/spdxLicense" },
+    "homepage": { "type": "string", "format": "uri" },
+    "platforms": {
+      "description": "Keyed by '<os>-<arch>' (e.g. 'windows-x86_64'). Other platforms are added later.",
+      "type": "object",
+      "propertyNames": { "pattern": "^(windows|linux|macos)-(x86_64|aarch64)$" },
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["upstream", "executables"],
+        "properties": {
+          "upstream": {
+            "description": "Official download that CI repackages. The launcher downloads the CI artifact, never this URL directly.",
+            "type": "string",
+            "format": "uri"
+          },
+          "executables": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

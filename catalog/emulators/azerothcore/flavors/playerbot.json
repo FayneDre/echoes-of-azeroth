@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../schema/flavor.schema.json",
+  "schemaVersion": 1,
+  "id": "playerbot",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "AzerothCore (Playerbot)",
+    "fr": "AzerothCore (Playerbot)"
+  },
+  "description": {
+    "en": "AzerothCore fork maintained by the mod-playerbots project. Required by mod-playerbots; the official repository does not work with it.",
+    "fr": "Fork d'AzerothCore maintenu par le projet mod-playerbots. Requis par mod-playerbots ; le dépôt officiel n'est pas compatible."
+  },
+  "source": {
+    "repo": "https://github.com/mod-playerbots/azerothcore-wotlk",
+    "ref": "Playerbot",
+    "commit": "32fd3472aa74961c91cb9bc942ee3e0a44b36779"
+  },
+  "requiredModules": ["mod-playerbots"]
+}

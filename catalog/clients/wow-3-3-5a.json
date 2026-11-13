@@ -1,0 +1,31 @@
+{
+  "$schema": "../schema/client.schema.json",
+  "schemaVersion": 1,
+  "id": "wow-3-3-5a",
+  "name": {
+    "en": "World of Warcraft: Wrath of the Lich King 3.3.5a",
+    "fr": "World of Warcraft : Wrath of the Lich King 3.3.5a"
+  },
+  "game": "wow",
+  "version": "3.3.5a",
+  "build": 12340,
+  "detection": {
+    "executable": "Wow.exe",
+    "build": 12340
+  },
+  "locales": ["enUS", "enGB", "frFR", "deDE", "esES", "esMX", "ruRU", "koKR", "zhCN", "zhTW"],
+  "realmlist": {
+    "file": "Data/{locale}/realmlist.wtf",
+    "line": "set realmlist {address}"
+  },
+  "patches": {
+    "directory": "Data"
+  },
+  "cache": {
+    "directory": "Cache"
+  },
+  "serverData": {
+    "artifact": "wow-3-3-5a/server-data",
+    "contents": ["Cameras", "dbc", "maps", "mmaps", "vmaps"]
+  }
+}

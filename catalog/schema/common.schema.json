@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/common.schema.json",
+  "title": "Echoes of Azeroth shared definitions",
+  "$defs": {
+    "id": {
+      "description": "Lowercase kebab-case identifier. Must match the manifest file name (without .json).",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "schemaVersion": {
+      "description": "Manifest format version understood by the launcher.",
+      "const": 1
+    },
+    "localizedText": {
+      "description": "User-facing text. English is mandatory and is the fallback for every other locale.",
+      "type": "object",
+      "required": [
+        "en"
+      ],
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fr": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "gitSource": {
+      "description": "Pinned upstream source. 'commit' is the only value used for builds; 'ref' documents where the pin comes from.",
+      "type": "object",
+      "required": [
+        "repo",
+        "ref",
+        "commit"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configValue": {
+      "description": "A value written to an emulator .conf file. Booleans are expressed as 0/1 like the upstream files.",
+      "type": [
+        "string",
+        "integer",
+        "number"
+      ]
+    },
+    "configMap": {
+      "description": "Config key -> value.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/configValue"
+      }
+    },
+    "configFilePath": {
+      "description": "Path of a config file relative to the instance 'conf' directory, e.g. 'worldserver.conf' or 'modules/mod_ahbot.conf'.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_./-]+\\.conf$"
+    },
+    "spdxLicense": {
+      "description": "SPDX identifier of the upstream license, or NOASSERTION when upstream declares none.",
+      "type": "string",
+      "minLength": 1
+    },
+    "dbConnections": {
+      "description": "Every config entry holding this database's 'host;port;user;password;schema' connection string. The launcher rewrites all of them.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "key"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/$defs/configFilePath"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

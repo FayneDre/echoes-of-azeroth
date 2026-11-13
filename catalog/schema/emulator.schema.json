@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoes-of-azeroth.github.io/schema/v1/emulator.schema.json",
+  "title": "Emulator manifest",
+  "description": "Describes an emulator family (e.g. AzerothCore): its driver, client, shared components, databases, processes and ports. Lives at catalog/emulators/<id>/emulator.json.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "description",
+    "homepage",
+    "license",
+    "driver",
+    "client",
+    "components",
+    "defaultFlavor",
+    "databases",
+    "ports",
+    "processes"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "$ref": "common.schema.json#/$defs/localizedText"
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "license": {
+      "$ref": "common.schema.json#/$defs/spdxLicense"
+    },
+    "driver": {
+      "description": "Name of the Rust driver implementing emulator-specific behaviour (accounts, config format, console).",
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "client": {
+      "description": "Id of the client manifest (catalog/clients/<id>.json) this emulator serves.",
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "components": {
+      "description": "Shared components required by every instance (e.g. MySQL).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "defaultFlavor": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "databases": {
+      "description": "Core databases. Modules may add extra ones.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/database"
+      }
+    },
+    "ports": {
+      "description": "Named default ports. The launcher picks free ports at install time and remembers them per instance.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      }
+    },
+    "processes": {
+      "description": "Server processes, started in array order and stopped in reverse order.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/process"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "database": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "playerData",
+        "connections"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "name": {
+          "description": "Default schema name in MySQL.",
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "playerData": {
+          "description": "true when the database holds player data (accounts, characters). Such databases are never regenerated, only migrated and backed up.",
+          "type": "boolean"
+        },
+        "connections": {
+          "$ref": "common.schema.json#/$defs/dbConnections"
+        }
+      },
+      "additionalProperties": false
+    },
+    "process": {
+      "type": "object",
+      "required": [
+        "id",
+        "executable",
+        "configFile",
+        "readiness"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "executable": {
+          "description": "Path relative to the instance root.",
+          "type": "string"
+        },
+        "configFile": {
+          "$ref": "common.schema.json#/$defs/configFilePath"
+        },
+        "readiness": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "port"
+              ],
+              "properties": {
+                "type": {
+                  "const": "tcp"
+                },
+                "port": {
+                  "description": "Name of a port declared in 'ports'.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "pattern"
+              ],
+              "properties": {
+                "type": {
+                  "const": "log-line"
+                },
+                "pattern": {
+                  "description": "Regular expression matched against stdout.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
