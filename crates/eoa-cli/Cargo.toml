@@ -18,3 +18,5 @@ anyhow.workspace = true
 clap.workspace = true
 eoa-catalog.workspace = true
 eoa-core.workspace = true
+eoa-store.workspace = true
+tokio.workspace = true

@@ -26,6 +26,57 @@ enum Command {
         #[command(subcommand)]
         command: CatalogCommand,
     },
+    /// Content-addressed store operations.
+    Store {
+        #[command(subcommand)]
+        command: StoreCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum StoreCommand {
+    /// Download a file into the store (parallel, resumable, sha256-verified).
+    Fetch {
+        /// Store directory.
+        #[arg(long, default_value = ".local/store")]
+        store: PathBuf,
+        /// Source URL (repeat for mirrors, tried in order).
+        #[arg(long = "url", required = true)]
+        urls: Vec<String>,
+        /// Exact size in bytes.
+        #[arg(long)]
+        size: u64,
+        /// Expected sha256 (hex).
+        #[arg(long)]
+        sha256: String,
+    },
+}
+
+/// Prints a progress line at most every 5 %.
+struct ConsoleProgress {
+    total: u64,
+    received: std::sync::atomic::AtomicU64,
+    last_step: std::sync::atomic::AtomicU64,
+}
+
+impl eoa_store::Progress for ConsoleProgress {
+    fn advance(&self, bytes: u64) {
+        use std::sync::atomic::Ordering::SeqCst;
+        let received = self.received.fetch_add(bytes, SeqCst) + bytes;
+        let step = received * 20 / self.total.max(1);
+        if self.last_step.fetch_max(step, SeqCst) < step {
+            eprintln!(
+                "  {:>3} %  {:.1} / {:.1} MB",
+                step * 5,
+                received as f64 / 1e6,
+                self.total as f64 / 1e6
+            );
+        }
+    }
+    fn retract(&self, bytes: u64) {
+        self.received
+            .fetch_sub(bytes, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[derive(Subcommand)]
@@ -52,6 +103,33 @@ enum CatalogCommand {
 
 fn main() -> Result<ExitCode> {
     match Cli::parse().command {
+        Command::Store { command } => match command {
+            StoreCommand::Fetch {
+                store,
+                urls,
+                size,
+                sha256,
+            } => {
+                let runtime = tokio::runtime::Runtime::new()?;
+                let store = eoa_store::Store::open(store)?;
+                let progress = ConsoleProgress {
+                    total: size,
+                    received: 0.into(),
+                    last_step: 0.into(),
+                };
+                let started = std::time::Instant::now();
+                let request = eoa_store::FetchRequest { urls, size, sha256 };
+                let path = runtime.block_on(store.fetch(&request, &progress))?;
+                let seconds = started.elapsed().as_secs_f64();
+                println!(
+                    "{} ({:.1} s, {:.1} MB/s)",
+                    path.display(),
+                    seconds,
+                    size as f64 / 1e6 / seconds.max(0.001)
+                );
+                Ok(ExitCode::SUCCESS)
+            }
+        },
         Command::Catalog { command } => match command {
             CatalogCommand::Validate { path } => {
                 let catalog = eoa_catalog::load_dir(&path)?;
