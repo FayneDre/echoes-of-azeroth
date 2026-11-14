@@ -48,18 +48,28 @@ enum Command {
         /// Listen on the local network instead of this computer only.
         #[arg(long)]
         lan: bool,
-        /// Server build ZIP (CI artifact with `dist/` and `sql/`).
-        #[arg(long)]
-        server: PathBuf,
+        /// Server build ZIP (CI artifact with `dist/` and `sql/`). Without it,
+        /// the build is found in the signed index (`--index`).
+        #[arg(long, conflicts_with = "index")]
+        server: Option<PathBuf>,
         /// Database snapshot ZIP made by CI for this server build (ADR 0009):
         /// restores the databases instead of importing them from empty.
-        #[arg(long)]
+        #[arg(long, requires = "server")]
         db_snapshot: Option<PathBuf>,
+        /// Signed index (file or URL, ADR 0010) to find the build in.
+        /// Defaults to the project's published index.
+        #[arg(long)]
+        index: Option<String>,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         /// Data root (`%LOCALAPPDATA%EchoesOfAzeroth` for the launcher).
         #[arg(long, default_value = ".local/eoa")]
         root: PathBuf,
+    },
+    /// Signed artifact index (ADR 0010).
+    Index {
+        #[command(subcommand)]
+        command: IndexCommand,
     },
     /// Shared third-party runtimes (MySQL...).
     Component {
@@ -199,6 +209,32 @@ impl eoa_store::Progress for ConsoleProgress {
 }
 
 #[derive(Subcommand)]
+enum IndexCommand {
+    /// Verify an index (file or URL) with the trusted keys and print it.
+    Show {
+        /// Defaults to the project's published index.
+        source: Option<String>,
+    },
+}
+
+/// Reads a small document from a file or an `http(s)://` URL.
+fn read_document(
+    runtime: &tokio::runtime::Runtime,
+    store: &eoa_store::Store,
+    source: &str,
+) -> Result<Vec<u8>> {
+    use anyhow::Context;
+    let limit = install::index::INDEX_SIZE_LIMIT;
+    if source.starts_with("https://") || source.starts_with("http://") {
+        Ok(runtime
+            .block_on(store.get_document(source, limit))
+            .with_context(|| format!("downloading {source}"))?)
+    } else {
+        Ok(std::fs::read(source).with_context(|| format!("reading {source}"))?)
+    }
+}
+
+#[derive(Subcommand)]
 enum CatalogCommand {
     /// Load the catalog and check references between manifests.
     Validate {
@@ -268,6 +304,7 @@ fn main() -> Result<ExitCode> {
             lan,
             server,
             db_snapshot,
+            index,
             catalog,
             root,
         } => {
@@ -284,7 +321,8 @@ fn main() -> Result<ExitCode> {
                     install::component_operation(&catalog, &layout, store.clone(), &component.id)?;
                 run_operation(&layout, &op)?;
             }
-            let (op, _) = install::server_data_operation(&catalog, &layout, store, &emulator)?;
+            let (op, _) =
+                install::server_data_operation(&catalog, &layout, store.clone(), &emulator)?;
             run_operation(&layout, &op)?;
 
             let request = install::NewInstance {
@@ -299,6 +337,43 @@ fn main() -> Result<ExitCode> {
                 },
             };
             let (record, secrets) = install::open_or_create(&catalog, &layout, &request)?;
+            let (server, db_snapshot) = match server {
+                Some(server) => (server, db_snapshot),
+                None => {
+                    let runtime = tokio::runtime::Runtime::new()?;
+                    let source = index.as_deref().unwrap_or(eoa_catalog::index::DEFAULT_URL);
+                    let envelope = read_document(&runtime, &store, source)?;
+                    let keys = eoa_catalog::index::trusted_keys();
+                    let accepted = install::index::accept_index(&layout, &envelope, &keys)?;
+                    let build = eoa_catalog::index::select(
+                        &accepted,
+                        &catalog,
+                        &record.emulator,
+                        &record.flavor,
+                        &install::platform(),
+                    )?;
+                    let with_snapshot = match &build.db_snapshot {
+                        Some(snapshot) => {
+                            install::index::snapshot_usable(&catalog, &record, snapshot)?
+                        }
+                        None => false,
+                    };
+                    println!(
+                        "index serial {}: build {}{}",
+                        accepted.serial,
+                        build.build_key,
+                        if with_snapshot {
+                            " with its database snapshot"
+                        } else {
+                            ", no usable database snapshot (full import)"
+                        }
+                    );
+                    let (op, files) =
+                        install::index::build_operation(store.clone(), build, with_snapshot);
+                    run_operation(&layout, &op)?;
+                    (files.server, files.db_snapshot)
+                }
+            };
             let op = install::instance_operation(
                 &catalog,
                 &layout,
@@ -314,6 +389,17 @@ fn main() -> Result<ExitCode> {
                 layout.instance(&record.id).root.display(),
                 record.db_port
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Index {
+            command: IndexCommand::Show { source },
+        } => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            let store = eoa_store::Store::open(std::env::temp_dir().join("eoa-index-store"))?;
+            let source = source.as_deref().unwrap_or(eoa_catalog::index::DEFAULT_URL);
+            let envelope = read_document(&runtime, &store, source)?;
+            let index = eoa_catalog::index::open(&envelope, &eoa_catalog::index::trusted_keys())?;
+            println!("{}", serde_json::to_string_pretty(&index)?);
             Ok(ExitCode::SUCCESS)
         }
         Command::Catalog { command } => match command {

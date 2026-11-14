@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+eoa-catalog.workspace = true
 eoa-conf.workspace = true
 eoa-core.workspace = true
 eoa-db.workspace = true

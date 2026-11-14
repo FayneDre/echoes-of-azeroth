@@ -1,0 +1,10 @@
+{
+  "note": "Ed25519 public keys trusted to sign the artifact index (ADR 0010). Raw 32 bytes, hex. Removing a key revokes it in the next launcher release.",
+  "keys": [
+    {
+      "id": "12a947a8985eb937",
+      "publicKey": "9e250ac992c7aa7e528bde86133237898c2ac76a87fd50ff0e60f3a8d3d85975",
+      "added": "2026-11-14"
+    }
+  ]
+}

@@ -12,10 +12,11 @@
 //! JSON Schema validation is done by `tools/validate-catalog.mjs`; this crate
 //! checks what a schema cannot: references between manifests.
 //!
-//! Signed remote index loading will live here too (phase 2).
+//! [`index`]: the signed artifact index (ADR 0010).
 
 #![forbid(unsafe_code)]
 
+pub mod index;
 mod load;
 mod validate;
 

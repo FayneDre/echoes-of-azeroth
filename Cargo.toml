@@ -23,6 +23,8 @@ eoa-db = { path = "crates/eoa-db" }
 # External crates
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+# Index signatures (ADR 0010): pure Rust, strict RFC 8032 verification.
+ed25519-dalek = "3"
 getrandom = "0.3"
 futures-util = "0.3"
 hex = "0.4"

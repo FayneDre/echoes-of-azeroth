@@ -7,6 +7,7 @@
 //! rendered configs, dbimport.
 
 pub mod config;
+pub mod index;
 mod steps;
 
 use std::collections::BTreeMap;
@@ -46,6 +47,8 @@ pub enum PlanError {
     Engine(#[from] crate::EngineError),
     #[error(transparent)]
     Archive(#[from] crate::steps::ExtractError),
+    #[error(transparent)]
+    Index(#[from] eoa_catalog::index::IndexError),
     #[error("database snapshot {path} does not fit this instance: {reason}")]
     SnapshotMismatch { path: PathBuf, reason: String },
 }

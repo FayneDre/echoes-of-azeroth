@@ -138,6 +138,31 @@ impl Store {
         self.blob_path(sha256).is_file()
     }
 
+    /// Downloads a small document whose integrity is checked by other means
+    /// (the signed index, ADR 0010), with redirects and the store's timeouts.
+    /// Refuses more than `limit` bytes. Never use it for files to execute.
+    pub async fn get_document(&self, url: &str, limit: u64) -> Result<Vec<u8>, StoreError> {
+        use futures_util::StreamExt;
+
+        let response = self.client.get(url).send().await?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            return Err(StoreError::Status { status });
+        }
+        if response.content_length().is_some_and(|n| n > limit) {
+            return Err(StoreError::TooLarge { limit });
+        }
+        let mut body = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            body.extend_from_slice(&chunk?);
+            if body.len() as u64 > limit {
+                return Err(StoreError::TooLarge { limit });
+            }
+        }
+        Ok(body)
+    }
+
     /// Returns the path of the verified blob, downloading it first if needed.
     pub async fn fetch(
         &self,

@@ -21,6 +21,8 @@ pub enum StoreError {
     Incomplete { expected: u64, got: u64 },
     #[error("downloaded data has sha256 {actual}, expected {expected}")]
     HashMismatch { expected: String, actual: String },
+    #[error("the document is larger than {limit} bytes")]
+    TooLarge { limit: u64 },
     #[error("all sources failed:\n{}", .0.join("\n"))]
     AllSourcesFailed(Vec<String>),
 }

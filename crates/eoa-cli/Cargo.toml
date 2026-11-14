@@ -20,4 +20,5 @@ eoa-catalog.workspace = true
 eoa-core.workspace = true
 eoa-engine.workspace = true
 eoa-store.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
