@@ -2,17 +2,26 @@
 // End-to-end smoke test of a server artifact, as the launcher will use it:
 // portable MySQL 8.4 + packaged binaries/SQL + upstream server data.
 //
-// Round A ("modules off"): only mandatory modules allowed in dbimport, optional
-//   modules compiled in but disabled -> servers must start; optional module SQL
-//   must NOT be applied (validates Updates.AllowedModules naming + inertness).
+// Snapshot (ADR 0009): dbimport from empty databases with the base module set
+//   (mandatory + `applyWhenDisabled`), slow clean shutdown, then a copy of the
+//   data directory without server identity, keys, temporary tablespaces or
+//   spare redo files, plus `snapshot.json`. No server has run on it.
+// The rounds then run on a *restore* of that snapshot, done as the launcher
+// does it (copy, first start with an init file that sets the root password):
+// Round A ("modules off"): base set allowed in dbimport (already up to date),
+//   optional modules compiled in but disabled -> servers must start; optional
+//   module SQL must NOT be applied (validates Updates.AllowedModules naming +
+//   inertness).
 // Round B ("modules on"): all modules allowed and enabled -> servers must start;
-//   optional module SQL must be applied.
+//   optional module SQL must be applied on top of the existing databases.
 //
 // Usage: node tools/ci/smoke-test.mjs --staging <dir> --mysql <dir> --data <dir> --work <dir>
+//        [--snapshot <dir>] [--mysql-manifest <component.json>]
 //        [--mandatory mod-a,mod-b] [--optional mod-c,mod-d] [--timeout-min 25]
 
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { appendFileSync, copyFileSync, cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +52,9 @@ const sqlAlways = optional.filter((id) => {
   return existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).database.applyWhenDisabled === true;
 });
 const timeoutMs = Number(args["timeout-min"] ?? 25) * 60_000;
+const snapshotDir = resolve(args.snapshot ?? join(work, "db-snapshot"));
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const mysqlManifest = JSON.parse(readFileSync(args["mysql-manifest"] ?? join(repoRoot, "catalog", "components", "mysql-8-4.json"), "utf8"));
 const logs = join(work, "logs");
 mkdirSync(logs, { recursive: true });
 
@@ -208,31 +220,154 @@ const toggle = (enabled) => {
 };
 
 // ------------------------------------------------------------------ mysql
-const datadir = join(work, "mysql-data");
-note("ℹ️ initialising MySQL");
-const init = runSync("mysql-init", mysqld, ["--initialize-insecure", `--basedir=${mysqlRoot}`, `--datadir=${datadir}`, "--console"], work);
-if (init.status !== 0) fail("mysqld --initialize-insecure failed (see mysql-init.log)");
-const mysql = startProcess("mysqld", mysqld, [`--basedir=${mysqlRoot}`, `--datadir=${datadir}`, "--port=3306", "--bind-address=127.0.0.1", "--console"], work);
-cleanups.push(() => {
-  if (mysql.exitCodeValue === null) spawnSync(mysqladmin, ["-uroot", "--host=127.0.0.1", "--port=3306", "shutdown"], { windowsHide: true });
-});
-await waitReady("mysqld", mysql, 3306);
+// Same server options as the launcher's my.ini (crates/eoa-db/src/settings.rs)
+// where they matter for the data directory.
+const mysqlPort = 3306;
+const databases = ["acore_auth", "acore_characters", "acore_world", "acore_playerbots"];
+const myIni = join(work, "my.ini");
+const clientCnf = join(work, "client.cnf");
+let datadir;
+let mysql;
+const slash = (p) => p.replaceAll("\\", "/");
+const writeMyIni = () =>
+  writeFileSync(
+    myIni,
+    [
+      "[mysqld]",
+      `basedir="${slash(mysqlRoot)}"`,
+      `datadir="${slash(datadir)}"`,
+      `log-error="${slash(join(logs, "mysqld.log"))}"`,
+      `port=${mysqlPort}`,
+      "bind-address=127.0.0.1",
+      "mysqlx=OFF",
+      "disable-log-bin",
+      "character-set-server=utf8mb4",
+      "collation-server=utf8mb4_unicode_ci",
+      "innodb_buffer_pool_size=1024M",
+      "innodb_redo_log_capacity=512M",
+      "",
+    ].join("\n"),
+  );
+const writeClientCnf = (password) =>
+  writeFileSync(clientCnf, `[client]\nuser=root\npassword=${password}\nhost=127.0.0.1\nport=${mysqlPort}\n`);
+// --defaults-extra-file must come first.
+const mysqlArgs = (...rest) => [`--defaults-extra-file=${clientCnf}`, ...rest];
+
 const sql = (statement, database) => {
-  const argv = ["-uroot", "--host=127.0.0.1", "--port=3306", "-N", "-B", "-e", statement];
+  const argv = mysqlArgs("-N", "-B", "-e", statement);
   if (database) argv.push(database);
   const result = spawnSync(mysqlCli, argv, { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) fail(`SQL failed: ${statement}\n${result.stderr}`);
   return result.stdout.trim();
 };
-for (const db of ["acore_auth", "acore_characters", "acore_world", "acore_playerbots"]) {
-  sql(`CREATE DATABASE IF NOT EXISTS ${db} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+
+async function startMysql(extra = []) {
+  writeMyIni();
+  mysql = startProcess("mysqld", mysqld, [`--defaults-file=${myIni}`, ...extra], work);
+  await waitReady("mysqld", mysql, mysqlPort);
 }
-for (const host of ["localhost", "127.0.0.1"]) {
-  sql(`CREATE USER IF NOT EXISTS 'acore'@'${host}' IDENTIFIED BY 'acore'`);
-  sql(`GRANT ALL PRIVILEGES ON *.* TO 'acore'@'${host}' WITH GRANT OPTION`);
+
+/** Clean shutdown; waits for the process to exit (the data directory is then consistent). */
+async function stopMysql() {
+  if (!mysql || mysql.exitCodeValue !== null) return;
+  spawnSync(mysqladmin, mysqlArgs("shutdown"), { windowsHide: true });
+  const started = Date.now();
+  while (mysql.exitCodeValue === null) {
+    if (Date.now() - started > 180_000) fail("mysqld did not stop within 180 s");
+    await sleep(500);
+  }
+}
+cleanups.push(() => {
+  if (mysql && mysql.exitCodeValue === null) spawnSync(mysqladmin, mysqlArgs("shutdown"), { windowsHide: true });
+});
+
+/** Databases + the account of dbimport and the servers (the launcher's db-provision step). */
+function provision() {
+  for (const db of databases) {
+    sql(`CREATE DATABASE IF NOT EXISTS ${db} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  }
+  for (const host of ["localhost", "127.0.0.1"]) {
+    sql(`CREATE USER IF NOT EXISTS 'acore'@'${host}' IDENTIFIED BY 'acore'`);
+    sql(`GRANT ALL PRIVILEGES ON *.* TO 'acore'@'${host}' WITH GRANT OPTION`);
+  }
 }
 
 const tableExists = (db, table) => sql(`SHOW TABLES LIKE '${table}'`, db) === table;
+
+/** Runs dbimport with `allowed` modules; checks module SQL is applied exactly for them. Returns seconds. */
+function dbimport(label, allowed) {
+  setConf(confFile("dbimport.conf"), { "Updates.AllowedModules": allowed.join(",") });
+  const started = Date.now();
+  const result = runSync(`dbimport-${label}`, exe.dbimport, ["-c", confFile("dbimport.conf")], work);
+  if (result.status !== 0) fail(`dbimport (${label}) exited with ${result.status} (see dbimport-${label}.log)`);
+  const seconds = Math.round((Date.now() - started) / 1000);
+  note(`✅ dbimport (${label}) with AllowedModules="${allowed.join(",")}" in ${seconds} s`);
+  if (optional.includes("mod-ah-bot")) {
+    const applied = tableExists("acore_world", "mod_auctionhousebot");
+    if (allowed.includes("mod-ah-bot") !== applied) fail(`mod-ah-bot SQL ${applied ? "applied" : "missing"} with AllowedModules="${allowed.join(",")}"`);
+    note(`✅ mod-ah-bot SQL ${applied ? "applied" : "not applied"} as expected`);
+  }
+  return seconds;
+}
+
+// ------------------------------------------------------------------ snapshot
+// Server identity, keys and files rebuilt at startup: never shipped (ADR 0009).
+// `*_tmp` are the spare redo files (512 MB), recreated by InnoDB.
+const excludedFromSnapshot = (name) =>
+  name === "auto.cnf" || name === "#innodb_temp" || /\.(pem|pid|err)$/i.test(name) || /_tmp$/.test(name);
+const baseModules = [...mandatory, ...sqlAlways];
+
+async function makeSnapshot() {
+  note("\n### Database snapshot");
+  datadir = join(work, "mysql-build");
+  writeMyIni();
+  const init = runSync("mysql-init", mysqld, [`--defaults-file=${myIni}`, "--initialize-insecure", "--console"], work);
+  if (init.status !== 0) fail("mysqld --initialize-insecure failed (see mysql-init.log)");
+  writeClientCnf("");
+  await startMysql();
+  provision();
+  toggle(false);
+  dbimport("snapshot", baseModules);
+  // Only MySQL's own accounts are shipped; root gets its password at restore.
+  for (const host of ["localhost", "127.0.0.1"]) sql(`DROP USER IF EXISTS 'acore'@'${host}'`);
+  // Slow shutdown: purge and change buffer merge done, nothing to recover.
+  sql("SET GLOBAL innodb_fast_shutdown = 0");
+  await stopMysql();
+
+  rmSync(snapshotDir, { recursive: true, force: true });
+  cpSync(datadir, join(snapshotDir, "data"), { recursive: true, filter: (src) => !excludedFromSnapshot(basename(src)) });
+  const buildInfo = JSON.parse(readFileSync(join(staging, "build-info.json"), "utf8"));
+  const manifest = {
+    format: 1,
+    buildKey: buildInfo.buildKey,
+    mysql: { id: mysqlManifest.id, version: mysqlManifest.version, sha256: mysqlManifest.platforms["windows-x86_64"].sha256 },
+    databases,
+    modules: baseModules,
+    createdAt: new Date().toISOString(),
+  };
+  writeFileSync(join(snapshotDir, "snapshot.json"), JSON.stringify(manifest, null, 2) + "\n");
+  const size = walk(join(snapshotDir, "data")).reduce((sum, p) => sum + statSync(p).size, 0);
+  note(`✅ snapshot with ${baseModules.join(",")}: ${(size / 1048576).toFixed(0)} MB unpacked`);
+}
+
+/** Restores the snapshot into a fresh data directory, as the launcher's db-adopt step. */
+async function restoreSnapshot() {
+  note("\n### Restore snapshot");
+  datadir = join(work, "mysql-data");
+  rmSync(datadir, { recursive: true, force: true });
+  const started = Date.now();
+  cpSync(join(snapshotDir, "data"), datadir, { recursive: true });
+  const password = randomBytes(24).toString("hex");
+  const initFile = join(work, "init.sql");
+  writeFileSync(initFile, `ALTER USER 'root'@'localhost' IDENTIFIED BY '${password}';\n`);
+  writeClientCnf(password);
+  await startMysql([`--init-file=${initFile}`]);
+  rmSync(initFile);
+  provision();
+  note(`✅ snapshot restored, MySQL ready in ${Math.round((Date.now() - started) / 1000)} s`);
+}
+
+// ------------------------------------------------------------------ rounds
 const children = [];
 cleanups.push(() => {
   for (const child of children) if (child.exitCodeValue === null) child.kill();
@@ -242,22 +377,11 @@ const stopServers = async () => {
   await sleep(3000);
 };
 
-async function round(label, allowed, enabled) {
+async function round(label, allowed, enabled, maxImportSeconds = Infinity) {
   note(`\n### Round ${label}`);
   toggle(enabled);
-  setConf(confFile("dbimport.conf"), { "Updates.AllowedModules": allowed.join(",") });
-  const started = Date.now();
-  const result = runSync(`dbimport-${label}`, exe.dbimport, ["-c", confFile("dbimport.conf")], work);
-  if (result.status !== 0) fail(`dbimport (${label}) exited with ${result.status} (see dbimport-${label}.log)`);
-  note(`✅ dbimport with AllowedModules="${allowed.join(",")}" in ${Math.round((Date.now() - started) / 1000)} s`);
-
-  // Module SQL is applied exactly for the allowed modules (dbimport directory names).
-  const ahbotTable = tableExists("acore_world", "mod_auctionhousebot");
-  if (optional.includes("mod-ah-bot")) {
-    const expected = allowed.includes("mod-ah-bot");
-    if (expected !== ahbotTable) fail(`mod-ah-bot SQL ${ahbotTable ? "applied" : "missing"} with AllowedModules="${allowed.join(",")}"`);
-    note(`✅ mod-ah-bot SQL ${ahbotTable ? "applied" : "not applied"} as expected`);
-  }
+  const seconds = dbimport(label, allowed);
+  if (seconds > maxImportSeconds) fail(`dbimport (${label}) took ${seconds} s: the restored snapshot is not up to date`);
 
   const auth = startProcess(`authserver-${label}`, exe.authserver, ["-c", confFile("authserver.conf")], work);
   children.push(auth);
@@ -272,11 +396,14 @@ async function round(label, allowed, enabled) {
 }
 
 try {
-  await round("A-modules-off", [...mandatory, ...sqlAlways], false);
+  await makeSnapshot();
+  await restoreSnapshot();
+  // On the restored snapshot, dbimport only checks: seconds, not minutes.
+  await round("A-modules-off", baseModules, false, 120);
   await round("B-modules-on", [...mandatory, ...optional], true);
   note("\n✅ Smoke test passed");
 } finally {
   await stopServers();
-  spawnSync(mysqladmin, ["-uroot", "--host=127.0.0.1", "--port=3306", "shutdown"], { windowsHide: true });
+  await stopMysql();
   flushSummary();
 }

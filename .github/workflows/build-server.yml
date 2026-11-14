@@ -354,14 +354,27 @@ jobs:
         env:
           MANDATORY: ${{ needs.plan.outputs.mandatory }}
           OPTIONAL: ${{ needs.plan.outputs.optional }}
+          DB_MANIFEST: ${{ needs.plan.outputs.database-manifest }}
         run: >
           node tools/ci/smoke-test.mjs
           --staging "$RUNNER_TEMP/server"
           --mysql "C:/tools/mysql/current"
+          --mysql-manifest "$DB_MANIFEST"
           --data "C:/serverdata"
           --work "$RUNNER_TEMP/instance"
+          --snapshot "$RUNNER_TEMP/db-snapshot"
           --mandatory "$MANDATORY"
           --optional "$OPTIONAL"
+
+      # Database snapshot (ADR 0009), made by the smoke test from this exact
+      # artifact before any server ran, and validated by both rounds.
+      - name: Upload database snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: db-snapshot-${{ needs.plan.outputs.build-key }}
+          path: ${{ runner.temp }}/db-snapshot
+          retention-days: 90
+          compression-level: 6
 
       - name: Upload smoke-test logs
         if: always()
