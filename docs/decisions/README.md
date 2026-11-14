@@ -14,6 +14,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0007](0007-instance-config-in-manifest.md) | Instance config declared in the emulator manifest; instance layout | Accepted |
 | [0008](0008-module-sql-when-disabled.md) | Module SQL applied while disabled, per manifest flag (`applyWhenDisabled`) | Accepted |
 | [0009](0009-database-snapshot.md) | Database snapshot: cold copy of the MySQL data directory after base dbimport | Accepted |
+| [0010](0010-signed-index.md) | Signed artifact index: one envelope file, ed25519, serial anti-rollback, selection by catalog pins | Accepted |
 
 Template:
 
