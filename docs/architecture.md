@@ -137,7 +137,7 @@ only when the binaries would differ:
 | Artifact | Frequency | Content |
 |---|---|---|
 | `server-<flavor>-<release>` | per catalog release | worldserver, authserver, dbimport, DLLs, `.conf.dist` |
-| `dbsnapshot-<flavor>-<release>` | per catalog release | databases pre-populated by dbimport |
+| `db-snapshot-<build key>` | per server build | MySQL data directory after dbimport with the base module set, `snapshot.json` (ADR 0009) |
 | server data | rare | **not ours**: downloaded from the pinned upstream release (`wowgaming/client-data`, ~1.1 GB, sha256-verified), ADR 0006 |
 | `mysql-8-4` | rare | MySQL portable, trimmed to server + admin tools |
 | module assets | per module release | e.g. Individual Progression MPQ patches / DBC overrides |
@@ -161,7 +161,7 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
-| `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore (§8). Later: snapshot restore, Job Object. |
+| `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore, adoption of a restored snapshot (§8). Later: Job Object. |
 | `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. Keeps worldserver's stdin open: it is the console, and EOF on it shuts the server down. |
 | `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
 | `drivers/azerothcore` | planned | AzerothCore specifics (see §6). |
@@ -207,7 +207,7 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
 
 ### 5.2 Installing an instance (ADR 0007)
 
-`eoa install <id> --server <artifact.zip> [--module ...] [--lan]`:
+`eoa install <id> --server <artifact.zip> [--db-snapshot <snapshot.zip>] [--module ...] [--lan]`:
 
 1. Shared operations, each with its own journal: `component-<id>` (MySQL)
    and `serverdata-<client>-<version>` (download + extract into
@@ -220,6 +220,10 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
    `render-config` (every file of the full build, layered, swapped in
    atomically, reference copy in `configs/.eoa-rendered/`), `db-import`
    (`run-tool`: dbimport with cwd = instance root, log in `logs/`), `db-stop`.
+   With `--db-snapshot`, `db-init` + `db-start` become `db-claim` (same
+   rule), `extract-db` (snapshot `data/` → `db/data`) and `db-adopt`. The
+   snapshot must match the artifact's build key, the MySQL version and the
+   instance's dbimport modules, or the plan fails before any step (ADR 0009).
 
 The config layers are a pure function of the catalog, the resolution and the
 instance values (`eoa_engine::install::plan_configs`), tested against the real
@@ -229,7 +233,7 @@ catalog in `crates/eoa-catalog/tests/install.rs`.
 
 `download` · `verify` · `extract` · `render-config` · `merge-config` ·
 `db-init` · `db-start` · `db-provision` · `db-stop` ·
-`db-restore-snapshot` · `db-import` · `run-tool` · `create-account` ·
+`db-claim` · `db-adopt` · `db-import` · `run-tool` · `create-account` ·
 `create-character` · `set-config` · `copy-client-file` · `overlay-server-file` ·
 `register-firewall`. The vocabulary is closed and tested; emulator-specific
 steps are delegated to the driver.
@@ -277,7 +281,10 @@ through an absolute `DataDir` (ADR 0007); files overridden by module assets
 ## 8. Database (MySQL 8.4 LTS, portable)
 
 - One MySQL instance per realm, dedicated auto-picked port, bound to `127.0.0.1`.
-- Initialised by restoring the CI snapshot (seconds instead of minutes of dbimport).
+- Initialised by restoring the CI snapshot when one matches the server build
+  (ADR 0009): `db-claim` (never over an existing database), `extract-db`,
+  `db-adopt` (new root password through `--init-file`), then dbimport only
+  checks and applies the chosen modules' SQL (~10 s instead of 6-14 min).
 - **Credentials:** root gets a random 32-character password during bootstrap
   (`--initialize-insecure` + `--init-file`, so the server never listens without
   one); service accounts (`acore`) get their own random passwords. They live in

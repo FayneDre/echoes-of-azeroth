@@ -65,6 +65,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | AHBot reads `acore_world.mod_auctionhousebot` at startup **even when disabled**: worldserver aborts without its SQL. Its SQL only touches its own tables → `applyWhenDisabled` (ADR 0008). | local E2E install, mod-ah-bot `c11d831` (2026-11-14) |
 | `authserver.conf.dist` defaults to `Updates.EnableDatabases = 1` (migrates auth itself, SQL from the build tree `C:/ac`): set to 0, dbimport migrates. Windows servers assert `legacy.dll` (OpenSSL 3 legacy provider) next to the executables. | fork conf.dist, `OpenSSLCrypto.cpp`, CI smoke test (2026-11-14) |
 | With `Console.Enable = 1`, worldserver **shuts down cleanly when its stdin reaches EOF**: the supervisor must keep stdin open (it is also the GM console). First local start: auth 2 s, world ~1-4 min with 500 bots. | local E2E start (2026-11-14) |
+| A cleanly stopped MySQL 8.4 data directory copied without `auto.cnf`, `*.pem`, `#innodb_temp/` and spare redo files (`#innodb_redo/*_tmp`) starts in ~2 s (new UUID, keys, spares); `--init-file` sets root before listening. dbimport on up-to-date databases: ~9 s (vs 6-14 min from empty). `updates_include` paths are `$/`-relative (portable). | local test (2026-11-14), ADR 0009 |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
@@ -85,6 +86,10 @@ Update this table when a fact is (re)verified; date it.
   instance layout `instances/<id>/{bin,sql,configs,logs,db}`.
 - **0008** `database.applyWhenDisabled`: SQL of modules that read their own
   tables while disabled (AHBot) is applied even when not chosen.
+- **0009** Database snapshot = cold copy of the MySQL data directory after
+  dbimport with the base module set (mandatory + `applyWhenDisabled`), made by
+  the CI smoke test; restored by extraction + `--init-file` root password, then
+  an incremental dbimport. Only for new databases; must match build key and MySQL version.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -169,7 +174,7 @@ cargo run -p eoa-cli -- catalog validate
 cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
 cargo run -p eoa-cli -- component install mysql-8-4   # engine: download + atomic extract into .local/eoa
-cargo run -p eoa-cli -- install solo --server <artifact.zip>   # full instance into .local/eoa/instances/solo
+cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # into .local/eoa/instances/solo
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
@@ -232,12 +237,12 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 
 See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 exit reached: the
 server build workflow compiles the Playerbot fork with every catalog module,
-reuses artifacts by build key, and the smoke test is green (modules off/on);
-remaining: DB snapshot, zstd, signing, index.
+reuses artifacts by build key, and the smoke test makes a database snapshot
+(ADR 0009) and is green on its restore (modules off/on); remaining: zstd, signing, index.
 Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
 executor are done, with the install steps and `eoa install` (ADR 0007/0008),
-verified end to end locally (servers start). Next: CI database snapshot
-(install in seconds instead of dbimport), signed remote index, then phase 3
+verified end to end locally (servers start), and `--db-snapshot` restore
+(ADR 0009). Next: signed remote index, then phase 3
 (runtime supervisor, driver). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

@@ -18,7 +18,8 @@ Durations assume one full-time developer and are rough.
 - [x] Windows build of the Playerbot fork with all catalog modules (`build-server.yml`)
 - [x] Verify `Updates.AllowedModules` naming (module directory name)
 - [x] Prove disabled modules are inert (smoke test round A; AHBot needs its tables, ADR 0008)
-- [ ] MySQL 8.4 database snapshot, zstd packaging, signing, index
+- [x] MySQL 8.4 database snapshot made and validated by the smoke test (ADR 0009)
+- [ ] zstd packaging, signing, index
 - [x] Server data: pinned upstream release (ADR 0006)
 - [x] Smoke tests: start with modules off/on (`tools/ci/smoke-test.mjs`, green 2026-11-14)
 - [ ] Smoke tests later: login, bots, AH posts
@@ -32,7 +33,9 @@ Durations assume one full-time developer and are rough.
 - [x] `eoa-conf`: lossless `.conf` parser, layered rendering with provenance,
       hand-edit import
 - [x] `eoa-db` (MySQL portable: secure init, clean start/stop, users, backup/restore)
-- [ ] `eoa-db`: CI database snapshot restore, Job Object, cloud-folder check
+- [x] `eoa-db` + engine: CI database snapshot restore (`db-claim`, `extract-db`, `db-adopt`,
+      `eoa install --db-snapshot`)
+- [ ] `eoa-db`: Job Object, cloud-folder check
 - [x] `eoa-engine` executor: journal, resume, rollback, finalize, atomic directory swap
 - [x] Built-in steps `download` + `extract`; `eoa component install` (MySQL)
 - [x] Steps `db-init/start/provision/stop`, `render-config`, `run-tool`; instance
