@@ -90,6 +90,10 @@ Update this table when a fact is (re)verified; date it.
   dbimport with the base module set (mandatory + `applyWhenDisabled`), made by
   the CI smoke test; restored by extraction + `--init-file` root password, then
   an incremental dbimport. Only for new databases; must match build key and MySQL version.
+- **0010** Signed index: one envelope file (`payload` text + ed25519 signature
+  over a domain prefix + payload), trusted keys compiled in, `serial`
+  anti-rollback, builds selected by catalog pins; published as a GitHub
+  release asset by CI from `main` (`EOA_INDEX_SIGNING_KEY` secret).
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -123,7 +127,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ ci.yml                 Windows full checks + Linux portable crates
 │  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
 │                            changes; reuses the artifact when the build key is unchanged)
-├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs
+├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs, index.mjs
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
 ├─ .claude/
 │  ├─ settings.json          shared permissions + hooks, co-author attribution off
@@ -174,7 +178,10 @@ cargo run -p eoa-cli -- catalog validate
 cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
 cargo run -p eoa-cli -- component install mysql-8-4   # engine: download + atomic extract into .local/eoa
-cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # into .local/eoa/instances/solo
+cargo run -p eoa-cli -- install solo [--index <file|url>]   # from the signed index (default: published one)
+cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # local files
+cargo run -p eoa-cli -- index show [<file|url>]   # verify and print the index
+node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
@@ -238,11 +245,13 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 exit reached: the
 server build workflow compiles the Playerbot fork with every catalog module,
 reuses artifacts by build key, and the smoke test makes a database snapshot
-(ADR 0009) and is green on its restore (modules off/on); remaining: zstd, signing, index.
+(ADR 0009) and is green on its restore (modules off/on); a publish job releases
+the build and signs the index (ADR 0010) once `EOA_INDEX_SIGNING_KEY` is set;
+remaining: zstd.
 Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
 executor are done, with the install steps and `eoa install` (ADR 0007/0008),
 verified end to end locally (servers start), and `--db-snapshot` restore
-(ADR 0009). Next: signed remote index, then phase 3
+(ADR 0009) and `--index` (signed index, ADR 0010). Next: phase 3
 (runtime supervisor, driver). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

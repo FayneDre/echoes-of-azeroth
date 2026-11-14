@@ -156,7 +156,7 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | Crate | Status | Responsibility |
 |---|---|---|
 | `eoa-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
-| `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation. Later: signed remote index. |
+| `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation, signed artifact index (`index`: Ed25519 envelope, trusted keys, anti-rollback, selection by catalog pins, ADR 0010). |
 | `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`, `eoa store fetch`. |
 | `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
@@ -207,7 +207,11 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
 
 ### 5.2 Installing an instance (ADR 0007)
 
-`eoa install <id> --server <artifact.zip> [--db-snapshot <snapshot.zip>] [--module ...] [--lan]`:
+`eoa install <id> [--index <file|url> | --server <artifact.zip> [--db-snapshot <snapshot.zip>]] [--module ...] [--lan]`.
+Without `--server`, the signed index (default: the published one) is
+accepted (`state/index.json` keeps the last one, anti-rollback), the build
+matching the catalog pins is selected and `build-<key>` downloads its server
+and, when usable, its snapshot into the store (ADR 0010). Then:
 
 1. Shared operations, each with its own journal: `component-<id>` (MySQL)
    and `serverdata-<client>-<version>` (download + extract into
