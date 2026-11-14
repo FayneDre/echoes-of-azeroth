@@ -10,7 +10,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-pub use extract::{Extract, ExtractError, Strip};
+pub use extract::{read_entry, Extract, ExtractError, Strip};
 pub use fetch::Fetch;
 
 use crate::StepContext;

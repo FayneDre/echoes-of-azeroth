@@ -37,35 +37,104 @@ impl<C: Sync> Step<C> for DbInit {
     }
     fn run<'a>(&'a self, cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
         Box::pin(async move {
-            let marker = self.db.root().join(CREATED_BY);
-            let ours = std::fs::read_to_string(&marker).is_ok_and(|r| r == cx.run_id());
+            claim(&self.db, cx.run_id())?;
             if self.db.is_initialized() {
-                return if ours {
-                    Ok(())
-                } else {
-                    Err(Box::new(EngineError::InvalidOperation(format!(
-                        "a database already exists in {}; it is never overwritten",
-                        self.db.root().display()
-                    ))) as StepError)
-                };
-            }
-            if !ours {
-                let root = self.db.root();
-                std::fs::create_dir_all(root).map_err(EngineError::io(root))?;
-                fsutil::write_atomic(&marker, cx.run_id().as_bytes())?;
+                return Ok(()); // ours, finished before an interruption
             }
             Ok(self.db.initialize().await?)
         })
     }
     fn undo<'a>(&'a self, cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move { release(&self.db, cx.run_id()).await })
+    }
+}
+
+/// Marks the database root as created by `run_id`. Refuses a database (or a
+/// root) that another execution created: an existing instance's database,
+/// which may hold player data, is never overwritten.
+fn claim(db: &eoa_db::Instance, run_id: &str) -> Result<(), StepError> {
+    let root = db.root();
+    let marker = root.join(CREATED_BY);
+    if std::fs::read_to_string(&marker).is_ok_and(|r| r == run_id) {
+        return Ok(());
+    }
+    let occupied = db.datadir().exists() || db.is_initialized();
+    if occupied {
+        return Err(Box::new(EngineError::InvalidOperation(format!(
+            "a database already exists in {}; it is never overwritten",
+            root.display()
+        ))));
+    }
+    std::fs::create_dir_all(root).map_err(EngineError::io(root))?;
+    Ok(fsutil::write_atomic(&marker, run_id.as_bytes())?)
+}
+
+/// Undo of [`claim`]: stops and deletes the database only if `run_id`
+/// created it (a new instance holds no player data yet).
+async fn release(db: &eoa_db::Instance, run_id: &str) -> Result<(), StepError> {
+    let marker = db.root().join(CREATED_BY);
+    if std::fs::read_to_string(&marker).is_ok_and(|r| r == run_id) {
+        db.stop().await?;
+        fsutil::remove_dir_all(db.root())?;
+    }
+    Ok(())
+}
+
+/// `db-claim`: reserves the database root for a restore from a snapshot
+/// (ADR 0009), with the same rule as [`DbInit`]. Comes before the
+/// extraction, so a snapshot never replaces an existing database.
+pub struct DbClaim {
+    pub db: Arc<eoa_db::Instance>,
+}
+
+impl<C: Sync> Step<C> for DbClaim {
+    fn id(&self) -> &str {
+        "db-claim"
+    }
+    fn kind(&self) -> &str {
+        "db-claim"
+    }
+    fn fingerprint(&self) -> String {
+        self.db.root().display().to_string()
+    }
+    fn run<'a>(&'a self, cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move { claim(&self.db, cx.run_id()) })
+    }
+    fn undo<'a>(&'a self, cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move { release(&self.db, cx.run_id()).await })
+    }
+}
+
+/// `db-adopt`: takes over the extracted snapshot (new root password, first
+/// start with an init file). Leaves MySQL running, like `db-start`.
+pub struct DbAdopt {
+    pub db: Arc<eoa_db::Instance>,
+}
+
+impl<C: Sync> Step<C> for DbAdopt {
+    fn id(&self) -> &str {
+        "db-adopt"
+    }
+    fn kind(&self) -> &str {
+        "db-adopt"
+    }
+    fn fingerprint(&self) -> String {
+        format!(
+            "{} port {}",
+            self.db.root().display(),
+            self.db.settings().port
+        )
+    }
+    fn run<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
         Box::pin(async move {
-            let marker = self.db.root().join(CREATED_BY);
-            if std::fs::read_to_string(&marker).is_ok_and(|r| r == cx.run_id()) {
-                self.db.stop().await?;
-                fsutil::remove_dir_all(self.db.root())?;
+            if self.db.is_initialized() {
+                return Ok(self.db.start().await?); // adopted before an interruption
             }
-            Ok(())
+            Ok(self.db.adopt().await?)
         })
+    }
+    fn undo<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move { Ok(self.db.stop().await?) })
     }
 }
 

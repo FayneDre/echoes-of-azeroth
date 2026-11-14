@@ -146,3 +146,135 @@ async fn interrupted_initialisation_is_redone() {
     assert!(instance.ping().await, "new credentials work");
     instance.stop().await.unwrap();
 }
+
+/// Copies a stopped data directory the way the CI snapshot does (ADR 0009):
+/// no server identity, keys, temporary tablespaces or spare redo files.
+fn copy_snapshot(from: &std::path::Path, to: &std::path::Path) {
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let excluded = name == "auto.cnf"
+            || name == "#innodb_temp"
+            || name.ends_with(".pem")
+            || name.ends_with("_tmp");
+        if excluded {
+            continue;
+        }
+        let target = to.join(&name);
+        if entry.file_type().unwrap().is_dir() {
+            std::fs::create_dir_all(&target).unwrap();
+            copy_snapshot(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn snapshot_is_adopted_with_new_credentials() {
+    let Some(basedir) = std::env::var_os("EOA_MYSQL_BASEDIR") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let settings = |port| ServerSettings {
+        port,
+        buffer_pool_mib: 128,
+        ..Default::default()
+    };
+    let source = Instance::new(
+        dir.path().join("source"),
+        Binaries::from_basedir(&basedir),
+        settings(free_port()),
+    );
+    source.initialize().await.unwrap();
+    source.start().await.unwrap();
+    source
+        .execute(
+            "CREATE DATABASE acore_world;\n\
+             CREATE TABLE acore_world.updates (name VARCHAR(200) PRIMARY KEY) ENGINE=InnoDB;\n\
+             INSERT INTO acore_world.updates VALUES ('2026_01_01_00.sql');\n\
+             SET GLOBAL innodb_fast_shutdown = 0;",
+        )
+        .await
+        .unwrap();
+    let source_uuid = source.execute("SELECT @@server_uuid;").await.unwrap();
+    source.stop().await.unwrap();
+
+    let restored = Instance::new(
+        dir.path().join("restored"),
+        Binaries::from_basedir(&basedir),
+        settings(free_port()),
+    );
+    std::fs::create_dir_all(restored.datadir()).unwrap();
+    copy_snapshot(&source.datadir(), &restored.datadir());
+    assert!(!restored.is_initialized());
+    assert!(
+        restored.start().await.is_err(),
+        "not startable before adoption"
+    );
+
+    restored.adopt().await.unwrap();
+    assert!(restored.is_initialized());
+    assert!(restored.ping().await);
+    assert!(!dir.path().join("restored").join("init.sql").exists());
+    assert!(restored.adopt().await.is_err(), "adopted only once");
+    let names = restored
+        .execute("SELECT name FROM acore_world.updates;")
+        .await
+        .unwrap();
+    assert_eq!(names.trim(), "2026_01_01_00.sql");
+    let uuid = restored.execute("SELECT @@server_uuid;").await.unwrap();
+    assert_ne!(uuid, source_uuid, "new server identity");
+    let credentials =
+        |name: &str| std::fs::read_to_string(dir.path().join(name).join("client.cnf")).unwrap();
+    assert_ne!(credentials("source"), credentials("restored"));
+
+    restored.stop().await.unwrap();
+    restored.start().await.unwrap(); // a normal instance from now on
+    restored.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn interrupted_adoption_is_resumed() {
+    let Some(basedir) = std::env::var_os("EOA_MYSQL_BASEDIR") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let source = Instance::new(
+        dir.path().join("source"),
+        Binaries::from_basedir(&basedir),
+        ServerSettings {
+            port: free_port(),
+            buffer_pool_mib: 128,
+            ..Default::default()
+        },
+    );
+    source.initialize().await.unwrap();
+    let restored_root = dir.path().join("restored");
+    std::fs::create_dir_all(restored_root.join("data")).unwrap();
+    copy_snapshot(&source.datadir(), &restored_root.join("data"));
+    // A crash after the credentials were saved, before the server started.
+    std::fs::write(restored_root.join("init.pending"), b"").unwrap();
+    std::fs::write(
+        restored_root.join("client.cnf"),
+        b"[client]\nuser=root\npassword=SavedPassword123\nhost=127.0.0.1\n",
+    )
+    .unwrap();
+    let restored = Instance::new(
+        &restored_root,
+        Binaries::from_basedir(&basedir),
+        ServerSettings {
+            port: free_port(),
+            buffer_pool_mib: 128,
+            ..Default::default()
+        },
+    );
+    restored.adopt().await.unwrap();
+    assert!(restored.ping().await);
+    let cnf = std::fs::read_to_string(restored_root.join("client.cnf")).unwrap();
+    assert!(
+        cnf.contains("password=SavedPassword123"),
+        "saved password reused"
+    );
+    restored.stop().await.unwrap();
+}

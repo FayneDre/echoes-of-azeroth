@@ -18,6 +18,8 @@ pub enum DbError {
     AlreadyInitialized(PathBuf),
     #[error("the data directory {0} has not been initialised")]
     NotInitialized(PathBuf),
+    #[error("{0} does not hold a restored MySQL data directory")]
+    NotASnapshot(PathBuf),
     #[error("MySQL initialisation failed:\n{log}")]
     InitFailed { log: String },
     #[error("MySQL stopped during startup (exit code {code:?}):\n{log}")]

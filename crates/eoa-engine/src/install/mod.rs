@@ -20,10 +20,12 @@ use eoa_store::{FetchRequest, Store};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use config::{databases, plan_configs, ConfigFilePlan, InstanceValues};
-pub use steps::{DbInit, DbProvision, DbStart, DbStop, RenderConfigs, RunTool, ToolFailed};
+pub use config::{databases, dbimport_modules, plan_configs, ConfigFilePlan, InstanceValues};
+pub use steps::{
+    DbAdopt, DbClaim, DbInit, DbProvision, DbStart, DbStop, RenderConfigs, RunTool, ToolFailed,
+};
 
-use crate::steps::{Extract, Fetch, Strip};
+use crate::steps::{read_entry, Extract, Fetch, Strip};
 use crate::{fsutil, Operation};
 
 #[derive(Debug, Error)]
@@ -42,6 +44,10 @@ pub enum PlanError {
     Record { path: PathBuf, message: String },
     #[error(transparent)]
     Engine(#[from] crate::EngineError),
+    #[error(transparent)]
+    Archive(#[from] crate::steps::ExtractError),
+    #[error("database snapshot {path} does not fit this instance: {reason}")]
+    SnapshotMismatch { path: PathBuf, reason: String },
 }
 
 /// Where everything lives under the data root (`%LOCALAPPDATA%\EchoesOfAzeroth`).
@@ -332,14 +338,91 @@ pub fn server_data_operation(
     Ok((op, target))
 }
 
+/// `snapshot.json` of a database snapshot archive (ADR 0009).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotManifest {
+    pub format: u32,
+    /// Build key of the server artifact whose SQL made the snapshot.
+    pub build_key: String,
+    pub mysql: SnapshotMysql,
+    pub databases: Vec<String>,
+    /// Modules whose SQL is in the snapshot (dbimport names).
+    pub modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotMysql {
+    pub id: String,
+    pub version: String,
+}
+
+fn read_manifest<T: for<'de> Deserialize<'de>>(archive: &Path, name: &str) -> Result<T, PlanError> {
+    let bytes = read_entry(archive, name)?.ok_or_else(|| PlanError::Record {
+        path: archive.join(name),
+        message: "missing from the archive".into(),
+    })?;
+    serde_json::from_slice(&bytes).map_err(|e| PlanError::Record {
+        path: archive.join(name),
+        message: e.to_string(),
+    })
+}
+
+/// A snapshot fits when it was made from the same server build and MySQL
+/// version, and holds no SQL of a module the instance does not allow.
+fn check_snapshot(
+    snapshot: &Path,
+    server_artifact: &Path,
+    mysql: (&str, &str),
+    allowed: &[String],
+) -> Result<(), PlanError> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BuildInfo {
+        build_key: String,
+    }
+    let manifest: SnapshotManifest = read_manifest(snapshot, "snapshot.json")?;
+    let build: BuildInfo = read_manifest(server_artifact, "build-info.json")?;
+    let mismatch = |reason: String| PlanError::SnapshotMismatch {
+        path: snapshot.to_owned(),
+        reason,
+    };
+    if manifest.format != 1 {
+        return Err(mismatch(format!("unknown format {}", manifest.format)));
+    }
+    if manifest.build_key != build.build_key {
+        return Err(mismatch(format!(
+            "made for server build {}, not {}",
+            manifest.build_key, build.build_key
+        )));
+    }
+    let (mysql_id, mysql_version) = mysql;
+    if manifest.mysql.id != mysql_id || manifest.mysql.version != mysql_version {
+        return Err(mismatch(format!(
+            "made with {} {}, not {mysql_id} {mysql_version}",
+            manifest.mysql.id, manifest.mysql.version
+        )));
+    }
+    if let Some(extra) = manifest.modules.iter().find(|m| !allowed.contains(m)) {
+        return Err(mismatch(format!(
+            "contains the SQL of module '{extra}', which this instance does not use"
+        )));
+    }
+    Ok(())
+}
+
 /// `instance-<id>`: builds the instance from the server artifact (a ZIP with
-/// `dist/` and `sql/`, as produced by CI).
+/// `dist/` and `sql/`, as produced by CI). With a database snapshot (ADR
+/// 0009), the database is restored from it instead of being initialised
+/// empty; dbimport then only applies what the snapshot lacks.
 pub fn instance_operation(
     catalog: &Catalog,
     layout: &Layout,
     record: &InstanceRecord,
     secrets: &Secrets,
     server_artifact: &Path,
+    db_snapshot: Option<&Path>,
 ) -> Result<Operation<()>, PlanError> {
     let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
     let resolution: Resolution =
@@ -390,11 +473,26 @@ pub fn instance_operation(
         .collect();
     let tool = &emu.instance.db_import;
 
-    Ok(Operation::new(format!("instance-{}", record.id))
+    let op = Operation::new(format!("instance-{}", record.id))
         .step(Extract::new("extract-bin", server_artifact, &paths.bin).subdir("dist"))
-        .step(Extract::new("extract-sql", server_artifact, &paths.sql).subdir("sql"))
-        .step(DbInit { db: db.clone() })
-        .step(DbStart { db: db.clone() })
+        .step(Extract::new("extract-sql", server_artifact, &paths.sql).subdir("sql"));
+    let op = match db_snapshot {
+        Some(snapshot) => {
+            check_snapshot(
+                snapshot,
+                server_artifact,
+                (&mysql.id, &mysql.version),
+                &dbimport_modules(catalog, &resolution)?,
+            )?;
+            op.step(DbClaim { db: db.clone() })
+                .step(Extract::new("extract-db", snapshot, db.datadir()).subdir("data"))
+                .step(DbAdopt { db: db.clone() })
+        }
+        None => op
+            .step(DbInit { db: db.clone() })
+            .step(DbStart { db: db.clone() }),
+    };
+    Ok(op
         .step(DbProvision {
             db: db.clone(),
             databases: database_names,
@@ -414,4 +512,83 @@ pub fn instance_operation(
             log: paths.logs.join("dbimport.log"),
         })
         .step(DbStop { db }))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    fn archive(path: &Path, name: &str, json: &str) {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        zip.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(json.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+
+    fn check(snapshot_json: &str, allowed: &[&str]) -> Result<(), PlanError> {
+        let dir = tempfile::tempdir().unwrap();
+        let (snapshot, server) = (dir.path().join("db.zip"), dir.path().join("server.zip"));
+        archive(&snapshot, "snapshot.json", snapshot_json);
+        archive(
+            &server,
+            "build-info.json",
+            r#"{"buildKey": "k1", "other": 1}"#,
+        );
+        let allowed: Vec<String> = allowed.iter().map(|s| s.to_string()).collect();
+        check_snapshot(&snapshot, &server, ("mysql-8-4", "8.4.13"), &allowed)
+    }
+
+    fn manifest(build_key: &str, version: &str, modules: &str) -> String {
+        format!(
+            r#"{{"format": 1, "buildKey": "{build_key}",
+                "mysql": {{"id": "mysql-8-4", "version": "{version}", "sha256": "ab"}},
+                "databases": ["acore_world"], "modules": [{modules}]}}"#
+        )
+    }
+
+    #[test]
+    fn matching_snapshot_is_accepted() {
+        let json = manifest("k1", "8.4.13", r#""mod-playerbots", "mod-ah-bot""#);
+        check(
+            &json,
+            &["mod-playerbots", "mod-ah-bot", "mod-individual-progression"],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn other_build_mysql_or_module_is_refused() {
+        let cases = [
+            (
+                manifest("k2", "8.4.13", r#""mod-playerbots""#),
+                "server build k2",
+            ),
+            (manifest("k1", "8.4.14", r#""mod-playerbots""#), "8.4.14"),
+            (
+                manifest("k1", "8.4.13", r#""mod-individual-progression""#),
+                "mod-individual-progression",
+            ),
+        ];
+        for (json, expected) in cases {
+            let error = check(&json, &["mod-playerbots"]).unwrap_err();
+            assert!(
+                matches!(error, PlanError::SnapshotMismatch { .. }),
+                "{error}"
+            );
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn archive_without_manifest_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (snapshot, server) = (dir.path().join("db.zip"), dir.path().join("server.zip"));
+        archive(&snapshot, "data/mysql.ibd", "");
+        archive(&server, "build-info.json", r#"{"buildKey": "k1"}"#);
+        let error = check_snapshot(&snapshot, &server, ("mysql-8-4", "8.4.13"), &[]).unwrap_err();
+        assert!(error.to_string().contains("snapshot.json"), "{error}");
+    }
 }

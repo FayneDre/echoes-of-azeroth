@@ -65,6 +65,34 @@ pub fn databases(catalog: &Catalog, resolution: &Resolution) -> Result<Vec<Datab
     Ok(dbs)
 }
 
+/// Modules whose SQL dbimport applies (`Updates.AllowedModules`, dbimport
+/// names): the resolved modules, plus the flavor's other modules that read
+/// their own tables while disabled (ADR 0008).
+pub fn dbimport_modules(
+    catalog: &Catalog,
+    resolution: &Resolution,
+) -> Result<Vec<String>, PlanError> {
+    let entry = catalog
+        .emulator(&resolution.emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("emulator '{}'", resolution.emulator)))?;
+    let chosen = |id: &str| resolution.modules.iter().any(|m| m == id);
+    let mut out: Vec<String> = resolution
+        .modules
+        .iter()
+        .filter_map(|id| entry.modules.get(id))
+        .map(|m| m.database.dbimport_id.clone())
+        .collect();
+    for module in entry.modules.values() {
+        if module.compatible_flavors.contains(&resolution.flavor)
+            && module.database.apply_when_disabled
+            && !chosen(&module.id)
+        {
+            out.push(module.database.dbimport_id.clone());
+        }
+    }
+    Ok(out)
+}
+
 /// The config files of an instance and their layers.
 ///
 /// Every module compatible with the flavor gets its file (all are compiled
@@ -187,21 +215,9 @@ pub fn plan_configs(
             ConfigValue::Text(values.bind.to_owned()),
         ),
     ]);
-    // Chosen modules, plus those that read their own tables while disabled (ADR 0008).
-    let mut dbimport: Vec<&str> = resolution
-        .modules
-        .iter()
-        .filter_map(|id| entry.modules.get(id))
-        .map(|m| m.database.dbimport_id.as_str())
-        .collect();
-    for module in &modules {
-        if module.database.apply_when_disabled && !chosen(&module.id) {
-            dbimport.push(&module.database.dbimport_id);
-        }
-    }
     vars.insert(
         "modules.dbimport".into(),
-        ConfigValue::Text(dbimport.join(",")),
+        ConfigValue::Text(dbimport_modules(catalog, resolution)?.join(",")),
     );
     for name in emu.ports.keys() {
         let port = values

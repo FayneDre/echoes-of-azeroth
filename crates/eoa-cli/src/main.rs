@@ -51,6 +51,10 @@ enum Command {
         /// Server build ZIP (CI artifact with `dist/` and `sql/`).
         #[arg(long)]
         server: PathBuf,
+        /// Database snapshot ZIP made by CI for this server build (ADR 0009):
+        /// restores the databases instead of importing them from empty.
+        #[arg(long)]
+        db_snapshot: Option<PathBuf>,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         /// Data root (`%LOCALAPPDATA%EchoesOfAzeroth` for the launcher).
@@ -263,6 +267,7 @@ fn main() -> Result<ExitCode> {
             modules,
             lan,
             server,
+            db_snapshot,
             catalog,
             root,
         } => {
@@ -294,7 +299,14 @@ fn main() -> Result<ExitCode> {
                 },
             };
             let (record, secrets) = install::open_or_create(&catalog, &layout, &request)?;
-            let op = install::instance_operation(&catalog, &layout, &record, &secrets, &server)?;
+            let op = install::instance_operation(
+                &catalog,
+                &layout,
+                &record,
+                &secrets,
+                &server,
+                db_snapshot.as_deref(),
+            )?;
             run_operation(&layout, &op)?;
             println!(
                 "instance '{}' ready in {} (database on 127.0.0.1:{})",

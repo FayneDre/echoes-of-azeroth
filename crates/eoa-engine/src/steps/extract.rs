@@ -199,6 +199,24 @@ fn open(path: &Path) -> Result<Archive, ExtractError> {
     })
 }
 
+/// Reads one small entry (a manifest) of a ZIP archive; `None` if absent.
+pub fn read_entry(archive: &Path, name: &str) -> Result<Option<Vec<u8>>, ExtractError> {
+    let mut zip = open(archive)?;
+    let mut entry = match zip.by_name(name) {
+        Ok(entry) => entry,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+        Err(source) => {
+            return Err(ExtractError::Archive {
+                path: archive.to_path_buf(),
+                source,
+            })
+        }
+    };
+    let mut bytes = Vec::with_capacity(entry.size().min(1 << 20) as usize);
+    entry.read_to_end(&mut bytes).map_err(io(archive))?;
+    Ok(Some(bytes))
+}
+
 /// Which entries to extract, and how much of their path to drop.
 #[derive(Clone, Copy)]
 pub(crate) struct Select<'a> {
