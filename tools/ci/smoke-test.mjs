@@ -15,6 +15,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ------------------------------------------------------------------ args
 const args = Object.fromEntries(
@@ -34,6 +35,13 @@ const mysqlRoot = resolve(args.mysql);
 const work = resolve(args.work);
 const mandatory = (args.mandatory ?? "mod-playerbots").split(",").filter(Boolean);
 const optional = (args.optional ?? "mod-ah-bot,mod-individual-progression").split(",").filter(Boolean);
+// Optional modules whose SQL is applied even when disabled (ADR 0008), read from the
+// catalog here so the build plan (part of the build key) does not change.
+const emulatorDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "catalog", "emulators", process.env.EMULATOR ?? "azerothcore");
+const sqlAlways = optional.filter((id) => {
+  const manifest = join(emulatorDir, "modules", `${id}.json`);
+  return existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).database.applyWhenDisabled === true;
+});
 const timeoutMs = Number(args["timeout-min"] ?? 25) * 60_000;
 const logs = join(work, "logs");
 mkdirSync(logs, { recursive: true });
@@ -168,7 +176,9 @@ for (const name of ["worldserver.conf", "authserver.conf", "dbimport.conf"]) {
 const sourceDir = join(staging, "sql").replaceAll("\\", "/");
 const common = { LogsDir: logs.replaceAll("\\", "/"), MySQLExecutable: mysqlCli.replaceAll("\\", "/"), SourceDirectory: sourceDir };
 setConf(confFile("dbimport.conf"), { ...common });
-setConf(confFile("authserver.conf"), { LogsDir: common.LogsDir });
+// authserver defaults to migrating the auth database itself (Updates.EnableDatabases = 1)
+// and would look for SQL in the build machine's source tree: only dbimport migrates (ADR 0007).
+setConf(confFile("authserver.conf"), { ...common, "Updates.EnableDatabases": 0 });
 setConf(confFile("worldserver.conf"), {
   ...common,
   DataDir: dataDir.replaceAll("\\", "/"),
@@ -241,11 +251,12 @@ async function round(label, allowed, enabled) {
   if (result.status !== 0) fail(`dbimport (${label}) exited with ${result.status} (see dbimport-${label}.log)`);
   note(`✅ dbimport with AllowedModules="${allowed.join(",")}" in ${Math.round((Date.now() - started) / 1000)} s`);
 
+  // Module SQL is applied exactly for the allowed modules (dbimport directory names).
   const ahbotTable = tableExists("acore_world", "mod_auctionhousebot");
   if (optional.includes("mod-ah-bot")) {
-    if (enabled && !ahbotTable) fail("mod-ah-bot SQL was not applied although allowed");
-    if (!enabled && ahbotTable) fail("mod-ah-bot SQL was applied although not allowed");
-    note(`✅ mod-ah-bot SQL ${enabled ? "applied" : "not applied"} as expected`);
+    const expected = allowed.includes("mod-ah-bot");
+    if (expected !== ahbotTable) fail(`mod-ah-bot SQL ${ahbotTable ? "applied" : "missing"} with AllowedModules="${allowed.join(",")}"`);
+    note(`✅ mod-ah-bot SQL ${ahbotTable ? "applied" : "not applied"} as expected`);
   }
 
   const auth = startProcess(`authserver-${label}`, exe.authserver, ["-c", confFile("authserver.conf")], work);
@@ -261,7 +272,7 @@ async function round(label, allowed, enabled) {
 }
 
 try {
-  await round("A-modules-off", mandatory, false);
+  await round("A-modules-off", [...mandatory, ...sqlAlways], false);
   await round("B-modules-on", [...mandatory, ...optional], true);
   note("\n✅ Smoke test passed");
 } finally {
