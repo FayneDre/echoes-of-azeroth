@@ -383,3 +383,117 @@ jobs:
           name: smoke-logs-${{ needs.plan.outputs.build-key }}
           path: ${{ runner.temp }}/instance/logs
           retention-days: 14
+
+  # Publication (ADR 0010): GitHub release per build + the signed index.
+  # Only from main, after a green smoke test. The server ZIP of a build key is
+  # uploaded once and never replaced (the index may already point at it); the
+  # database snapshot of each run gets its own asset name, the two newest are
+  # kept. Without the signing secret, publication is skipped with a warning.
+  publish:
+    name: Publish (release + signed index)
+    needs: [plan, build, smoke-test]
+    if: ${{ !cancelled() && needs.smoke-test.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # releases and their assets
+      actions: read
+    concurrency:
+      # One index writer at a time, whatever the flavor: serial + 1 must not race.
+      group: publish-index
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_KEY: ${{ needs.plan.outputs.build-key }}
+      TAG: build-${{ inputs.emulator || 'azerothcore' }}-${{ inputs.flavor || 'playerbot' }}-${{ needs.plan.outputs.build-key }}
+      HAS_KEY: ${{ secrets.EOA_INDEX_SIGNING_KEY != '' }}
+    steps:
+      - name: Check the signing key
+        if: env.HAS_KEY != 'true'
+        run: echo "::warning::EOA_INDEX_SIGNING_KEY is not set: nothing is published."
+
+      - uses: actions/checkout@v7
+        if: env.HAS_KEY == 'true'
+
+      - uses: actions/setup-node@v7
+        if: env.HAS_KEY == 'true'
+        with:
+          node-version: 24
+
+      - name: Download the tested server artifact
+        if: env.HAS_KEY == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.plan.outputs.artifact }}
+          path: ${{ runner.temp }}/server
+          run-id: ${{ needs.plan.outputs.reuse-run-id || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download this run's database snapshot
+        if: env.HAS_KEY == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: db-snapshot-${{ needs.plan.outputs.build-key }}
+          path: ${{ runner.temp }}/db-snapshot
+
+      - name: Release assets
+        if: env.HAS_KEY == 'true'
+        id: assets
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"; mkdir -p "$out"
+          server="server-$BUILD_KEY.zip"
+          snapshot="db-snapshot-$BUILD_KEY-r$GITHUB_RUN_ID.zip"
+          (cd "$RUNNER_TEMP/db-snapshot" && zip -q -r -6 "$out/$snapshot" .)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "release $TAG exists"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Server build $BUILD_KEY (core and module commits in build-info.json). Installed by the launcher through the signed index; not meant to be downloaded by hand."
+          fi
+          if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$server"; then
+            # Never replaced: reuse the published bytes (the index hashes them).
+            gh release download "$TAG" --pattern "$server" --dir "$out"
+          else
+            (cd "$RUNNER_TEMP/server" && zip -q -r -9 "$out/$server" .)
+            gh release upload "$TAG" "$out/$server"
+          fi
+          gh release upload "$TAG" "$out/$snapshot"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          node tools/ci/index.mjs entry \
+            --build-info "$RUNNER_TEMP/server/build-info.json" \
+            --snapshot "$RUNNER_TEMP/db-snapshot/snapshot.json" \
+            --platform windows-x86_64 \
+            --server "$out/$server" --server-url "$base/$server" \
+            --db-snapshot "$out/$snapshot" --db-snapshot-url "$base/$snapshot" \
+            --out "$out/entry.json"
+
+      - name: Update and sign the index
+        if: env.HAS_KEY == 'true'
+        env:
+          EOA_INDEX_SIGNING_KEY: ${{ secrets.EOA_INDEX_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"
+          if ! gh release view index > /dev/null 2>&1; then
+            gh release create index --latest=false --title "Artifact index" \
+              --notes "Signed index read by the launcher (ADR 0010). Do not edit."
+          fi
+          previous=()
+          if gh release download index --pattern index.json --dir "$out/previous" 2>/dev/null; then
+            previous=(--previous "$out/previous/index.json")
+          fi
+          node tools/ci/index.mjs update "${previous[@]}" --entry "$out/entry.json" --out "$out/index.json"
+          node tools/ci/index.mjs verify "$out/index.json" > /dev/null
+          gh release upload index "$out/index.json" --clobber
+          echo "Published $TAG and index serial $(node -p "JSON.parse(require('$out/index.json').payload).serial")" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the two newest snapshots of this build
+        if: env.HAS_KEY == 'true'
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets -q '.assets[] | select(.name | startswith("db-snapshot-")) | "\(.createdAt) \(.name)"' |
+            sort -r | tail -n +3 | while read -r _ name; do
+              echo "deleting old snapshot $name"
+              gh release delete-asset "$TAG" "$name" --yes
+            done
