@@ -410,7 +410,7 @@ jobs:
     steps:
       - name: Check the signing key
         if: env.HAS_KEY != 'true'
-        run: echo "::warning::EOA_INDEX_SIGNING_KEY is not set: nothing is published."
+        run: echo "::warning::EOA_INDEX_SIGNING_KEY is not set, nothing is published."
 
       - uses: actions/checkout@v7
         if: env.HAS_KEY == 'true'
