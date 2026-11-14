@@ -26,6 +26,7 @@
   --danger: #a3261b;
   --realm-accent: #2f6f9f;
   --panel-shadow: 0 2px 6px rgb(60 40 10 / 0.25);
+  --danger-bg: #b3271a;
   --shade: rgb(60 40 10 / 0.1);
   --shade-soft: rgb(60 40 10 / 0.05);
   --shade-deep: rgb(60 40 10 / 0.25);
@@ -71,6 +72,7 @@
     --danger: #f08a7e;
     --realm-accent: #7cc4f0;
     --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
+    --danger-bg: #a8231a;
     --shade: rgb(0 0 0 / 0.35);
     --shade-soft: rgb(0 0 0 / 0.2);
     --shade-deep: rgb(0 0 0 / 0.6);
@@ -104,6 +106,7 @@
   --danger: #f08a7e;
   --realm-accent: #7cc4f0;
   --panel-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
+  --danger-bg: #a8231a;
   --shade: rgb(0 0 0 / 0.35);
   --shade-soft: rgb(0 0 0 / 0.2);
   --shade-deep: rgb(0 0 0 / 0.6);
@@ -256,4 +259,53 @@ button {
 
 .muted {
   color: var(--text-muted);
+}
+
+/* One framed bar of buttons (tabs, languages): a single element with bronze
+   separators; the active segment glows. */
+.segmented {
+  flex: none;
+  display: flex;
+  padding: 3px;
+  background: var(--button-bg);
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 1px var(--shade-deep),
+    0 1px 3px var(--shade-deep);
+}
+
+.segmented button {
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--frame);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button:hover:not(:disabled) {
+  color: var(--title);
+}
+
+.segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.segmented button.active {
+  color: var(--title);
+  background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 75%);
+  box-shadow: inset 0 -2px 0 var(--accent-strong);
+  text-shadow: var(--text-shadow);
 }

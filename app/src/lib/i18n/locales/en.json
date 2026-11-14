@@ -61,5 +61,9 @@
   "category.administration": "Administration",
   "footer.disclaimer": "Unofficial fan project, not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft is a trademark of Blizzard Entertainment. You provide your own game client.",
   "footer.short": "Unofficial fan project, not affiliated with Blizzard Entertainment.",
-  "footer.report": "Report a problem"
+  "footer.report": "Report a problem",
+  "window.minimize": "Minimize",
+  "window.maximize": "Maximize",
+  "window.restore": "Restore",
+  "window.close": "Close"
 }

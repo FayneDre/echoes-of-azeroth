@@ -1,6 +1,7 @@
 // Typed wrappers around Tauri commands. Keep in sync with app/src-tauri/src/commands.rs.
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { LocalizedText } from "./i18n/i18n.svelte";
 
@@ -67,3 +68,13 @@ export function openExternal(url: string): Promise<void> {
 export function catalogOverview(): Promise<EmulatorOverview[]> {
   return invoke<EmulatorOverview[]>("catalog_overview");
 }
+
+/** Window chrome: the launcher draws its own title bar (decorations off). */
+export const appWindow = {
+  minimize: () => getCurrentWindow().minimize(),
+  toggleMaximize: () => getCurrentWindow().toggleMaximize(),
+  close: () => getCurrentWindow().close(),
+  isMaximized: () => getCurrentWindow().isMaximized(),
+  /** Calls `handler` after every resize (maximise/restore included); returns an unsubscribe. */
+  onResized: (handler: () => void) => getCurrentWindow().onResized(handler),
+};

@@ -197,6 +197,9 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 - Layout: left rail of game versions (one emblem per catalog client) + tabs +
   panels with gilded corners (`.panel`, `.panel-title`, `.btn-play`); dark is
   the primary theme. Show real states only, never placeholder data.
+- The launcher draws its own title bar (`decorations: false`): logo + title,
+  tabs and languages as one `.segmented` bar each, `WindowControls`; drag via
+  `data-tauri-drag-region`. Window calls go through `appWindow` in `api.ts`.
 - Expansion emblems are **original SVGs** in `app/src/lib/emblems/`, chosen by
   `client.branding.emblem` in the catalog. Never Blizzard logos or look-alikes
   (principle 7); unknown ids fall back to a generic emblem.

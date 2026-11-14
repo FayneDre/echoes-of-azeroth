@@ -2,12 +2,22 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions of the main window. Keep minimal: add only what a feature needs.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/FayneDre/echoes-of-azeroth/*" }]
+      "allow": [
+        {
+          "url": "https://github.com/FayneDre/echoes-of-azeroth/*"
+        }
+      ]
     }
   ]
 }

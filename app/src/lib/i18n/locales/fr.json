@@ -61,5 +61,9 @@
   "category.administration": "Administration",
   "footer.disclaimer": "Projet de fan non officiel, sans lien avec Blizzard Entertainment ni approuvé par Blizzard. World of Warcraft est une marque de Blizzard Entertainment. Tu fournis ton propre client du jeu.",
   "footer.short": "Projet de fan non officiel, sans lien avec Blizzard Entertainment.",
-  "footer.report": "Signaler un problème"
+  "footer.report": "Signaler un problème",
+  "window.minimize": "Réduire",
+  "window.maximize": "Agrandir",
+  "window.restore": "Restaurer",
+  "window.close": "Fermer"
 }

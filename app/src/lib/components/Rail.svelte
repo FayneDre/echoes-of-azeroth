@@ -16,9 +16,6 @@
 </script>
 
 <nav class="rail" aria-label={t("nav.realms")}>
-  <div class="mark" aria-hidden="true">
-    <Emblem emblem="generic" accent="var(--accent)" label="" size={40} />
-  </div>
   <ul>
     {#each realms as realm (realm.id)}
       <li>
@@ -34,6 +31,7 @@
             emblem={realm.client?.emblem ?? "generic"}
             accent={realm.client?.accent ?? "var(--accent)"}
             label={label(realm)}
+            size={40}
           />
           <span class="version">{realm.client?.version ?? realm.name}</span>
         </button>
@@ -56,11 +54,6 @@
     box-shadow: 1px 0 0 color-mix(in srgb, var(--frame-light) 50%, transparent);
   }
 
-  .mark {
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--border);
-  }
-
   ul {
     list-style: none;
     margin: 0;
@@ -75,9 +68,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-1);
-    width: 76px;
-    padding: var(--space-2) 0;
+    justify-content: center;
+    gap: 2px;
+    width: 68px;
+    aspect-ratio: 1;
+    padding: 0;
     background: var(--shade);
     border: 2px solid var(--frame);
     border-radius: var(--radius);
