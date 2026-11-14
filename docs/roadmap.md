@@ -13,16 +13,17 @@ Durations assume one full-time developer and are rough.
 - [x] Git repository + public GitHub remote
 - [x] CI: `cargo fmt/clippy/test`, `npm run check`, catalog validation (Windows) + portable crates (Linux)
 
-## Phase 1: CI build chain (~2 weeks, highest risk first) — in progress
+## Phase 1: CI build chain (~2 weeks, highest risk first) — exit reached
 
-- [ ] Windows build of the Playerbot fork with all catalog modules (`build-server.yml`)
+- [x] Windows build of the Playerbot fork with all catalog modules (`build-server.yml`)
 - [x] Verify `Updates.AllowedModules` naming (module directory name)
-- [ ] Prove disabled modules are inert (smoke test round A)
+- [x] Prove disabled modules are inert (smoke test round A; AHBot needs its tables, ADR 0008)
 - [ ] MySQL 8.4 database snapshot, zstd packaging, signing, index
 - [x] Server data: pinned upstream release (ADR 0006)
-- [ ] Smoke tests: start with modules off/on (`tools/ci/smoke-test.mjs`); later: login, bots, AH posts
+- [x] Smoke tests: start with modules off/on (`tools/ci/smoke-test.mjs`, green 2026-11-14)
+- [ ] Smoke tests later: login, bots, AH posts
 - [ ] Prototype AHBot account/character creation without a client
-- **Exit:** a downloadable artifact that works when installed by hand
+- **Exit:** a downloadable artifact that works when installed by hand ✅ (2026-11-14)
 
 ## Phase 2: install engine (~2–3 weeks) — started
 

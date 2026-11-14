@@ -230,13 +230,14 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 
 ## 9. Current status
 
-See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 in progress: the
-server build workflow compiles the Playerbot fork with every catalog module and
-reuses artifacts by build key; build and packaging are green, the smoke test
-is being fixed (authserver migration switch, AHBot tables, ADR 0008).
+See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 exit reached: the
+server build workflow compiles the Playerbot fork with every catalog module,
+reuses artifacts by build key, and the smoke test is green (modules off/on);
+remaining: DB snapshot, zstd, signing, index.
 Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
 executor are done, with the install steps and `eoa install` (ADR 0007/0008),
-verified end to end locally (servers start). Next: green CI smoke test, then
-phase 3 (runtime supervisor, driver). UI: left
+verified end to end locally (servers start). Next: CI database snapshot
+(install in seconds instead of dbimport), signed remote index, then phase 3
+(runtime supervisor, driver). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.
