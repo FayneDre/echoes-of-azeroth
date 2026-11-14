@@ -250,9 +250,22 @@ jobs:
             exit 1
           fi
           bin="$(dirname "$world")"
-          for dll in /c/tools/mysql/current/lib/libmysql.dll "$(cygpath "$OPENSSL_ROOT_DIR")"/bin/lib{ssl,crypto}-3-x64.dll; do
-            if [ -f "$dll" ] && [ ! -f "$bin/$(basename "$dll")" ]; then cp "$dll" "$bin/" && echo "added $(basename "$dll")"; fi
-          done
+          # legacy.dll is the OpenSSL 3 legacy provider: the servers assert it sits next to them
+          # (OpenSSLCrypto.cpp SetupLibrariesForWindows). Each name lists its candidate locations.
+          ssl="$(cygpath "$OPENSSL_ROOT_DIR")"
+          need() {
+            local name="$1"; shift
+            if [ -f "$bin/$name" ]; then return; fi
+            for candidate in "$@"; do
+              if [ -f "$candidate" ]; then cp "$candidate" "$bin/$name" && echo "added $name from $candidate"; return; fi
+            done
+            echo "::error::runtime library $name not found (looked in: $*)"
+            exit 1
+          }
+          need libmysql.dll /c/tools/mysql/current/lib/libmysql.dll
+          need libssl-3-x64.dll "$ssl/bin/libssl-3-x64.dll"
+          need libcrypto-3-x64.dll "$ssl/bin/libcrypto-3-x64.dll"
+          need legacy.dll "$ssl/bin/legacy.dll" "$ssl/lib/ossl-modules/legacy.dll" "$ssl/bin/ossl-modules/legacy.dll"
           node tools/ci/package-server.mjs "$RUNNER_TEMP/plan.json" "$src" "$src/env/dist" "$RUNNER_TEMP/staging"
 
       - name: Upload server artifact

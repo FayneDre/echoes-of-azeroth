@@ -33,7 +33,17 @@ for (const module of plan.modules) {
   }
 }
 
-const required = ["worldserver.exe", "authserver.exe", "dbimport.exe"];
+// Executables plus the runtime DLLs they load from their own directory (legacy.dll:
+// OpenSSL 3 legacy provider, asserted at startup by OpenSSLCrypto.cpp on Windows).
+const required = [
+  "worldserver.exe",
+  "authserver.exe",
+  "dbimport.exe",
+  "libmysql.dll",
+  "libssl-3-x64.dll",
+  "libcrypto-3-x64.dll",
+  "legacy.dll",
+];
 const walk = (dir) =>
   readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
