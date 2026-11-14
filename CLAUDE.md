@@ -160,6 +160,7 @@ cargo fmt --all
 cargo run -p eoa-cli -- catalog validate
 cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
+cargo run -p eoa-cli -- component install mysql-8-4   # engine: download + atomic extract into .local/eoa
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
@@ -225,6 +226,7 @@ server build workflow compiles the Playerbot fork with every catalog module and
 reuses artifacts by build key; build and packaging are green, the smoke test
 is being fixed (OpenSSL `legacy.dll` was missing from the package).
 Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
-executor are done; built-in steps and `eoa install` are next. UI: left rail of realms, Home (real "not installed" states) and Server
-settings (modules) tabs; Account, Bots and Backups are placeholders until
-their phases.
+executor are done, with the `download` and `extract` steps (`eoa component
+install`); next: `render-config` / `db-*` steps and `eoa install`. UI: left
+rail of realms, Home (real "not installed" states) and Server settings
+(modules) tabs; Account, Bots and Backups are placeholders until their phases.

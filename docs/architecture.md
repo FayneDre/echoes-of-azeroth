@@ -197,6 +197,13 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
   used for player data.
 - Step errors stay typed (`Box<dyn Error>`), so the UI can translate the
   underlying `StoreError`, `DbError`... (principle 8).
+- Built-in steps (`eoa_engine::steps`): `download` (`Fetch`, into the store;
+  cancellable, resumes from the store's segments) and `extract` (`Extract`:
+  ZIP into a `DirSwap` staging directory, several threads largest files first,
+  CRC-32 checked per entry, absolute / `..` / drive / link entries rejected
+  before anything is written, optional strip of the single root directory).
+  `eoa component install mysql-8-4` chains them: 281 MB download + 1.26 GB
+  extraction in about 6 s on a fast connection (2026-11-14).
 
 ### Install engine step vocabulary
 

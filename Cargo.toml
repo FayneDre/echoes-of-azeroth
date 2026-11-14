@@ -16,6 +16,7 @@ repository = "https://github.com/FayneDre/echoes-of-azeroth"
 eoa-core = { path = "crates/eoa-core" }
 eoa-catalog = { path = "crates/eoa-catalog" }
 eoa-store = { path = "crates/eoa-store" }
+eoa-engine = { path = "crates/eoa-engine" }
 
 # External crates
 anyhow = "1"
@@ -33,6 +34,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# Pure-Rust deflate (zlib-rs): no C toolchain, fast decoding.
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 lto = true

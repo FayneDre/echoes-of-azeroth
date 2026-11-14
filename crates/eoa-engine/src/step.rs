@@ -91,6 +91,11 @@ impl<C> StepContext<'_, C> {
         self.cancel.is_cancelled()
     }
 
+    /// A handle for work running outside the step's future (blocking threads).
+    pub fn cancel_token(&self) -> CancelToken {
+        self.cancel.clone()
+    }
+
     /// Returns [`Cancelled`] once cancellation was requested. A step returning
     /// it is interrupted, not failed: no rollback, it resumes on the next run.
     pub fn check_cancelled(&self) -> Result<(), StepError> {

@@ -10,13 +10,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+eoa-store.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio.workspace = true
