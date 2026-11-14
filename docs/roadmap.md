@@ -32,7 +32,8 @@ Durations assume one full-time developer and are rough.
       hand-edit import
 - [x] `eoa-db` (MySQL portable: secure init, clean start/stop, users, backup/restore)
 - [ ] `eoa-db`: CI database snapshot restore, Job Object, cloud-folder check
-- [ ] `eoa-engine` (journal, resume, rollback, atomic swap)
+- [x] `eoa-engine` executor: journal, resume, rollback, finalize, atomic directory swap
+- [ ] Built-in steps (download, verify, extract, render-config, db-*) + `eoa install`
 - [ ] Signed remote index
 - **Exit:** `eoa install` creates a working instance from scratch
 

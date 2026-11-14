@@ -160,12 +160,43 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`, `eoa store fetch`. |
 | `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
-| `eoa-engine` | planned | Step executor: journal, resume, rollback, atomic swap. |
+| `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
 | `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore (§8). Later: snapshot restore, Job Object. |
 | `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. |
 | `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
 | `drivers/azerothcore` | planned | AzerothCore specifics (see §6). |
 | `app/src-tauri` | ✅ skeleton | Thin adapter: Tauri commands/events over the crates. |
+
+### 5.1 Install engine (`eoa-engine`)
+
+An **operation** (install, update, module toggle...) is an id plus an ordered
+list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
+(`instance-<id>`), so operations on an instance are serialised.
+
+- **Journal** `state/<operation>.journal.json`: status of the operation and of
+  every step, written atomically (temp + fsync + rename) *before* each next
+  action; an OS lock (`<operation>.lock`) prevents two runs at once and dies
+  with a crashed process.
+- **Resume:** running the same plan again skips done steps and re-runs the
+  interrupted one, which is told it resumes (steps are idempotent).
+  Cancellation is cooperative and stops at a safe point. The plan
+  **fingerprint** (step ids, kinds, parameters) must match: an unfinished
+  operation is never continued with a different plan.
+- **Rollback:** a failed step and every started one are undone in reverse
+  order, journaled and resumable. If an undo fails the operation is
+  `rollback-failed`: it blocks later operations until a retried abort succeeds
+  or the instance is repaired.
+- **Finalize:** once every step is done, steps drop what they kept for a
+  rollback; a failed cleanup is reported, not fatal.
+- **`DirSwap`:** replaces an owned directory (`bin/`, `sql/`) through a sealed
+  staging copy and keeps the previous version until finalize, so the rollback
+  of a *later* step can still restore it. Every crash point is recovered (an
+  unsealed staging is never installed; both versions are never lost). An owner
+  marker holds the execution's run id: leftovers of another execution are
+  settled, never restored, so an undo cannot downgrade. Never
+  used for player data.
+- Step errors stay typed (`Box<dyn Error>`), so the UI can translate the
+  underlying `StoreError`, `DbError`... (principle 8).
 
 ### Install engine step vocabulary
 

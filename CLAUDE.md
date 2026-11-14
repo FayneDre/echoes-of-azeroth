@@ -95,6 +95,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ eoa-conf/              lossless .conf parser + layered renderer (pure, no I/O)
 │  ├─ eoa-db/                portable MySQL instance: init, start/stop, accounts, backup/restore
 │  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
+│  ├─ eoa-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ app/
 │  ├─ src/                   Svelte 5 UI (lib/api.ts, lib/i18n/)
@@ -139,8 +140,8 @@ When a hook blocks you, fix the cause; never work around it.
 | `commit` | checks + Conventional Commit + push, following the privacy and no-co-author rules |
 | `new-adr` | record an architecture decision |
 
-Planned crates (create only when their phase starts): `eoa-engine`,
-`eoa-runtime`, `eoa-client`, `drivers/azerothcore`.
+Planned crates (create only when their phase starts): `eoa-runtime`,
+`eoa-client`, `drivers/azerothcore`.
 
 `eoa-db` integration tests need a real MySQL: set `EOA_MYSQL_BASEDIR` to an
 unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
@@ -221,8 +222,9 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 
 See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 in progress: the
 server build workflow compiles the Playerbot fork with every catalog module and
-reuses artifacts by build key; packaging and the smoke test are not green yet.
-Phase 2 started: `eoa-store`, `eoa-conf` and `eoa-db` are done; `eoa-engine`
-is next. UI: left rail of realms, Home (real "not installed" states) and Server
+reuses artifacts by build key; build and packaging are green, the smoke test
+is being fixed (OpenSSL `legacy.dll` was missing from the package).
+Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
+executor are done; built-in steps and `eoa install` are next. UI: left rail of realms, Home (real "not installed" states) and Server
 settings (modules) tabs; Account, Bots and Backups are placeholders until
 their phases.
