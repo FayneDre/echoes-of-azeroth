@@ -1147,7 +1147,9 @@ dependencies = [
 name = "eoa-catalog"
 version = "0.1.0"
 dependencies = [
+ "eoa-conf",
  "eoa-core",
+ "eoa-engine",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1196,6 +1198,9 @@ dependencies = [
 name = "eoa-engine"
 version = "0.1.0"
 dependencies = [
+ "eoa-conf",
+ "eoa-core",
+ "eoa-db",
  "eoa-store",
  "futures-util",
  "hex",

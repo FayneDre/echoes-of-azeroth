@@ -76,8 +76,31 @@ pub struct EmulatorManifest {
     pub components: Vec<ComponentRef>,
     pub default_flavor: String,
     pub databases: Vec<Database>,
+    /// Values imposed in every instance (ADR 0007).
+    pub instance: InstanceSpec,
     pub ports: BTreeMap<String, u16>,
     pub processes: Vec<ProcessSpec>,
+}
+
+/// Launcher-imposed instance configuration, with `${...}` placeholders
+/// (see [`crate::template`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InstanceSpec {
+    /// Template of every database connection value (`${db.*}` placeholders).
+    pub connection: String,
+    /// Config file -> key -> value (Launcher layer, locked).
+    pub config: ConfigChanges,
+    pub db_import: ToolSpec,
+}
+
+/// A command-line tool shipped with the server build.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolSpec {
+    /// Relative to the instance root.
+    pub executable: String,
+    pub config_file: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,6 +205,10 @@ pub enum Activation {
 pub struct ModuleDatabase {
     /// Name used in dbimport `Updates.AllowedModules`.
     pub dbimport_id: String,
+    /// SQL applied even when the module is not chosen: it reads its own
+    /// tables while disabled (ADR 0008).
+    #[serde(default)]
+    pub apply_when_disabled: bool,
     pub touches: Vec<String>,
     #[serde(default)]
     pub extra_databases: Vec<Database>,

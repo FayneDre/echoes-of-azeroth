@@ -262,3 +262,29 @@ async fn failed_upgrade_restores_the_installed_version() {
     );
     assert_eq!(listing(&dir.path().join("components")), ["tool"]);
 }
+
+#[tokio::test]
+async fn subdir_extracts_only_that_part_of_the_archive() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("server.zip");
+    make_zip(
+        &archive,
+        &[
+            ("build-info.json", b"{}"),
+            ("dist/", b""),
+            ("dist/worldserver.exe", b"exe"),
+            ("dist/configs/worldserver.conf.dist", b"dist"),
+            ("distractor/file", b"no"),
+            ("sql/data/sql/base.sql", b"sql"),
+        ],
+        zip::CompressionMethod::Deflated,
+    );
+    let bin = dir.path().join("instance").join("bin");
+    let step = Extract::new("extract-bin", &archive, &bin).subdir("dist");
+    extract(step, &dir.path().join("state")).await.unwrap();
+    assert_eq!(listing(&bin), ["configs", "worldserver.exe"]);
+    assert_eq!(
+        fs::read_to_string(bin.join("configs/worldserver.conf.dist")).unwrap(),
+        "dist"
+    );
+}

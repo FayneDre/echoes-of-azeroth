@@ -54,6 +54,44 @@ pub fn validate(catalog: &Catalog) -> Vec<Issue> {
             }
         }
 
+        // Instance placeholders (ADR 0007): a closed list, plus declared ports.
+        let mut check_template = |text: &str, allowed: &dyn Fn(&str) -> bool, what: &str| {
+            match eoa_core::template::placeholders(text) {
+                Err(e) => push(here.clone(), format!("{what}: {e}")),
+                Ok(names) => {
+                    for name in names.into_iter().filter(|n| !allowed(n)) {
+                        push(
+                            here.clone(),
+                            format!("{what}: unknown placeholder '${{{name}}}'"),
+                        );
+                    }
+                }
+            }
+        };
+        let instance_var = |name: &str| {
+            eoa_core::template::INSTANCE_VARIABLES.contains(&name)
+                || name
+                    .strip_prefix("port.")
+                    .is_some_and(|port| emu.ports.contains_key(port))
+        };
+        let connection_var = |name: &str| eoa_core::template::CONNECTION_VARIABLES.contains(&name);
+        check_template(
+            &emu.instance.connection,
+            &connection_var,
+            "instance.connection",
+        );
+        for (file, keys) in &emu.instance.config {
+            for (key, value) in keys {
+                if let eoa_core::manifest::ConfigValue::Text(text) = value {
+                    check_template(
+                        text,
+                        &instance_var,
+                        &format!("instance.config {file} {key}"),
+                    );
+                }
+            }
+        }
+
         let mut database_ids: BTreeSet<&str> =
             emu.databases.iter().map(|d| d.id.as_str()).collect();
         for module in entry.modules.values() {

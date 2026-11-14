@@ -45,6 +45,36 @@
       ]
     }
   ],
+  "instance": {
+    "connection": "127.0.0.1;${db.port};${db.user};${db.password};${db.name}",
+    "config": {
+      "authserver.conf": {
+        "LogsDir": "${dir.logs}",
+        "SourceDirectory": "${dir.sql}",
+        "MySQLExecutable": "${tool.mysql}",
+        "RealmServerPort": "${port.auth}",
+        "BindIP": "${network.bind}",
+        "Updates.EnableDatabases": 0
+      },
+      "dbimport.conf": {
+        "LogsDir": "${dir.logs}",
+        "SourceDirectory": "${dir.sql}",
+        "MySQLExecutable": "${tool.mysql}",
+        "Updates.AllowedModules": "${modules.dbimport}"
+      },
+      "worldserver.conf": {
+        "DataDir": "${dir.data}",
+        "LogsDir": "${dir.logs}",
+        "SourceDirectory": "${dir.sql}",
+        "MySQLExecutable": "${tool.mysql}",
+        "WorldServerPort": "${port.world}",
+        "BindIP": "${network.bind}",
+        "SOAP.Port": "${port.soap}",
+        "Updates.EnableDatabases": 0
+      }
+    },
+    "dbImport": { "executable": "bin/dbimport.exe", "configFile": "dbimport.conf" }
+  },
   "ports": {
     "auth": 3724,
     "world": 8085,

@@ -11,6 +11,8 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0004](0004-manifests-and-drivers.md) | Declarative manifests + per-emulator Rust drivers | Accepted |
 | [0005](0005-distribution.md) | Open source, GitHub Releases + mirrors, SignPath signing | Accepted |
 | [0006](0006-upstream-server-data.md) | Server data downloaded from pinned upstream release, never re-hosted | Accepted |
+| [0007](0007-instance-config-in-manifest.md) | Instance config declared in the emulator manifest; instance layout | Accepted |
+| [0008](0008-module-sql-when-disabled.md) | Module SQL applied while disabled, per manifest flag (`applyWhenDisabled`) | Accepted |
 
 Template:
 

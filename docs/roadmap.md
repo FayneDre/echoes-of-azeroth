@@ -34,7 +34,9 @@ Durations assume one full-time developer and are rough.
 - [ ] `eoa-db`: CI database snapshot restore, Job Object, cloud-folder check
 - [x] `eoa-engine` executor: journal, resume, rollback, finalize, atomic directory swap
 - [x] Built-in steps `download` + `extract`; `eoa component install` (MySQL)
-- [ ] Built-in steps `render-config`, `db-*`, `run-tool` + `eoa install`
+- [x] Steps `db-init/start/provision/stop`, `render-config`, `run-tool`; instance
+      config in the manifest (ADR 0007); `eoa install` (verified locally up to dbimport)
+- [x] `eoa install` end to end with the CI artifact; servers start (2026-11-14)
 - [ ] Signed remote index
 - **Exit:** `eoa install` creates a working instance from scratch
 

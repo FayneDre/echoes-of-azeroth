@@ -4,9 +4,11 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use eoa_engine::install::{self, Layout};
 
 #[derive(Parser)]
 #[command(
@@ -31,6 +33,30 @@ enum Command {
         #[command(subcommand)]
         command: StoreCommand,
     },
+    /// Create a server instance from the catalog and a server build (resumable).
+    Install {
+        /// Instance id: lowercase letters, digits and '-'.
+        id: String,
+        #[arg(long, default_value = "azerothcore")]
+        emulator: String,
+        /// Defaults to the emulator's default flavor.
+        #[arg(long)]
+        flavor: Option<String>,
+        /// Optional module to enable (repeatable). Mandatory modules are always added.
+        #[arg(long = "module")]
+        modules: Vec<String>,
+        /// Listen on the local network instead of this computer only.
+        #[arg(long)]
+        lan: bool,
+        /// Server build ZIP (CI artifact with `dist/` and `sql/`).
+        #[arg(long)]
+        server: PathBuf,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        /// Data root (`%LOCALAPPDATA%EchoesOfAzeroth` for the launcher).
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
     /// Shared third-party runtimes (MySQL...).
     Component {
         #[command(subcommand)]
@@ -52,9 +78,24 @@ enum ComponentCommand {
     },
 }
 
-/// Catalog platform key of this machine (`windows-x86_64`).
-fn platform() -> String {
-    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+/// Runs one engine operation with console progress.
+fn run_operation(layout: &Layout, op: &eoa_engine::Operation<()>) -> Result<()> {
+    let engine = eoa_engine::Engine::new(layout.state());
+    let runtime = tokio::runtime::Runtime::new()?;
+    let started = std::time::Instant::now();
+    eprintln!("== {}", op.id());
+    let outcome = runtime.block_on(engine.run(
+        op,
+        &(),
+        &ConsoleObserver::default(),
+        &eoa_engine::CancelToken::new(),
+    ))?;
+    eprintln!(
+        "== {}: {outcome:?} in {:.1} s",
+        op.id(),
+        started.elapsed().as_secs_f64()
+    );
+    Ok(())
 }
 
 /// Prints engine events: steps, and progress at most every 5 %.
@@ -207,47 +248,62 @@ fn main() -> Result<ExitCode> {
         Command::Component { command } => match command {
             ComponentCommand::Install { id, catalog, root } => {
                 let catalog = eoa_catalog::load_dir(&catalog)?;
-                let component = catalog
-                    .components
-                    .get(&id)
-                    .ok_or_else(|| anyhow::anyhow!("unknown component '{id}'"))?;
-                let key = platform();
-                let build = component
-                    .platforms
-                    .get(&key)
-                    .ok_or_else(|| anyhow::anyhow!("component '{id}' has no build for {key}"))?;
-                let store = std::sync::Arc::new(eoa_store::Store::open(root.join("store"))?);
-                let request = eoa_store::FetchRequest {
-                    urls: vec![build.upstream.clone()],
-                    size: build.size,
-                    sha256: build.sha256.clone(),
-                };
-                let blob = store.blob_path(&build.sha256);
-                let target = root.join("components").join(&id);
-                let op = eoa_engine::Operation::new(format!("component-{id}"))
-                    .step(eoa_engine::steps::Fetch::new("download", store, request))
-                    .step(
-                        eoa_engine::steps::Extract::new("extract", blob, &target)
-                            .strip(eoa_engine::steps::Strip::SingleRootDir),
-                    );
-                let engine = eoa_engine::Engine::new(root.join("state"));
-                let runtime = tokio::runtime::Runtime::new()?;
-                let started = std::time::Instant::now();
-                let outcome = runtime.block_on(engine.run(
-                    &op,
-                    &(),
-                    &ConsoleObserver::default(),
-                    &eoa_engine::CancelToken::new(),
-                ))?;
-                println!(
-                    "{id} {}: {outcome:?} in {:.1} s -> {}",
-                    component.version,
-                    started.elapsed().as_secs_f64(),
-                    target.display()
-                );
+                let layout = Layout::new(&root);
+                let store = Arc::new(eoa_store::Store::open(layout.store())?);
+                let op = install::component_operation(&catalog, &layout, store, &id)?;
+                run_operation(&layout, &op)?;
+                println!("-> {}", layout.component(&id).display());
                 Ok(ExitCode::SUCCESS)
             }
         },
+        Command::Install {
+            id,
+            emulator,
+            flavor,
+            modules,
+            lan,
+            server,
+            catalog,
+            root,
+        } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let layout = Layout::new(&root);
+            let store = Arc::new(eoa_store::Store::open(layout.store())?);
+            let emu = &catalog
+                .emulator(&emulator)
+                .ok_or_else(|| anyhow::anyhow!("unknown emulator '{emulator}'"))?
+                .manifest;
+            // Shared resources first, each in its own operation.
+            for component in &emu.components {
+                let op =
+                    install::component_operation(&catalog, &layout, store.clone(), &component.id)?;
+                run_operation(&layout, &op)?;
+            }
+            let (op, _) = install::server_data_operation(&catalog, &layout, store, &emulator)?;
+            run_operation(&layout, &op)?;
+
+            let request = install::NewInstance {
+                id,
+                emulator,
+                flavor,
+                modules,
+                network: if lan {
+                    install::Network::Lan
+                } else {
+                    install::Network::Solo
+                },
+            };
+            let (record, secrets) = install::open_or_create(&catalog, &layout, &request)?;
+            let op = install::instance_operation(&catalog, &layout, &record, &secrets, &server)?;
+            run_operation(&layout, &op)?;
+            println!(
+                "instance '{}' ready in {} (database on 127.0.0.1:{})",
+                record.id,
+                layout.instance(&record.id).root.display(),
+                record.db_port
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Catalog { command } => match command {
             CatalogCommand::Validate { path } => {
                 let catalog = eoa_catalog::load_dir(&path)?;

@@ -60,6 +60,7 @@ pub struct Extract {
     archive: PathBuf,
     target: PathBuf,
     strip: Strip,
+    subdir: Option<PathBuf>,
     threads: usize,
 }
 
@@ -75,8 +76,16 @@ impl Extract {
             archive: archive.into(),
             target: target.into(),
             strip: Strip::None,
+            subdir: None,
             threads,
         }
+    }
+
+    /// Extracts only the entries under `subdir` (e.g. `dist`), without it.
+    /// Applied before [`Strip`].
+    pub fn subdir(mut self, subdir: impl Into<PathBuf>) -> Self {
+        self.subdir = Some(subdir.into());
+        self
     }
 
     pub fn strip(mut self, strip: Strip) -> Self {
@@ -114,8 +123,9 @@ impl<C: Sync> Step<C> for Extract {
 
     fn fingerprint(&self) -> String {
         format!(
-            "{} -> {} ({:?})",
+            "{} [{:?}] -> {} ({:?})",
             self.archive.display(),
+            self.subdir,
             self.target.display(),
             self.strip
         )
@@ -128,11 +138,16 @@ impl<C: Sync> Step<C> for Extract {
             let total = Arc::new(AtomicU64::new(0));
             let job = {
                 let (archive, strip, threads) = (self.archive.clone(), self.strip, self.threads);
+                let subdir = self.subdir.clone();
                 let (done, total, cancel) = (done.clone(), total.clone(), cx.cancel_token());
                 move || -> Result<bool, StepError> {
                     let staging = swap.prepare()?;
-                    let finished =
-                        unzip(&archive, &staging, strip, threads, &done, &total, &cancel)?;
+                    let select = Select {
+                        subdir: subdir.as_deref(),
+                        strip,
+                    };
+                    let progress = (&*done, &*total);
+                    let finished = unzip(&archive, &staging, select, threads, progress, &cancel)?;
                     if finished {
                         swap.commit()?;
                     }
@@ -184,15 +199,22 @@ fn open(path: &Path) -> Result<Archive, ExtractError> {
     })
 }
 
-/// Extracts `archive` into the empty directory `dest`. Returns `false` when
-/// stopped by a cancellation (the content is then incomplete).
+/// Which entries to extract, and how much of their path to drop.
+#[derive(Clone, Copy)]
+pub(crate) struct Select<'a> {
+    pub subdir: Option<&'a Path>,
+    pub strip: Strip,
+}
+
+/// Extracts `archive` into the empty directory `dest`, counting bytes in
+/// `progress` (done, total). Returns `false` when stopped by a cancellation
+/// (the content is then incomplete).
 pub(crate) fn unzip(
     archive: &Path,
     dest: &Path,
-    strip: Strip,
+    Select { subdir, strip }: Select<'_>,
     threads: usize,
-    done: &AtomicU64,
-    total: &AtomicU64,
+    (done, total): (&AtomicU64, &AtomicU64),
     cancel: &CancelToken,
 ) -> Result<bool, ExtractError> {
     let invalid = |source| ExtractError::Archive {
@@ -222,6 +244,19 @@ pub(crate) fn unzip(
                 _ => Err(ExtractError::UnsafeEntry(name.clone())),
             })
             .collect::<Result<_, _>>()?;
+        let parts = match subdir {
+            None => parts,
+            Some(sub) => {
+                let prefix: Vec<PathBuf> = sub
+                    .components()
+                    .map(|c| PathBuf::from(c.as_os_str()))
+                    .collect();
+                if parts.len() <= prefix.len() || parts[..prefix.len()] != prefix[..] {
+                    continue; // outside the subdirectory, or the subdirectory itself
+                }
+                parts[prefix.len()..].to_vec()
+            }
+        };
         entries.push((index, parts, entry.is_dir(), entry.size()));
     }
     let skip = match strip {

@@ -10,6 +10,7 @@
 pub mod catalog;
 pub mod manifest;
 pub mod resolve;
+pub mod template;
 pub mod text;
 
 pub use catalog::Catalog;

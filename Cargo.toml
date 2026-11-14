@@ -17,6 +17,8 @@ eoa-core = { path = "crates/eoa-core" }
 eoa-catalog = { path = "crates/eoa-catalog" }
 eoa-store = { path = "crates/eoa-store" }
 eoa-engine = { path = "crates/eoa-engine" }
+eoa-conf = { path = "crates/eoa-conf" }
+eoa-db = { path = "crates/eoa-db" }
 
 # External crates
 anyhow = "1"

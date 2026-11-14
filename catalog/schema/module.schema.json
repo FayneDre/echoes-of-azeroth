@@ -179,6 +179,11 @@
           "type": "string",
           "minLength": 1
         },
+        "applyWhenDisabled": {
+          "description": "true when the module reads its own tables even while disabled (it is compiled in, ADR 0003), so its SQL is applied whether or not it is chosen. Only for SQL that creates and fills the module's own tables, never for SQL that changes game content (ADR 0008).",
+          "type": "boolean",
+          "default": false
+        },
         "touches": {
           "description": "Databases (core or extra) receiving SQL from this module.",
           "type": "array",

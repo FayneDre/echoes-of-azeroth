@@ -17,7 +17,8 @@
     "defaultFlavor",
     "databases",
     "ports",
-    "processes"
+    "processes",
+    "instance"
   ],
   "properties": {
     "$schema": {
@@ -94,6 +95,49 @@
       "items": {
         "$ref": "#/$defs/process"
       }
+    },
+    "instance": {
+      "description": "Values the launcher imposes in every instance (ADR 0007): paths, ports, credentials, migration switches. Placeholders: ${dir.instance}, ${dir.logs}, ${dir.sql}, ${dir.data}, ${tool.mysql}, ${port.<name>}, ${network.bind}, ${modules.dbimport}; in 'connection': ${db.port}, ${db.user}, ${db.password}, ${db.name}.",
+      "type": "object",
+      "required": [
+        "connection",
+        "config",
+        "dbImport"
+      ],
+      "properties": {
+        "connection": {
+          "description": "Template of the value written to every database connection key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "description": "Config file (relative to configs/) -> key -> value. A value that is exactly one numeric placeholder is written as a number.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "common.schema.json#/$defs/configMap"
+          }
+        },
+        "dbImport": {
+          "description": "Tool that applies core and module SQL to the databases.",
+          "type": "object",
+          "required": [
+            "executable",
+            "configFile"
+          ],
+          "properties": {
+            "executable": {
+              "description": "Path relative to the instance root.",
+              "type": "string",
+              "minLength": 1
+            },
+            "configFile": {
+              "$ref": "common.schema.json#/$defs/configFilePath"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

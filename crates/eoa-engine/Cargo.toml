@@ -10,6 +10,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+eoa-conf.workspace = true
+eoa-core.workspace = true
+eoa-db.workspace = true
 eoa-store.workspace = true
 futures-util.workspace = true
 hex.workspace = true

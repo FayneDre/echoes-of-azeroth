@@ -162,7 +162,7 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
 | `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore (§8). Later: snapshot restore, Job Object. |
-| `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. |
+| `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. Keeps worldserver's stdin open: it is the console, and EOF on it shuts the server down. |
 | `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
 | `drivers/azerothcore` | planned | AzerothCore specifics (see §6). |
 | `app/src-tauri` | ✅ skeleton | Thin adapter: Tauri commands/events over the crates. |
@@ -205,9 +205,30 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
   `eoa component install mysql-8-4` chains them: 281 MB download + 1.26 GB
   extraction in about 6 s on a fast connection (2026-11-14).
 
+### 5.2 Installing an instance (ADR 0007)
+
+`eoa install <id> --server <artifact.zip> [--module ...] [--lan]`:
+
+1. Shared operations, each with its own journal: `component-<id>` (MySQL)
+   and `serverdata-<client>-<version>` (download + extract into
+   `serverdata/`). An instance rollback never touches them.
+2. `instance.json` + `secrets.json` are created once (modules, network,
+   ports, MySQL port, service password), so a resumed install has the same plan.
+3. `instance-<id>`: `extract-bin` (artifact `dist/`), `extract-sql`,
+   `db-init` (refuses a database it did not create; undo deletes only its
+   own), `db-start`, `db-provision` (databases + service account),
+   `render-config` (every file of the full build, layered, swapped in
+   atomically, reference copy in `configs/.eoa-rendered/`), `db-import`
+   (`run-tool`: dbimport with cwd = instance root, log in `logs/`), `db-stop`.
+
+The config layers are a pure function of the catalog, the resolution and the
+instance values (`eoa_engine::install::plan_configs`), tested against the real
+catalog in `crates/eoa-catalog/tests/install.rs`.
+
 ### Install engine step vocabulary
 
 `download` · `verify` · `extract` · `render-config` · `merge-config` ·
+`db-init` · `db-start` · `db-provision` · `db-stop` ·
 `db-restore-snapshot` · `db-import` · `run-tool` · `create-account` ·
 `create-character` · `set-config` · `copy-client-file` · `overlay-server-file` ·
 `register-firewall`. The vocabulary is closed and tested; emulator-specific
@@ -242,14 +263,16 @@ runtime, UI and updates are reused unchanged.
 %LOCALAPPDATA%\EchoesOfAzeroth\
 ├─ store\                 blobs by hash (shared cache)
 ├─ components\mysql-8-4\
-├─ instances\<id>\        bin\ sql\ data\ configs\ db\ logs\ instance.json  (cwd of the servers)
+├─ serverdata\<client>-<version>\   shared server data (ADR 0006)
+├─ instances\<id>\        bin\ sql\ configs\ db\ logs\ instance.json secrets.json  (cwd of the servers)
 ├─ clients\<id>\          metadata + managed patches (the client stays where it is)
 ├─ backups\<id>\
 └─ state\                 operation journal, locks
 ```
 
-Server data is shared from the store (hard links / junctions); files overridden
-by module assets (e.g. `dbc/Spell.dbc`) are per-instance overlays.
+Server data is extracted once per client version into `serverdata\` and shared
+through an absolute `DataDir` (ADR 0007); files overridden by module assets
+(e.g. `dbc/Spell.dbc`) will be per-instance overlays.
 
 ## 8. Database (MySQL 8.4 LTS, portable)
 

@@ -94,3 +94,30 @@ fn modules_pulled_in_by_a_required_module_must_not_be_removable() {
         "{issues:?}"
     );
 }
+
+#[test]
+fn instance_placeholders_are_checked() {
+    use eoa_core::manifest::ConfigValue;
+    let mut catalog = catalog();
+    let emu = &mut catalog.emulators.get_mut("azerothcore").unwrap().manifest;
+    let world = emu.instance.config.get_mut("worldserver.conf").unwrap();
+    world.insert("A".into(), ConfigValue::Text("${dir.nowhere}".into()));
+    world.insert("B".into(), ConfigValue::Text("${port.missing}".into()));
+    world.insert("C".into(), ConfigValue::Text("${dir.logs".into()));
+    emu.instance.connection.push_str(";${dir.logs}");
+    let messages: Vec<String> = eoa_catalog::validate(&catalog)
+        .into_iter()
+        .map(|i| i.message)
+        .collect();
+    for expected in [
+        "worldserver.conf A: unknown placeholder '${dir.nowhere}'",
+        "worldserver.conf B: unknown placeholder '${port.missing}'",
+        "worldserver.conf C: unterminated placeholder",
+        "instance.connection: unknown placeholder '${dir.logs}'",
+    ] {
+        assert!(
+            messages.iter().any(|m| m.contains(expected)),
+            "{expected} in {messages:?}"
+        );
+    }
+}
