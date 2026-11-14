@@ -13,6 +13,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0006](0006-upstream-server-data.md) | Server data downloaded from pinned upstream release, never re-hosted | Accepted |
 | [0007](0007-instance-config-in-manifest.md) | Instance config declared in the emulator manifest; instance layout | Accepted |
 | [0008](0008-module-sql-when-disabled.md) | Module SQL applied while disabled, per manifest flag (`applyWhenDisabled`) | Accepted |
+| [0009](0009-database-snapshot.md) | Database snapshot: cold copy of the MySQL data directory after base dbimport | Accepted |
 
 Template:
 
