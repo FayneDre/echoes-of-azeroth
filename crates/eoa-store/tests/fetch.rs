@@ -25,7 +25,11 @@ struct Behaviour {
 
 struct TestServer {
     url: String,
+    /// Body bytes written successfully.
     body_bytes_sent: Arc<AtomicU64>,
+    /// The same, for requests received while `healthy` was true only: requests
+    /// of an earlier failed fetch still in flight are never counted here.
+    healthy_bytes_sent: Arc<AtomicU64>,
     healthy: Arc<AtomicBool>,
 }
 
@@ -33,21 +37,28 @@ fn serve(data: Arc<Vec<u8>>, behaviour: Behaviour) -> TestServer {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/file.bin", listener.local_addr().unwrap());
     let body_bytes_sent = Arc::new(AtomicU64::new(0));
+    let healthy_bytes_sent = Arc::new(AtomicU64::new(0));
     let healthy = Arc::new(AtomicBool::new(true));
     let segments = Arc::new(AtomicUsize::new(0));
     let behaviour = Arc::new(behaviour);
-    let (sent, ok) = (body_bytes_sent.clone(), healthy.clone());
+    let (sent, sent_healthy, ok) = (
+        body_bytes_sent.clone(),
+        healthy_bytes_sent.clone(),
+        healthy.clone(),
+    );
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let (data, behaviour, sent, ok, segments) = (
+            let (data, behaviour, sent, sent_healthy, ok, segments) = (
                 data.clone(),
                 behaviour.clone(),
                 sent.clone(),
+                sent_healthy.clone(),
                 ok.clone(),
                 segments.clone(),
             );
             std::thread::spawn(move || {
+                let healthy_at_request = ok.load(Ordering::SeqCst);
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut range = None;
                 let mut line = String::new();
@@ -69,9 +80,12 @@ fn serve(data: Arc<Vec<u8>>, behaviour: Behaviour) -> TestServer {
                         "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n",
                         body.len()
                     );
-                    let _ = stream.write_all(head.as_bytes());
-                    let _ = stream.write_all(body);
-                    sent.fetch_add(body.len() as u64, Ordering::SeqCst);
+                    if stream.write_all(head.as_bytes()).is_ok() && stream.write_all(body).is_ok() {
+                        sent.fetch_add(body.len() as u64, Ordering::SeqCst);
+                        if healthy_at_request {
+                            sent_healthy.fetch_add(body.len() as u64, Ordering::SeqCst);
+                        }
+                    }
                 };
                 if behaviour.not_found {
                     return respond(&mut stream, "404 Not Found", String::new(), b"");
@@ -113,6 +127,7 @@ fn serve(data: Arc<Vec<u8>>, behaviour: Behaviour) -> TestServer {
     TestServer {
         url,
         body_bytes_sent,
+        healthy_bytes_sent,
         healthy,
     }
 }
@@ -283,13 +298,15 @@ async fn interrupted_download_resumes_missing_segments_only() {
     assert!(store.fetch(&request, &NoProgress).await.is_err());
     let after_failure = server.body_bytes_sent.load(Ordering::SeqCst);
     assert!(after_failure > 0 && after_failure < data.len() as u64);
+    assert_eq!(server.healthy_bytes_sent.load(Ordering::SeqCst), 0);
 
     // Network back: only the missing part is transferred.
     server.healthy.store(true, Ordering::SeqCst);
     let progress = Counter::default();
     let path = store.fetch(&request, &progress).await.unwrap();
     assert_eq!(std::fs::read(path).unwrap(), *data);
-    let resumed = server.body_bytes_sent.load(Ordering::SeqCst) - after_failure;
+    // Counted by request time, not by when the server thread finished writing.
+    let resumed = server.healthy_bytes_sent.load(Ordering::SeqCst);
     assert!(
         resumed < data.len() as u64,
         "resumed {resumed} bytes, should be less than the full {}",
