@@ -6,6 +6,7 @@
 //! instance: binaries and SQL from the server artifact, a private MySQL,
 //! rendered configs, dbimport.
 
+pub mod bindings;
 pub mod config;
 pub mod index;
 mod steps;
@@ -70,6 +71,8 @@ pub struct InstancePaths {
     pub db: PathBuf,
     pub record: PathBuf,
     pub secrets: PathBuf,
+    /// Results of module post-install steps.
+    pub bindings: PathBuf,
 }
 
 impl Layout {
@@ -108,6 +111,7 @@ impl Layout {
             db: root.join("db"),
             record: root.join("instance.json"),
             secrets: root.join("secrets.json"),
+            bindings: root.join("bindings.json"),
             root,
         }
     }
@@ -448,18 +452,26 @@ fn check_snapshot(
     Ok(())
 }
 
-/// `instance-<id>`: builds the instance from the server artifact (a ZIP with
-/// `dist/` and `sql/`, as produced by CI). With a database snapshot (ADR
-/// 0009), the database is restored from it instead of being initialised
-/// empty; dbimport then only applies what the snapshot lacks.
-pub fn instance_operation(
+/// What every operation on an existing instance needs: its resolution, its
+/// database and the steps that (re)render its configs and run dbimport.
+pub struct InstancePlan {
+    pub resolution: Resolution,
+    pub db: Arc<eoa_db::Instance>,
+    /// Database component (id, version).
+    pub mysql: (String, String),
+    pub databases: Vec<String>,
+    pub render: RenderConfigs,
+    pub import: RunTool,
+}
+
+/// Plans the configs and dbimport of an instance from the catalog and its
+/// record (modules included). No I/O.
+pub fn instance_plan(
     catalog: &Catalog,
     layout: &Layout,
     record: &InstanceRecord,
     secrets: &Secrets,
-    server_artifact: &Path,
-    db_snapshot: Option<&Path>,
-) -> Result<Operation<()>, PlanError> {
+) -> Result<InstancePlan, PlanError> {
     let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
     let resolution: Resolution =
         eoa_core::resolve(catalog, &record.emulator, Some(&record.flavor), &selected)?;
@@ -496,12 +508,47 @@ pub fn instance_operation(
         db_password: &secrets.db_password,
     };
     let files = plan_configs(catalog, &resolution, &values)?;
-    let database_names = databases(catalog, &resolution)?
+    let databases = databases(catalog, &resolution)?
         .into_iter()
         .map(|d| d.name)
         .collect();
     let tool = &emu.instance.db_import;
+    Ok(InstancePlan {
+        db,
+        mysql: (mysql.id.clone(), mysql.version.clone()),
+        databases,
+        render: RenderConfigs {
+            dist_dir: paths.bin.join("configs"),
+            target: paths.configs.clone(),
+            files,
+            bindings: Some(paths.bindings.clone()),
+        },
+        import: RunTool {
+            id: "db-import".into(),
+            executable: paths.root.join(&tool.executable),
+            args: vec!["-c".into(), format!("configs/{}", tool.config_file)],
+            cwd: paths.root.clone(),
+            log: paths.logs.join("dbimport.log"),
+        },
+        resolution,
+    })
+}
 
+/// `instance-<id>`: builds the instance from the server artifact (a ZIP with
+/// `dist/` and `sql/`, as produced by CI). With a database snapshot (ADR
+/// 0009), the database is restored from it instead of being initialised
+/// empty; dbimport then only applies what the snapshot lacks.
+pub fn instance_operation(
+    catalog: &Catalog,
+    layout: &Layout,
+    record: &InstanceRecord,
+    secrets: &Secrets,
+    server_artifact: &Path,
+    db_snapshot: Option<&Path>,
+) -> Result<Operation<()>, PlanError> {
+    let plan = instance_plan(catalog, layout, record, secrets)?;
+    let paths = layout.instance(&record.id);
+    let db = plan.db;
     let op = Operation::new(format!("instance-{}", record.id))
         .step(Extract::new("extract-bin", server_artifact, &paths.bin).subdir("dist"))
         .step(Extract::new("extract-sql", server_artifact, &paths.sql).subdir("sql"));
@@ -510,8 +557,8 @@ pub fn instance_operation(
             check_snapshot(
                 snapshot,
                 server_artifact,
-                (&mysql.id, &mysql.version),
-                &dbimport_modules(catalog, &resolution)?,
+                (&plan.mysql.0, &plan.mysql.1),
+                &dbimport_modules(catalog, &plan.resolution)?,
             )?;
             op.step(DbClaim { db: db.clone() })
                 .step(Extract::new("extract-db", snapshot, db.datadir()).subdir("data"))
@@ -524,23 +571,18 @@ pub fn instance_operation(
     Ok(op
         .step(DbProvision {
             db: db.clone(),
-            databases: database_names,
+            databases: plan.databases,
             user: secrets.db_user.clone(),
             password: secrets.db_password.clone(),
         })
-        .step(RenderConfigs {
-            dist_dir: paths.bin.join("configs"),
-            target: paths.configs.clone(),
-            files,
-        })
-        .step(RunTool {
-            id: "db-import".into(),
-            executable: paths.root.join(&tool.executable),
-            args: vec!["-c".into(), format!("configs/{}", tool.config_file)],
-            cwd: paths.root.clone(),
-            log: paths.logs.join("dbimport.log"),
-        })
+        .step(plan.render)
+        .step(plan.import)
         .step(DbStop { db }))
+}
+
+/// Writes `instance.json` after a change of modules (atomic).
+pub fn save_record(layout: &Layout, record: &InstanceRecord) -> Result<(), PlanError> {
+    write_json(&layout.instance(&record.id).record, record)
 }
 
 #[cfg(test)]

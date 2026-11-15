@@ -218,6 +218,9 @@ pub struct RenderConfigs {
     pub dist_dir: PathBuf,
     pub target: PathBuf,
     pub files: Vec<ConfigFilePlan>,
+    /// `bindings.json` of the instance: expands `set-config` placeholders
+    /// at run time (they are only known once post-install steps have run).
+    pub bindings: Option<PathBuf>,
 }
 
 impl RenderConfigs {
@@ -226,7 +229,12 @@ impl RenderConfigs {
     }
 
     fn render_into(&self, staging: &Path) -> Result<(), StepError> {
+        let bindings = match &self.bindings {
+            Some(path) => super::bindings::Bindings::load(path)?,
+            None => Default::default(),
+        };
         for plan in &self.files {
+            let layers = bindings.resolve(&plan.layers)?;
             let dist = self.dist_dir.join(&plan.dist);
             let text = std::fs::read_to_string(&dist).map_err(|e| {
                 EngineError::io(&dist)(std::io::Error::new(
@@ -234,7 +242,7 @@ impl RenderConfigs {
                     format!("missing from the server build: {e}"),
                 ))
             })?;
-            let rendered = eoa_conf::render(&text, &plan.layers)?;
+            let rendered = eoa_conf::render(&text, &layers)?;
             for out in [
                 staging.join(&plan.file),
                 staging.join(".eoa-rendered").join(&plan.file),
@@ -258,7 +266,7 @@ impl<C: Sync> Step<C> for RenderConfigs {
     }
     /// Hash of the layers (they contain the service password: never stored raw).
     fn fingerprint(&self) -> String {
-        let plan = format!("{:?} {:?}", self.target, self.files);
+        let plan = format!("{:?} {:?} {:?}", self.target, self.files, self.bindings);
         hex::encode(Sha256::digest(plan.as_bytes()))
     }
     fn run<'a>(&'a self, cx: &'a StepContext<'a, C>) -> StepFuture<'a> {

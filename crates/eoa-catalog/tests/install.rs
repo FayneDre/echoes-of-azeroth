@@ -222,3 +222,46 @@ fn databases_include_module_ones() {
         ]
     );
 }
+
+#[test]
+fn ahbot_account_and_character_come_from_its_post_install_bindings() {
+    use eoa_engine::install::bindings::Bindings;
+    let plans = plan(&["mod-ah-bot"]);
+    let ahbot = plans
+        .iter()
+        .find(|p| p.file == "modules/mod_ahbot.conf")
+        .unwrap();
+    // Before post-install: the keys keep their upstream default (absent).
+    let before = Bindings::default().resolve(&ahbot.layers).unwrap();
+    assert!(before
+        .iter()
+        .all(|l| !l.values.contains_key("AuctionHouseBot.Account")));
+    let mut bindings = Bindings::default();
+    bindings.set("mod-ah-bot", "ahbot_account.id", 104);
+    bindings.set("mod-ah-bot", "ahbot_character.guid", 1002);
+    let after = bindings.resolve(&ahbot.layers).unwrap();
+    let value = |key: &str| {
+        after
+            .iter()
+            .filter(|l| l.kind == LayerKind::Launcher)
+            .find_map(|l| l.values.get(key).cloned())
+    };
+    assert_eq!(
+        value("AuctionHouseBot.Account"),
+        Some(ConfigValue::Integer(104))
+    );
+    assert_eq!(
+        value("AuctionHouseBot.GUID"),
+        Some(ConfigValue::Integer(1002))
+    );
+    // Not chosen: no binding layer at all.
+    let off = plan(&[]);
+    let off = off
+        .iter()
+        .find(|p| p.file == "modules/mod_ahbot.conf")
+        .unwrap();
+    assert!(off
+        .layers
+        .iter()
+        .all(|l| !l.values.contains_key("AuctionHouseBot.GUID")));
+}

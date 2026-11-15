@@ -5,7 +5,7 @@ use std::path::Path;
 
 use eoa_conf::{Layer, LayerKind};
 use eoa_core::manifest::{
-    Activation, ConfigChanges, ConfigMap, ConfigValue, Database, ModuleOption,
+    Activation, ConfigChanges, ConfigMap, ConfigValue, Database, ModuleOption, PostInstallStep,
 };
 use eoa_core::template::{self, Variables};
 use eoa_core::{Catalog, Resolution};
@@ -184,6 +184,13 @@ pub fn plan_configs(
                 }
             }
             add(&options, LayerKind::ModuleDefault, &module.id);
+            // Post-install results (account ids...): locked, expanded at
+            // render time from the instance's bindings (`bindings.rs`).
+            for step in &module.post_install {
+                if let PostInstallStep::SetConfig { values } = step {
+                    add(values, LayerKind::Launcher, &module.id);
+                }
+            }
         }
     }
 

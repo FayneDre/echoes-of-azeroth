@@ -461,7 +461,7 @@
             },
             "username": {
               "type": "string",
-              "pattern": "^[A-Z0-9_]{3,16}$"
+              "pattern": "^[A-Z0-9]{3,16}$"
             },
             "gmLevel": {
               "type": "integer",
