@@ -163,6 +163,10 @@ pub fn apply_modules_operation(
 ///
 /// Every database is dumped first (kept in `backups/<id>/`); a failure puts
 /// the old binaries, SQL tree and configs back and restores the dump.
+///
+/// `label` names the dump (`before-<label>.sql`) and makes the plan unique:
+/// a repair with the same build is a new operation, a resumed one is not.
+#[allow(clippy::too_many_arguments)] // the update inputs, each distinct
 pub fn update_operation(
     catalog: &Catalog,
     layout: &Layout,
@@ -171,22 +175,19 @@ pub fn update_operation(
     driver: Arc<dyn EmulatorDriver>,
     store: &Arc<Store>,
     server_artifact: &Path,
+    label: &str,
 ) -> Result<Operation<()>, RuntimeError> {
     // An interrupted module change (tables moved aside) must finish first.
     install::ensure_finished(layout, &[install::modules_operation_id(&record.id)])?;
     let plan = install::instance_plan(catalog, layout, record, secrets)?;
     let (stopped, post_install) = common_steps(catalog, layout, record, &plan, driver)?;
     let paths = layout.instance(&record.id);
-    let to = install::artifact_build_key(server_artifact)?;
-    let from = record.build.as_deref().unwrap_or("unknown");
     let backup = DbBackup {
         db: plan.db.clone(),
         databases: plan.databases.clone(),
-        out: layout.backups(&record.id).join(format!(
-            "before-update-{}-to-{}.sql",
-            short(from),
-            short(&to)
-        )),
+        out: layout
+            .backups(&record.id)
+            .join(format!("before-{label}.sql")),
     };
     let mut op = Operation::new(install::instance_operation_id(&record.id)).step(stopped);
     // The catalog of the new release may pin other asset files.
@@ -267,8 +268,14 @@ pub fn set_options(
     Ok((new, old))
 }
 
-fn short(key: &str) -> &str {
-    &key[..key.len().min(16)]
+/// Backup label of an update from one build key to another.
+pub fn update_label(from: Option<&str>, to: &str) -> String {
+    let short = |key: &str| key[..key.len().min(16)].to_owned();
+    format!(
+        "update-{}-to-{}",
+        short(from.unwrap_or("unknown")),
+        short(to)
+    )
 }
 
 fn common_steps(

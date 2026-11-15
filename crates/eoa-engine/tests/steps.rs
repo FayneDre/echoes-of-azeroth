@@ -288,3 +288,29 @@ async fn subdir_extracts_only_that_part_of_the_archive() {
         "dist"
     );
 }
+
+/// Release artifacts are ZIPs with zstd entries (ADR 0015).
+#[tokio::test]
+async fn extracts_zstd_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("server.zip");
+    let sql = b"INSERT INTO t VALUES (1);\n".repeat(10_000);
+    make_zip(
+        &archive,
+        &[
+            ("dist/", b""),
+            ("dist/worldserver.exe", b"MZ fake"),
+            ("sql/base.sql", &sql),
+        ],
+        zip::CompressionMethod::Zstd,
+    );
+    let target = dir.path().join("bin");
+    let step = Extract::new("extract-bin", &archive, &target).subdir("dist");
+    let outcome = extract(step, &dir.path().join("state")).await.unwrap();
+    assert_eq!(outcome, Outcome::Completed);
+    assert_eq!(
+        fs::read(target.join("worldserver.exe")).unwrap(),
+        b"MZ fake"
+    );
+    assert_eq!(listing(&target), ["worldserver.exe"]);
+}

@@ -1,0 +1,27 @@
+[package]
+name = "eoa-launcher"
+description = "Launcher services shared by the desktop app and the CLI: install, update, modules, options, client, play sessions (ADR 0014)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eoa-catalog.workspace = true
+eoa-client.workspace = true
+eoa-core.workspace = true
+eoa-db.workspace = true
+eoa-driver-azerothcore.workspace = true
+eoa-engine.workspace = true
+eoa-runtime.workspace = true
+eoa-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

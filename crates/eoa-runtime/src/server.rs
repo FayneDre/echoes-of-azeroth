@@ -170,6 +170,21 @@ impl Server {
         driver: &dyn EmulatorDriver,
         observer: Observer<'_>,
     ) -> Result<Running, RuntimeError> {
+        let running = self
+            .start_unless(driver, observer, std::future::pending())
+            .await?;
+        Ok(running.expect("never cancelled"))
+    }
+
+    /// Like [`Server::start`], but gives up when `stop` completes first:
+    /// what was started (processes and database) is then stopped cleanly
+    /// and `None` is returned.
+    pub async fn start_unless(
+        self: &Arc<Self>,
+        driver: &dyn EmulatorDriver,
+        observer: Observer<'_>,
+        stop: impl std::future::Future<Output = ()>,
+    ) -> Result<Option<Running>, RuntimeError> {
         self.check_driver(driver)?;
         let id = &self.record.id;
         let lock = install::lock_instance(&self.layout, id)?;
@@ -189,11 +204,23 @@ impl Server {
             processes: Vec::new(),
             _lock: lock,
         };
-        if let Err(error) = self.start_processes(driver, observer, &mut running).await {
-            running.stop(observer).await;
-            return Err(error);
+        // The processes are recorded in `running` as soon as they are
+        // spawned, so a stop during a readiness wait stops them too.
+        let started = tokio::select! {
+            started = self.start_processes(driver, observer, &mut running) => Some(started),
+            () = stop => None,
+        };
+        match started {
+            Some(Ok(())) => Ok(Some(running)),
+            Some(Err(error)) => {
+                running.stop(observer).await;
+                Err(error)
+            }
+            None => {
+                running.stop(observer).await;
+                Ok(None)
+            }
         }
-        Ok(running)
     }
 
     async fn start_processes(

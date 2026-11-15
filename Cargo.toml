@@ -21,6 +21,7 @@ eoa-conf = { path = "crates/eoa-conf" }
 eoa-db = { path = "crates/eoa-db" }
 eoa-runtime = { path = "crates/eoa-runtime" }
 eoa-client = { path = "crates/eoa-client" }
+eoa-launcher = { path = "crates/eoa-launcher" }
 eoa-driver-azerothcore = { path = "drivers/azerothcore" }
 
 # External crates
@@ -44,7 +45,9 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "sync", "time"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2.14"
 # Directory links without privileges (server data overlay, ADR 0013).
 junction = "2"
 # Module assets shipped as .7z archives (pure Rust, decoding only).
@@ -52,7 +55,7 @@ sevenz-rust2 = { version = "0.25", default-features = false }
 # Job Objects: supervised processes that hold no state die with the launcher.
 win32job = "2"
 # Pure-Rust deflate (zlib-rs): no C toolchain, fast decoding.
-zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs", "zstd"] }
 
 [profile.release]
 lto = true
