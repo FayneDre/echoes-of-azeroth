@@ -41,7 +41,7 @@ pub enum SessionEvent {
     #[serde(rename_all = "camelCase")]
     ProcessStopped {
         process: String,
-        killed: bool,
+        how: StopOutcome,
     },
     DatabaseStopped,
     Warning {
@@ -94,12 +94,25 @@ impl SessionEvent {
             ServerEvent::Stopping { process } => Self::ProcessStopping { process },
             ServerEvent::Stopped { process, how } => Self::ProcessStopped {
                 process,
-                killed: how == Stopped::Killed,
+                how: match how {
+                    Stopped::Clean => StopOutcome::Clean,
+                    Stopped::Killed => StopOutcome::Killed,
+                    Stopped::AlreadyExited => StopOutcome::AlreadyExited,
+                },
             },
             ServerEvent::DatabaseStopped => Self::DatabaseStopped,
             ServerEvent::Warning(message) => Self::Warning { message },
         }
     }
+}
+
+/// How a process stop went (see [`Stopped`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StopOutcome {
+    Clean,
+    Killed,
+    AlreadyExited,
 }
 
 pub type EventSink = Arc<dyn Fn(SessionEvent) + Send + Sync>;

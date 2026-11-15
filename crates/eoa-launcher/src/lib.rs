@@ -12,6 +12,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod backups;
 pub mod crash;
 mod error;
 pub mod progress;
@@ -119,6 +120,13 @@ enum Pending {
     /// Update or repair (`label` names the database dump).
     #[serde(rename_all = "camelCase")]
     Update { server: PathBuf, label: String },
+    /// Restore of the player databases `databases` from the backup `dump`.
+    #[serde(rename_all = "camelCase")]
+    Restore {
+        dump: PathBuf,
+        databases: Vec<String>,
+        label: String,
+    },
 }
 
 impl Pending {
@@ -129,8 +137,16 @@ impl Pending {
                 db_snapshot,
             } => server.is_file() && db_snapshot.as_ref().is_none_or(|s| s.is_file()),
             Pending::Update { server, .. } => server.is_file(),
+            Pending::Restore { dump, .. } => dump.is_file(),
         }
     }
+}
+
+fn unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
 }
 
 fn io_error(path: PathBuf, source: std::io::Error) -> LauncherError {
@@ -396,7 +412,25 @@ impl Launcher {
                     db_snapshot.as_deref(),
                 )?;
                 self.run(&op, observer, cancel).await?;
-                server
+                Some(server)
+            }
+            Pending::Restore {
+                dump,
+                databases,
+                label,
+            } => {
+                let op = eoa_runtime::modules::restore_operation(
+                    &self.catalog,
+                    &self.layout,
+                    &record,
+                    &secrets,
+                    driver.clone(),
+                    dump,
+                    databases.clone(),
+                    label,
+                )?;
+                self.run(&op, observer, cancel).await?;
+                None
             }
             Pending::Update { server, label } => {
                 let op = eoa_runtime::modules::update_operation(
@@ -410,10 +444,10 @@ impl Launcher {
                     label,
                 )?;
                 self.run(&op, observer, cancel).await?;
-                server
+                Some(server)
             }
         };
-        let build = install::artifact_build_key(server)?;
+        let build = server.map(|s| install::artifact_build_key(s)).transpose()?;
         if matches!(pending, Pending::Install { .. }) {
             // Part of the install: until it completes, the instance is not
             // installed and `resume` runs both operations again (the first
@@ -429,9 +463,15 @@ impl Launcher {
             self.run(&op, observer, cancel).await?;
         }
         let mut record = record;
-        record.build = Some(build);
-        install::save_record(&self.layout, &record)?;
+        if let Some(build) = build {
+            record.build = Some(build);
+            install::save_record(&self.layout, &record)?;
+        }
         self.clear_pending(&record.id)?;
+        // Old automatic dumps go once a new one exists (never manual ones).
+        // Best effort: the change itself succeeded, a locked file is
+        // pruned next time.
+        let _ = backups::prune(&self.layout.backups(&record.id), backups::KEEP_AUTOMATIC);
         Ok(record)
     }
 
@@ -462,6 +502,12 @@ impl Launcher {
                     .fetch_build(record, None, false, observer, cancel)
                     .await?;
                 Pending::Update { server, label }
+            }
+            Pending::Restore { dump, .. } => {
+                return Err(LauncherError::Invalid(format!(
+                    "the backup {} being restored was deleted",
+                    dump.display()
+                )))
             }
         })
     }
@@ -513,11 +559,7 @@ impl Launcher {
             .fetch_build(&record, None, false, observer, cancel)
             .await?;
         let to = install::artifact_build_key(&server)?;
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or_default();
-        let label = format!("repair-{}-{stamp}", &to[..to.len().min(16)]);
+        let label = format!("repair-{}-{}", &to[..to.len().min(16)], unix_secs());
         let pending = Pending::Update { server, label };
         self.save_pending(id, &pending)?;
         self.finish(record, pending, observer, cancel).await
@@ -658,8 +700,10 @@ impl Launcher {
         let Some(entry) = self.catalog.emulator(&record.emulator) else {
             return Vec::new();
         };
-        record
-            .modules
+        // Mandatory modules have options too (Playerbots).
+        let modules = eoa_runtime::modules::enabled_modules(&self.catalog, record)
+            .unwrap_or_else(|_| record.modules.clone());
+        modules
             .iter()
             .filter_map(|module| {
                 let manifest = entry.modules.get(module)?;
@@ -686,6 +730,104 @@ impl Launcher {
         let server = eoa_runtime::Server::open(&self.catalog, &self.layout, id)?;
         let driver = driver(server.driver_id())?;
         Ok(server.create_account(driver.as_ref(), account).await?)
+    }
+
+    // -------------------------------------------------------------- backups
+
+    /// Folder of an instance's backups (may not exist yet).
+    pub fn backups_dir(&self, id: &str) -> PathBuf {
+        self.layout.backups(id)
+    }
+
+    /// Backups of an instance, newest first.
+    pub fn backups(&self, id: &str) -> Result<Vec<backups::Backup>> {
+        install::open_existing(&self.layout, id)?;
+        backups::list(&self.layout.backups(id))
+    }
+
+    /// Dumps the player databases (characters, accounts, bots) to a new
+    /// manual backup: what [`restore`](Self::restore) puts back. Content
+    /// databases are left out, the build and modules rebuild them. The
+    /// servers must be stopped (the instance lock): the database is
+    /// started for the dump and stopped again.
+    pub async fn backup_now(&self, id: &str) -> Result<backups::Backup> {
+        let (record, secrets) = install::open_existing(&self.layout, id)?;
+        let _lock = install::lock_instance(&self.layout, id)?;
+        install::ensure_finished(
+            &self.layout,
+            &[
+                install::instance_operation_id(id),
+                install::modules_operation_id(id),
+            ],
+        )?;
+        let plan = install::instance_plan(&self.catalog, &self.layout, &record, &secrets)?;
+        let dir = self.layout.backups(id);
+        std::fs::create_dir_all(&dir).map_err(|e| io_error(dir.clone(), e))?;
+        let name = backups::manual_name(unix_secs());
+        let out = dir.join(&name);
+        plan.db.start().await?;
+        let player = eoa_runtime::modules::player_databases(&self.catalog, &record)?;
+        let databases: Vec<&str> = player.iter().map(String::as_str).collect();
+        let dumped = plan.db.backup(&databases, &out).await;
+        let stopped = plan.db.stop().await;
+        dumped?;
+        stopped?;
+        backups::list(&dir)?
+            .into_iter()
+            .find(|b| b.name == name)
+            .ok_or(LauncherError::BackupNotFound(name))
+    }
+
+    /// Deletes one backup file.
+    pub fn delete_backup(&self, id: &str, name: &str) -> Result<()> {
+        install::open_existing(&self.layout, id)?;
+        let _lock = install::lock_instance(&self.layout, id)?;
+        let path = backups::resolve(&self.layout.backups(id), name)?;
+        std::fs::remove_file(&path).map_err(|e| io_error(path, e))
+    }
+
+    /// Puts the player databases (characters, accounts, bots) back as the
+    /// backup `name` holds them; the current state is dumped first. Content
+    /// databases are kept, and dbimport migrates the result to the current
+    /// build. Resumable like an update.
+    pub async fn restore(
+        &self,
+        id: &str,
+        name: &str,
+        observer: &dyn Observer,
+        cancel: &CancelToken,
+    ) -> Result<InstanceRecord> {
+        let summary = self.instance(id)?;
+        // An interrupted change must be resumed first. A pending.json left
+        // by a change that was rolled back is stale: replaced below, as
+        // update and repair do.
+        if !summary.installed || summary.unfinished.is_some() {
+            return Err(install::PlanError::Unfinished(id.to_owned()).into());
+        }
+        let record = summary.record;
+        let _lock = install::lock_instance(&self.layout, id)?;
+        let dump = backups::resolve(&self.layout.backups(id), name)?;
+        let held = {
+            let dump = dump.clone();
+            tokio::task::spawn_blocking(move || eoa_db::dump_databases(&dump))
+                .await
+                .map_err(|e| LauncherError::Invalid(e.to_string()))??
+        };
+        let databases: Vec<String> =
+            eoa_runtime::modules::player_databases(&self.catalog, &record)?
+                .into_iter()
+                .filter(|d| held.contains(d))
+                .collect();
+        if databases.is_empty() {
+            return Err(LauncherError::BackupUnusable(name.to_owned()));
+        }
+        let pending = Pending::Restore {
+            dump,
+            databases,
+            label: format!("restore-{}", unix_secs()),
+        };
+        self.save_pending(id, &pending)?;
+        self.finish(record, pending, observer, cancel).await
     }
 
     // --------------------------------------------------------------- client
@@ -753,6 +895,36 @@ impl Launcher {
         // The local client always reaches the servers through the loopback.
         let report =
             eoa_client::prepare(&dir, &manifest, &mut state, "127.0.0.1", &record.id, &files)?;
+        Ok(PreparedClient {
+            manifest,
+            state,
+            report,
+            lock,
+        })
+    }
+
+    /// Points the registered client of `emulator` at a realm hosted on
+    /// another computer of the local network (`address`: IPv4 or host
+    /// name). The host's module files are not known here, so the files the
+    /// launcher put in the client are removed: a realm with client patches
+    /// needs them copied by hand.
+    pub fn prepare_client_for_lan(&self, emulator: &str, address: &str) -> Result<PreparedClient> {
+        let address = address.trim();
+        let valid = !address.is_empty()
+            && address.len() <= 253
+            && address
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+        if !valid {
+            return Err(LauncherError::InvalidAddress(address.to_owned()));
+        }
+        let manifest = self.client_manifest_for(emulator)?.clone();
+        let dir = self.layout.clients();
+        let lock = eoa_client::lock(&dir, &manifest.id)?;
+        let mut state = eoa_client::load(&dir, &manifest.id)?
+            .ok_or_else(|| LauncherError::NoClient(manifest.version.clone()))?;
+        let server = format!("lan-{address}");
+        let report = eoa_client::prepare(&dir, &manifest, &mut state, address, &server, &[])?;
         Ok(PreparedClient {
             manifest,
             state,

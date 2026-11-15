@@ -35,7 +35,7 @@ use eoa_core::manifest::{EmulatorManifest, PostInstallStep, Readiness};
 use eoa_core::Catalog;
 use eoa_engine::install::bindings::Bindings;
 use eoa_engine::install::{
-    self, DbBackup, DbRegenerate, DbStart, DbStop, InstanceRecord, Layout, Secrets,
+    self, DbBackup, DbRegenerate, DbRestore, DbStart, DbStop, InstanceRecord, Layout, Secrets,
 };
 use eoa_engine::steps::Extract;
 use eoa_engine::{Operation, Step, StepContext, StepFuture};
@@ -208,6 +208,79 @@ pub fn update_operation(
         .step(DbStop { db: plan.db }))
 }
 
+/// Puts the player databases back from a backup (ADR 0016):
+///
+/// ```text
+/// servers-stopped → db-start → db-backup → db-restore → db-import → db-stop
+/// ```
+///
+/// Every database is dumped first (`before-<label>.sql`): a failure, or a
+/// later change of mind, gets the current state back. Only the player
+/// databases the dump holds (`databases`) are replaced; content databases
+/// stay as the current build and module set made them, and dbimport
+/// migrates the restored ones to the current build.
+#[allow(clippy::too_many_arguments)] // the restore inputs, each distinct
+pub fn restore_operation(
+    catalog: &Catalog,
+    layout: &Layout,
+    record: &InstanceRecord,
+    secrets: &Secrets,
+    driver: Arc<dyn EmulatorDriver>,
+    dump: &Path,
+    databases: Vec<String>,
+    label: &str,
+) -> Result<Operation<()>, RuntimeError> {
+    install::ensure_finished(layout, &[install::modules_operation_id(&record.id)])?;
+    let plan = install::instance_plan(catalog, layout, record, secrets)?;
+    let (stopped, _) = common_steps(catalog, layout, record, &plan, driver)?;
+    Ok(Operation::new(install::instance_operation_id(&record.id))
+        .step(stopped)
+        .step(DbStart {
+            db: plan.db.clone(),
+        })
+        .step(DbBackup {
+            db: plan.db.clone(),
+            databases: plan.databases.clone(),
+            out: layout
+                .backups(&record.id)
+                .join(format!("before-{label}.sql")),
+        })
+        .step(DbRestore {
+            db: plan.db.clone(),
+            databases,
+            dump: dump.to_path_buf(),
+        })
+        .step(plan.import)
+        .step(DbStop { db: plan.db }))
+}
+
+/// Every module running on an instance: the flavor's mandatory ones and
+/// the chosen ones, in resolution order.
+pub fn enabled_modules(
+    catalog: &Catalog,
+    record: &InstanceRecord,
+) -> Result<Vec<String>, RuntimeError> {
+    let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
+    let resolution = eoa_core::resolve(catalog, &record.emulator, Some(&record.flavor), &selected)
+        .map_err(install::PlanError::from)?;
+    Ok(resolution.modules)
+}
+
+/// Names of the player databases (`playerData: true`) of an instance.
+pub fn player_databases(
+    catalog: &Catalog,
+    record: &InstanceRecord,
+) -> Result<Vec<String>, RuntimeError> {
+    let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
+    let resolution = eoa_core::resolve(catalog, &record.emulator, Some(&record.flavor), &selected)
+        .map_err(install::PlanError::from)?;
+    Ok(install::databases(catalog, &resolution)?
+        .into_iter()
+        .filter(|d| d.player_data)
+        .map(|d| d.name)
+        .collect())
+}
+
 /// `server-data`: the instance overlay of the selected server files.
 fn overlay(
     layout: &Layout,
@@ -237,7 +310,8 @@ pub fn set_options(
         module: module.to_owned(),
         message,
     };
-    if !old.modules.iter().any(|m| m == module) {
+    // Mandatory modules are not in `old.modules` but are always on.
+    if !enabled_modules(catalog, &old)?.iter().any(|m| m == module) {
         return Err(module_error(
             "this module is not enabled on the instance".into(),
         ));

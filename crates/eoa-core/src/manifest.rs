@@ -130,7 +130,8 @@ pub enum StopMethod {
     /// happens when the launcher dies, since the pipe closes with it.
     #[serde(rename_all = "camelCase")]
     CloseStdin {
-        /// Time allowed before the process is killed (default 300 s).
+        /// Time the shutdown may print nothing before the process is killed
+        /// (default 300 s); a shutdown that still logs is never killed.
         #[serde(default)]
         timeout_seconds: Option<u64>,
     },

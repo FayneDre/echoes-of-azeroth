@@ -18,8 +18,10 @@ use crate::RuntimeError;
 
 /// Lines of output kept in memory for error messages.
 const TAIL_LINES: usize = 60;
-/// Default time allowed for a `close-stdin` shutdown.
+/// Default time a `close-stdin` shutdown may stay silent before a kill.
 const DEFAULT_STOP_TIMEOUT: Duration = Duration::from_secs(300);
+/// How often a shutdown in progress is checked.
+const STOP_POLL: Duration = Duration::from_secs(1);
 
 /// When a process counts as started.
 #[derive(Debug, Clone)]
@@ -70,10 +72,13 @@ pub struct Exit {
 /// How [`Process::stop`] went.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stopped {
-    /// Exited on its own after the stop request (or was already gone).
+    /// Exited on its own after the stop request.
     Clean,
-    /// Killed: `terminate` method, or the clean shutdown timed out.
+    /// Killed: `terminate` method, or the clean shutdown stalled.
     Killed,
+    /// It had already ended (crashed, or shut down from its console)
+    /// before the stop request.
+    AlreadyExited,
 }
 
 /// A running (or exited) supervised process.
@@ -85,6 +90,9 @@ pub struct Process {
     kill: Mutex<Option<oneshot::Sender<()>>>,
     ready_line: watch::Receiver<bool>,
     tail: Arc<Mutex<VecDeque<String>>>,
+    /// When the process last printed a line (a shutdown that still prints
+    /// is making progress).
+    last_output: Arc<Mutex<Instant>>,
     /// Kills the process when the launcher goes away (`terminate` only).
     #[cfg(windows)]
     _job: Option<win32job::Job>,
@@ -156,6 +164,7 @@ impl Process {
 
         let stdin = child.stdin.take();
         let tail = Arc::new(Mutex::new(VecDeque::with_capacity(TAIL_LINES)));
+        let last_output = Arc::new(Mutex::new(Instant::now()));
         let (ready_tx, ready_line) = watch::channel(false);
         let pattern = match &config.ready {
             Ready::LogLine(re) => Some(re.clone()),
@@ -169,6 +178,7 @@ impl Process {
                 logs: logs.clone(),
                 log: log.clone(),
                 tail: tail.clone(),
+                last_output: last_output.clone(),
                 pattern: pattern.clone(),
                 ready: ready_tx.clone(),
             };
@@ -208,6 +218,7 @@ impl Process {
             kill: Mutex::new(Some(kill_tx)),
             ready_line,
             tail,
+            last_output,
             #[cfg(windows)]
             _job: job,
         })
@@ -294,10 +305,12 @@ impl Process {
         written.await.map_err(|_| not_running())
     }
 
-    /// Stops the process with its declared method; kills it after the timeout.
+    /// Stops the process with its declared method. A `close-stdin`
+    /// shutdown is killed only once it has printed nothing for its timeout:
+    /// a world server logging out hundreds of bots is still saving.
     pub async fn stop(&self) -> Stopped {
         if self.exit().is_some() {
-            return Stopped::Clean;
+            return Stopped::AlreadyExited;
         }
         match self.config.stop {
             StopMethod::Terminate => {
@@ -310,12 +323,18 @@ impl Process {
                 let timeout = timeout_seconds
                     .map(Duration::from_secs)
                     .unwrap_or(DEFAULT_STOP_TIMEOUT);
-                if tokio::time::timeout(timeout, self.wait()).await.is_ok() {
-                    Stopped::Clean
-                } else {
-                    self.kill();
-                    self.wait().await;
-                    Stopped::Killed
+                // Silence counts from the stop request at the earliest.
+                *self.last_output.lock().unwrap() = Instant::now();
+                loop {
+                    if tokio::time::timeout(STOP_POLL, self.wait()).await.is_ok() {
+                        return Stopped::Clean;
+                    }
+                    let silent = self.last_output.lock().unwrap().elapsed();
+                    if silent >= timeout {
+                        self.kill();
+                        self.wait().await;
+                        return Stopped::Killed;
+                    }
                 }
             }
         }
@@ -335,6 +354,7 @@ struct Pump {
     logs: broadcast::Sender<LogLine>,
     log: Arc<tokio::sync::Mutex<tokio::fs::File>>,
     tail: Arc<Mutex<VecDeque<String>>>,
+    last_output: Arc<Mutex<Instant>>,
     pattern: Option<Regex>,
     ready: watch::Sender<bool>,
 }
@@ -363,6 +383,7 @@ impl Pump {
                     let _ = self.ready.send(true);
                 }
             }
+            *self.last_output.lock().unwrap() = Instant::now();
             {
                 let mut tail = self.tail.lock().unwrap();
                 if tail.len() == TAIL_LINES {

@@ -37,6 +37,12 @@ pub enum LauncherError {
     Client(#[from] ClientError),
     #[error(transparent)]
     Db(#[from] eoa_db::DbError),
+    #[error("'{0}' is not a computer address (e.g. 192.168.1.20)")]
+    InvalidAddress(String),
+    #[error("no backup '{0}'")]
+    BackupNotFound(String),
+    #[error("the backup '{0}' holds no player database of this realm")]
+    BackupUnusable(String),
     #[error("{0}")]
     Invalid(String),
 }
@@ -95,6 +101,9 @@ impl LauncherError {
             L::Runtime(e) => runtime_code(e),
             L::Client(e) => client_code(e),
             L::Db(_) => ("database.failed", none()),
+            L::InvalidAddress(_) => ("lan.invalidAddress", none()),
+            L::BackupNotFound(_) => ("backup.notFound", none()),
+            L::BackupUnusable(_) => ("backup.unusable", none()),
             L::Invalid(_) => ("unknown", none()),
         }
     }

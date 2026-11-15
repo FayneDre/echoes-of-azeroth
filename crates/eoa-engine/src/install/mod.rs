@@ -25,8 +25,8 @@ use thiserror::Error;
 
 pub use config::{databases, dbimport_modules, plan_configs, ConfigFilePlan, InstanceValues};
 pub use steps::{
-    DbAdopt, DbBackup, DbClaim, DbInit, DbProvision, DbRegenerate, DbStart, DbStop, RenderConfigs,
-    RunTool, ToolFailed,
+    DbAdopt, DbBackup, DbClaim, DbInit, DbProvision, DbRegenerate, DbRestore, DbStart, DbStop,
+    RenderConfigs, RunTool, ToolFailed,
 };
 
 use crate::steps::{read_entry, Extract, Fetch, Strip};

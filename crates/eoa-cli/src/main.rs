@@ -126,6 +126,11 @@ enum Command {
         #[arg(long, default_value = ".local/eoa")]
         root: PathBuf,
     },
+    /// Database backups of an instance (servers stopped).
+    Backup {
+        #[command(subcommand)]
+        command: BackupCommand,
+    },
     /// Turn modules on or off on an installed instance (servers stopped).
     Module {
         #[command(subcommand)]
@@ -148,6 +153,17 @@ enum Command {
         /// Keep the servers running after the game is closed.
         #[arg(long)]
         keep_running: bool,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Join a realm hosted on another computer of the local network: point
+    /// the game at it and launch it (no server runs here).
+    Join {
+        address: String,
+        #[arg(long, default_value = "azerothcore")]
+        emulator: String,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         #[arg(long, default_value = ".local/eoa")]
@@ -205,6 +221,45 @@ enum ClientCommand {
     /// (realmlist, cache, the instance's patch files); `eoa play` does it too.
     Prepare {
         instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum BackupCommand {
+    /// List the backups, newest first.
+    List {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Dump every database to a new manual backup.
+    Create {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Put the player databases back from a backup (the current state is
+    /// backed up first).
+    Restore {
+        instance: String,
+        name: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Delete a backup file.
+    Delete {
+        instance: String,
+        name: String,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         #[arg(long, default_value = ".local/eoa")]
@@ -483,10 +538,7 @@ fn print_event(event: SessionEvent) {
         }
         E::Ready { .. } => {}
         E::ProcessStopping { process } => eprintln!("== stopping {process}"),
-        E::ProcessStopped { process, killed } => eprintln!(
-            "== {process} stopped ({})",
-            if killed { "killed" } else { "clean" }
-        ),
+        E::ProcessStopped { process, how } => eprintln!("== {process} stopped ({how:?})"),
         E::DatabaseStopped => eprintln!("== database stopped"),
         E::Warning { message } => eprintln!("warning: {message}"),
         E::Log { process, text, .. } => println!("[{process}] {text}"),
@@ -863,6 +915,79 @@ fn main() -> Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::Join {
+            address,
+            emulator,
+            catalog,
+            root,
+        } => {
+            let launcher = open(&catalog, &root)?;
+            let client = launcher.prepare_client_for_lan(&emulator, &address)?;
+            eprintln!("realmlist set to {address}; launching the game");
+            block_on(async {
+                let mut child = eoa_client::launch(&client.manifest, &client.state)?;
+                child.wait().await.map_err(anyhow::Error::from)?;
+                anyhow::Ok(())
+            })??;
+            drop(client);
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Backup { command } => match command {
+            BackupCommand::List {
+                instance,
+                catalog,
+                root,
+            } => {
+                let launcher = open(&catalog, &root)?;
+                for b in launcher.backups(&instance)? {
+                    println!(
+                        "{:<56} {:>8.1} MB  {:?}{}",
+                        b.name,
+                        b.size as f64 / 1e6,
+                        b.kind,
+                        if b.automatic { "" } else { " (kept)" }
+                    );
+                }
+                Ok(ExitCode::SUCCESS)
+            }
+            BackupCommand::Create {
+                instance,
+                catalog,
+                root,
+            } => {
+                let launcher = open(&catalog, &root)?;
+                let backup = block_on(launcher.backup_now(&instance))??;
+                println!(
+                    "backup {} ({:.1} MB)",
+                    backup.name,
+                    backup.size as f64 / 1e6
+                );
+                Ok(ExitCode::SUCCESS)
+            }
+            BackupCommand::Restore {
+                instance,
+                name,
+                catalog,
+                root,
+            } => {
+                let launcher = open(&catalog, &root)?;
+                let observer = ConsoleObserver::default();
+                eprintln!("restoring the player databases of '{instance}' from {name}");
+                block_on(launcher.restore(&instance, &name, &observer, &CancelToken::new()))??;
+                println!("instance '{instance}' restored from {name}");
+                Ok(ExitCode::SUCCESS)
+            }
+            BackupCommand::Delete {
+                instance,
+                name,
+                catalog,
+                root,
+            } => {
+                open(&catalog, &root)?.delete_backup(&instance, &name)?;
+                println!("deleted {name}");
+                Ok(ExitCode::SUCCESS)
+            }
+        },
         Command::Module { command } => match command {
             ModuleCommand::Enable {
                 instance,

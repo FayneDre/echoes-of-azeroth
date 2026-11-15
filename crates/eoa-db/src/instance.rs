@@ -419,6 +419,22 @@ impl Instance {
         .map(drop)
     }
 
+    /// Replays only the statements of database `name` from a dump made by
+    /// [`backup`](Self::backup) (`mysql --one-database`, which follows the
+    /// dump's `USE` lines). The database must exist; other databases of the
+    /// dump are left as they are.
+    pub async fn restore_database(&self, dump: &Path, name: &str) -> Result<(), DbError> {
+        validate_identifier(name)?;
+        self.tool(
+            "mysql",
+            &self.binaries.mysql,
+            &["--default-character-set=utf8mb4", "--one-database", name],
+            Input::File(dump),
+        )
+        .await
+        .map(drop)
+    }
+
     /// Runs a MySQL client tool with the root option file (credentials never
     /// appear on a command line). `--defaults-extra-file` must come first.
     async fn tool(

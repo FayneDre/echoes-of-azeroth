@@ -286,6 +286,58 @@ impl<C: Sync> Step<C> for DbBackup {
     }
 }
 
+/// `db-restore`: puts the player databases back as a dump holds them
+/// (backup restore). Each one is dropped, created empty and refilled with
+/// its own statements of the dump; the content databases are left alone,
+/// the following dbimport migrates the result to the current build.
+///
+/// Only the databases the dump really contains are touched, so a dump
+/// without one never empties it. Rerunning it from the start is the
+/// resume; `undo` is the job of the `db-backup` made before it.
+pub struct DbRestore {
+    pub db: Arc<eoa_db::Instance>,
+    pub databases: Vec<String>,
+    pub dump: PathBuf,
+}
+
+impl<C: Sync> Step<C> for DbRestore {
+    fn id(&self) -> &str {
+        "db-restore"
+    }
+    fn kind(&self) -> &str {
+        "db-restore"
+    }
+    fn fingerprint(&self) -> String {
+        format!("{:?} {:?}", self.databases, self.dump)
+    }
+    fn run<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            let held = eoa_db::dump_databases(&self.dump)?;
+            let missing: Vec<&String> = self
+                .databases
+                .iter()
+                .filter(|d| !held.contains(d))
+                .collect();
+            if !missing.is_empty() {
+                return Err(format!(
+                    "the backup {} does not contain {missing:?}",
+                    self.dump.display()
+                )
+                .into());
+            }
+            for name in &self.databases {
+                eoa_db::validate_identifier(name)?;
+                self.db
+                    .execute(&format!("DROP DATABASE IF EXISTS `{name}`;"))
+                    .await?;
+                self.db.create_database(name).await?;
+                self.db.restore_database(&self.dump, name).await?;
+            }
+            Ok(())
+        })
+    }
+}
+
 /// `regenerate-<database>`: empties a content database (never one with
 /// `playerData`) so that the following dbimport rebuilds it from the base
 /// SQL and the remaining modules' SQL (ADR 0003, module removal).
