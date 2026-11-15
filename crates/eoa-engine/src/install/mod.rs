@@ -251,6 +251,39 @@ pub fn open_or_create(
     Ok((record, secrets))
 }
 
+/// Loads an existing instance's record and secrets.
+pub fn open_existing(layout: &Layout, id: &str) -> Result<(InstanceRecord, Secrets), PlanError> {
+    let paths = layout.instance(id);
+    match (
+        read_json::<InstanceRecord>(&paths.record)?,
+        read_json::<Secrets>(&paths.secrets)?,
+    ) {
+        (Some(record), Some(secrets)) => Ok((record, secrets)),
+        _ => Err(PlanError::Unknown(format!("instance '{id}'"))),
+    }
+}
+
+/// The MySQL server of an instance (not started).
+pub fn database(
+    catalog: &Catalog,
+    layout: &Layout,
+    record: &InstanceRecord,
+) -> Result<eoa_db::Instance, PlanError> {
+    let emu = &catalog
+        .emulator(&record.emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("emulator '{}'", record.emulator)))?
+        .manifest;
+    let mysql = database_component(catalog, emu)?;
+    Ok(eoa_db::Instance::new(
+        layout.instance(&record.id).db,
+        eoa_db::Binaries::from_basedir(layout.component(&mysql.id)),
+        eoa_db::ServerSettings {
+            port: record.db_port,
+            ..Default::default()
+        },
+    ))
+}
+
 fn used_db_ports(layout: &Layout) -> Result<Vec<u16>, PlanError> {
     let mut ports = Vec::new();
     let Ok(entries) = std::fs::read_dir(layout.instances()) else {
@@ -448,14 +481,7 @@ pub fn instance_operation(
         .and_then(|b| b.executables.get("client"))
         .map(|rel| mysql_dir.join(rel))
         .ok_or_else(|| PlanError::Unknown(format!("client executable of '{}'", mysql.id)))?;
-    let db = Arc::new(eoa_db::Instance::new(
-        &paths.db,
-        eoa_db::Binaries::from_basedir(&mysql_dir),
-        eoa_db::ServerSettings {
-            port: record.db_port,
-            ..Default::default()
-        },
-    ));
+    let db = Arc::new(database(catalog, layout, record)?);
 
     let values = InstanceValues {
         root: &paths.root,

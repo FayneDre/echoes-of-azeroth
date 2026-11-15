@@ -1,0 +1,19 @@
+[package]
+name = "eoa-driver-azerothcore"
+description = "AzerothCore driver: game accounts (SRP6), realm list, console conventions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eoa-db.workspace = true
+eoa-runtime.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+num-bigint.workspace = true
+sha1.workspace = true
+thiserror.workspace = true

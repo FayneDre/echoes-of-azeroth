@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "app/src-tauri"]
+members = ["crates/*", "drivers/*", "app/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -19,6 +19,8 @@ eoa-store = { path = "crates/eoa-store" }
 eoa-engine = { path = "crates/eoa-engine" }
 eoa-conf = { path = "crates/eoa-conf" }
 eoa-db = { path = "crates/eoa-db" }
+eoa-runtime = { path = "crates/eoa-runtime" }
+eoa-driver-azerothcore = { path = "drivers/azerothcore" }
 
 # External crates
 anyhow = "1"
@@ -26,6 +28,10 @@ clap = { version = "4", features = ["derive"] }
 # Index signatures (ADR 0010): pure Rust, strict RFC 8032 verification.
 ed25519-dalek = "3"
 getrandom = "0.3"
+# SRP6 account registration (AzerothCore driver).
+num-bigint = "0.5"
+regex = "1"
+sha1 = "0.11"
 futures-util = "0.3"
 hex = "0.4"
 reqwest = { version = "0.13", features = ["stream"] }
@@ -38,6 +44,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# Job Objects: supervised processes that hold no state die with the launcher.
+win32job = "2"
 # Pure-Rust deflate (zlib-rs): no C toolchain, fast decoding.
 zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
