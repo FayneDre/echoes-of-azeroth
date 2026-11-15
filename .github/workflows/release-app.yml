@@ -148,6 +148,8 @@ jobs:
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      # gh runs outside the checkout (in the download folder).
+      GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.build.outputs.version }}
     steps:
       - uses: actions/checkout@v7
