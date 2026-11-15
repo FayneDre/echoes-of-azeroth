@@ -69,6 +69,8 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | worldserver with stdin as a **pipe** reads commands with `std::getline` and calls `World::StopNow` at EOF (clean: bots logged out, DB pools closed), also when the launcher is killed. Accounts: SRP6 `v = g^H(s‖H(USER:PASS)) mod N`, SHA-1, g = 7, little-endian; our verifier matches one made by worldserver. | fork `CliRunnable.cpp`, `SRP6.cpp`, `AccountMgr.cpp`; local test (2026-11-15) |
 | mod-ah-bot never loads its character: it builds an in-memory `Player` with `Initialize(AuctionHouseBot.GUID)` and owns auctions by that guid; `Account`/`GUID = 0` → "Account id and player id missing" and no bot. A `characters` row (next guid, worldserver stopped) is enough. | mod-ah-bot `c11d831` `AuctionHouseBot.cpp`, local test (2026-11-15) |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
+| `Wow.exe` 3.3.5a: `VS_FIXEDFILEINFO` file version 3.3.5.12340 (build = low word of the low dword). The client reads `Data/<locale>/realmlist.wtf` and also saves `SET realmList "..."` in `WTF/Config.wtf`. | local client (2026-11-15) |
+| Individual Progression optional files are 7z archives in its repo at the pinned commit: `optional/patch-V.7z` (patch-V.mpq + Spell.dbc), `patch-S.7z` (patch-S.mpq + Spell.dbc), `dbc.7z` (Patch-J.mpq, Patch-U.mpq, SkillLine/SkillLineAbility/SkillRaceClassInfo/SpellItemEnchantment.dbc); sha256 pinned in the module manifest. | module `optional/`, `patch-explanations.txt` (e179555) |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
 Update this table when a fact is (re)verified; date it.
@@ -105,6 +107,13 @@ Update this table when a fact is (re)verified; date it.
   instance record; tables moved to `<db>_eoa_previous` (one `RENAME TABLE`),
   dbimport rebuilds from base SQL + remaining modules (~2 min); finalize drops
   the copy, rollback moves it back. Player databases never rebuilt.
+- **0013** Client integration: option values in `instance.json`; module
+  assets = archives of the module repo at its pinned commit (sha256), never
+  re-hosted, unpacked into `assets/<sha>/`; server overrides via the
+  instance overlay `instances/<id>/data` (junctions + hard-linked `dbc/`);
+  client files tracked by sha256 in `clients/<client>.json` (player's own
+  file moved to `.eoa-backup`, edited tracked files never deleted);
+  `eoa play` prepares, starts, launches, stops the servers when the game exits.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -125,6 +134,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
 │  ├─ eoa-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
 │  ├─ eoa-runtime/           supervisor: start order, readiness, console, logs, clean stop; driver trait
+│  ├─ eoa-client/            player's client: detection, realmlist, managed patch files, launch
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ drivers/
 │  └─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
@@ -171,7 +181,6 @@ When a hook blocks you, fix the cause; never work around it.
 | `commit` | checks + Conventional Commit + push, following the privacy and no-co-author rules |
 | `new-adr` | record an architecture decision |
 
-Planned crates (create only when their phase starts): `eoa-client`.
 
 `eoa-db` integration tests need a real MySQL: set `EOA_MYSQL_BASEDIR` to an
 unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
@@ -198,6 +207,9 @@ cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ct
 cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
 cargo run -p eoa-cli -- module enable|disable <id> <module>...   # servers stopped
 cargo run -p eoa-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
+cargo run -p eoa-cli -- option set|show <id> [<module> <option>=<value>...]   # servers stopped
+cargo run -p eoa-cli -- client set <game folder> [--locale frFR] | show | prepare <id>
+cargo run -p eoa-cli -- play <id> [--keep-running]   # prepare client, start servers, launch the game
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 ```
 
@@ -280,6 +292,11 @@ steps (AHBot account + character, `bindings.json`) and world regeneration on
 removal of a world-changing module (`RENAME TABLE` aside + dbimport), and
 `eoa update` (new build: full dump, swap, dbimport; rollback restores the
 dump), verified. Instance lock shared by start / module / update. Phase 3
-done; next: phase 4 (client). UI: left
+done.
+Phase 4 (2026-11-15): `eoa-client` (detection by version resource,
+realmlist + `Config.wtf`, cache, managed patch files), module options
+(`eoa option set`) selecting upstream assets (Individual Progression
+patch-V/S, J/U, classic DBCs) with the server data overlay, `eoa client
+set|show|prepare` and `eoa play` (ADR 0013). Next: phase 5 (public app). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

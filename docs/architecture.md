@@ -360,14 +360,19 @@ runtime, UI and updates are reused unchanged.
 ├─ components\mysql-8-4\
 ├─ serverdata\<client>-<version>\   shared server data (ADR 0006)
 ├─ instances\<id>\        bin\ sql\ configs\ db\ logs\ instance.json secrets.json  (cwd of the servers)
-├─ clients\<id>\          metadata + managed patches (the client stays where it is)
-├─ backups\<id>\
-└─ state\                 operation journal, locks
+├─ assets\<sha256>\       module assets, unpacked once per archive (ADR 0013)
+├─ clients\<client>.json  registered client + files the launcher put in it (.lock while used)
+├─ backups\<id>\          database dumps before updates
+└─ state\                 operation journals, locks
 ```
 
-Server data is extracted once per client version into `serverdata\` and shared
-through an absolute `DataDir` (ADR 0007); files overridden by module assets
-(e.g. `dbc/Spell.dbc`) will be per-instance overlays.
+Instances also hold `bindings.json`, `instance.lock` and, while a module
+asset overrides a server file, `data\`. Server data is extracted once per
+client version into `serverdata\` and shared through an absolute `DataDir`
+(ADR 0007). While an override exists (e.g. `dbc/Spell.dbc`), `DataDir`
+points to the instance overlay `instances\<id>\data\`: junctions to the
+shared directories, `dbc\` rebuilt with hard links plus the overrides
+(ADR 0013). The client itself stays where the player installed it.
 
 ## 8. Database (MySQL 8.4 LTS, portable)
 
@@ -445,12 +450,47 @@ Implemented in `eoa-runtime` (ADR 0011), driven by `eoa start <id>`:
 
 ## 11. Clients
 
-- User selects a folder; the launcher checks `Wow.exe` build (12340 for 3.3.5a)
-  and locale. The client is never distributed.
-- Writes `Data/<locale>/realmlist.wtf` for the chosen instance (restorable).
-- Module client assets (MPQ patches) are installed, tracked and removed cleanly.
-- "Play" starts the instance if needed, waits for readiness, launches the client.
-- Optional client tweaks (e.g. Large Address Aware) are opt-in with a backup.
+Implemented in `eoa-client` (ADR 0013); the client is never distributed.
+
+- `eoa client set <folder>`: the executable's version resource must carry the
+  manifest build (`Wow.exe` 3.3.5.12340); the locale comes from the
+  `Data/<locale>` folders (asked when several). State in
+  `clients/<client>.json`.
+- Module options (`eoa option set <id> <module> <option>=<value>`) select
+  assets; the module operation downloads them from the module's pinned
+  commit (sha256-pinned `.zip` or `.7z`), unpacks them once and builds the
+  server overlay (§7).
+- Before each launch (`eoa play`, or `eoa client prepare <id>`):
+  - `Data/<locale>/realmlist.wtf` and the `SET realmList` line of
+    `WTF/Config.wtf` (when present) point at `127.0.0.1`;
+  - the cache is cleared when another instance was played last;
+  - the instance's client files (MPQ patches) are reconciled, tracked by
+    sha256. A file of the player at the same place is moved to
+    `.eoa-backup` and restored later, and a tracked file the player edited
+    is never deleted.
+
+  Each change is recorded first, so the next preparation finishes an
+  interrupted one.
+- `eoa play <id>` prepares the client and starts the servers. It launches the
+  game from its folder once worldserver is ready, and stops the servers when
+  the game exits (`--keep-running` keeps them up). A client lock prevents
+  two sessions from rewriting the same client.
+- Planned:
+  - optional client tweaks (e.g. Large Address Aware), opt-in with a
+    backup;
+  - preparing a LAN client on another computer.
+
+Verified 2026-11-15 with the maintainer's 3.3.5a client on a local instance:
+- **Registration:** the client is registered (12340, enUS), and a 1.12.1
+  folder is refused (build 5875).
+- **Options:** Individual Progression options (patch-V, Vanilla visuals)
+  apply in 15 s, including the 25 MB download. The overlay links the four
+  big directories, and its `Spell.dbc` has the upstream sha256.
+- **Play:** `eoa play` starts worldserver in 74 s on the overlay (112 data
+  stores, no DBC error) and launches the game. Closing the game stops
+  every server cleanly.
+- **Back to the defaults:** the overlay and the three MPQs are removed, and
+  the client's files and settings are byte-identical to before.
 
 ## 12. Security & distribution
 

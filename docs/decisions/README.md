@@ -17,6 +17,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0010](0010-signed-index.md) | Signed artifact index: one envelope file, ed25519, serial anti-rollback, selection by catalog pins | Accepted |
 | [0011](0011-runtime-supervisor.md) | Runtime supervisor: stop methods declared per process, Job Object for stateless ones, accounts written by the driver (SRP6) | Accepted |
 | [0012](0012-world-regeneration.md) | World regeneration on module removal: tables moved aside with one RENAME TABLE, rebuilt by dbimport | Accepted |
+| [0013](0013-client-integration.md) | Client integration: managed client files, module assets downloaded from upstream, per-instance server data overlay | Accepted |
 
 Template:
 

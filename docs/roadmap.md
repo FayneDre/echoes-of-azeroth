@@ -66,7 +66,13 @@ Durations assume one full-time developer and are rough.
 
 ## Phase 4: client (~1 week)
 
-- Detection, realmlist, managed patches, synchronised launch
+- [x] Detection: version resource of the executable (build 12340), locale folders (`eoa client set`)
+- [x] Realmlist (`realmlist.wtf` + the address saved in `Config.wtf`), cache cleared on server change
+- [x] Module options stored per instance (`eoa option set`), assets downloaded from the module's
+  pinned commit (ADR 0013), server data overlay per instance
+- [x] Managed client patches: tracked, player's files backed up and restored
+- [x] Synchronised launch: `eoa play` (servers stop when the game is closed)
+- **Exit:** one command from a stopped instance to the login screen
 
 ## Phase 5: public app (~3 weeks)
 
