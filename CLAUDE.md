@@ -66,6 +66,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | `authserver.conf.dist` defaults to `Updates.EnableDatabases = 1` (migrates auth itself, SQL from the build tree `C:/ac`): set to 0, dbimport migrates. Windows servers assert `legacy.dll` (OpenSSL 3 legacy provider) next to the executables. | fork conf.dist, `OpenSSLCrypto.cpp`, CI smoke test (2026-11-14) |
 | With `Console.Enable = 1`, worldserver **shuts down cleanly when its stdin reaches EOF**: the supervisor must keep stdin open (it is also the GM console). First local start: auth 2 s, world ~1-4 min with 500 bots. | local E2E start (2026-11-14) |
 | A cleanly stopped MySQL 8.4 data directory copied without `auto.cnf`, `*.pem`, `#innodb_temp/` and spare redo files (`#innodb_redo/*_tmp`) starts in ~2 s (new UUID, keys, spares); `--init-file` sets root before listening. dbimport on up-to-date databases: ~9 s (vs 6-14 min from empty). `updates_include` paths are `$/`-relative (portable). | local test (2026-11-14), ADR 0009 |
+| worldserver with stdin as a **pipe** reads commands with `std::getline` and calls `World::StopNow` at EOF (clean: bots logged out, DB pools closed), also when the launcher is killed. Accounts: SRP6 `v = g^H(s‖H(USER:PASS)) mod N`, SHA-1, g = 7, little-endian; our verifier matches one made by worldserver. | fork `CliRunnable.cpp`, `SRP6.cpp`, `AccountMgr.cpp`; local test (2026-11-15) |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
@@ -94,6 +95,11 @@ Update this table when a fact is (re)verified; date it.
   over a domain prefix + payload), trusted keys compiled in, `serial`
   anti-rollback, builds selected by catalog pins; published as a GitHub
   release asset by CI from `main` (`EOA_INDEX_SIGNING_KEY` secret).
+- **0011** Runtime supervisor: each manifest process declares `stop`
+  (`close-stdin`: clean exit at EOF, also when the launcher dies; `terminate`:
+  stateless, kill-on-close Job Object); MySQL never killed, adopted on next
+  start; `EmulatorDriver` trait in `eoa-runtime`; AzerothCore accounts written
+  directly (SRP6 like upstream), realm 1 address set before each start.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -113,7 +119,10 @@ reduced in-game settings) unless the user asks.
 │  ├─ eoa-db/                portable MySQL instance: init, start/stop, accounts, backup/restore
 │  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
 │  ├─ eoa-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
+│  ├─ eoa-runtime/           supervisor: start order, readiness, console, logs, clean stop; driver trait
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
+├─ drivers/
+│  └─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
 ├─ app/
 │  ├─ src/                   Svelte 5 UI (lib/api.ts, lib/i18n/)
 │  └─ src-tauri/             thin Tauri adapter (commands.rs)
@@ -157,8 +166,7 @@ When a hook blocks you, fix the cause; never work around it.
 | `commit` | checks + Conventional Commit + push, following the privacy and no-co-author rules |
 | `new-adr` | record an architecture decision |
 
-Planned crates (create only when their phase starts): `eoa-runtime`,
-`eoa-client`, `drivers/azerothcore`.
+Planned crates (create only when their phase starts): `eoa-client`.
 
 `eoa-db` integration tests need a real MySQL: set `EOA_MYSQL_BASEDIR` to an
 unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
@@ -181,14 +189,17 @@ cargo run -p eoa-cli -- component install mysql-8-4   # engine: download + atomi
 cargo run -p eoa-cli -- install solo [--index <file|url>]   # from the signed index (default: published one)
 cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # local files
 cargo run -p eoa-cli -- index show [<file|url>]   # verify and print the index
+cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ctrl+C / .stop = clean stop
+cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
 MSVC target), Visual Studio 2022 Build Tools (MSVC 14.44, Windows SDK 10.0.26100),
 Node 24, git, gh (authenticated). In a fresh shell, if `cargo` is not found,
-prepend `%USERPROFILE%\.cargo\bin` to `PATH`. A reboot is pending after the
-Build Tools install (builds already work).
+prepend `%USERPROFILE%\.cargo\bin` to `PATH`. Build Tools reinstalled
+2026-11-15 (C++ workload, MSVC 14.44, SDK 10.0.26100). Run cargo from
+PowerShell: in Git Bash, `/usr/bin/link` shadows MSVC's `link.exe`.
 
 Release builds: `npm run build` (NSIS + MSI). Quick local check without
 installers: `cd app && npx tauri build --debug --no-bundle`.
@@ -253,7 +264,10 @@ remaining: zstd.
 Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
 executor are done, with the install steps and `eoa install` (ADR 0007/0008),
 verified end to end locally (servers start), and `--db-snapshot` restore
-(ADR 0009) and `--index` (signed index, ADR 0010). Next: phase 3
-(runtime supervisor, driver). UI: left
+(ADR 0009) and `--index` (signed index, ADR 0010).
+Phase 3 started (2026-11-15): `eoa-runtime` supervisor and the AzerothCore
+driver (`drivers/azerothcore`): `eoa start <id>` (console, clean stop) and
+`eoa account create` verified locally. Next: log in with a real client, AHBot
+account/character, module lifecycle. UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

@@ -49,9 +49,14 @@ Durations assume one full-time developer and are rough.
 
 ## Phase 3: runtime + AzerothCore driver (~2 weeks)
 
-- Supervisor, readiness, graceful stop, logs
-- Driver: accounts, realm address, console, module post-install steps
-- Module lifecycle: install / remove / update at any time
+- [x] Supervisor, readiness, graceful stop, logs (`eoa-runtime`, ADR 0011; `eoa start`,
+  verified 2026-11-15: world ready in 21-92 s, clean stop, launcher kill -> world saves,
+  auth dies, MySQL adopted at next start)
+- [x] Driver: accounts (`eoa account create`, SRP6 matches worldserver), realm address,
+  console (stdin of worldserver)
+- [ ] Driver: AHBot account + character, module post-install steps
+- [ ] Module lifecycle: install / remove / update at any time
+- [x] Log in and play with the maintainer's 3.3.5a client (2026-11-15: character created, in game, bots present)
 - **Exit:** start, log in and play through the CLI
 
 ## Phase 4: client (~1 week)

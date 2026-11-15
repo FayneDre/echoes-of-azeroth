@@ -162,9 +162,9 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
 | `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore, adoption of a restored snapshot (§8). Later: Job Object. |
-| `eoa-runtime` | planned | Process supervisor (Job Objects), readiness, logs, crash detection. Keeps worldserver's stdin open: it is the console, and EOF on it shuts the server down. |
+| `eoa-runtime` | ✅ (first slice) | Supervisor (§10, ADR 0011): MySQL then the manifest processes in order, each gated by readiness; console (stdin of the `close-stdin` process), output to `logs/<process>.console.log` + broadcast, crash detection, clean stop in reverse order; kill-on-close Job Object for `terminate` processes. `EmulatorDriver` trait. |
 | `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
-| `drivers/azerothcore` | planned | AzerothCore specifics (see §6). |
+| `drivers/azerothcore` | ✅ (first slice) | Game accounts written to the auth database like `AccountMgr::CreateAccount` (SRP6), realm 1 address/port before each start. Later: AHBot account + character, module post-install steps. |
 | `app/src-tauri` | ✅ skeleton | Thin adapter: Tauri commands/events over the crates. |
 
 ### 5.1 Install engine (`eoa-engine`)
@@ -252,15 +252,18 @@ first. The UI shows the resulting plan before anything runs.
 ## 6. Emulator drivers
 
 ```rust
-trait EmulatorDriver {
-    fn render_config(&self, instance: &Instance) -> Result<ConfigSet>;
-    fn create_account(&self, ctx: &Ctx, user: &str, password: &str, gm: u8) -> Result<AccountId>;
-    fn create_character(&self, ctx: &Ctx, spec: &CharacterSpec) -> Result<CharacterGuid>;
-    fn set_realm_address(&self, ctx: &Ctx, address: &str) -> Result<()>;
-    fn console(&self, ctx: &Ctx, command: &str) -> Result<String>;
-    fn shutdown(&self, ctx: &Ctx) -> Result<()>;
+// eoa-runtime (ADR 0011); futures are boxed, errors typed for the UI.
+trait EmulatorDriver: Send + Sync {
+    fn id(&self) -> &str;                                   // manifest `driver`
+    fn prepare_start(&self, cx: &DriverContext) -> DriverFuture<()>;   // DB up, servers not yet
+    fn create_account(&self, cx: &DriverContext, a: &NewAccount) -> DriverFuture<u32>;
 }
 ```
+
+`DriverContext` gives the running database, the emulator manifest, the
+instance record and the realm address (`127.0.0.1` solo, LAN address in LAN
+mode). Console commands, readiness and stop are declared in the manifest,
+not in the driver. Planned: character creation (AHBot), module post-install.
 
 Adding an emulator = manifests + one driver. Download, database, client,
 runtime, UI and updates are reused unchanged.
@@ -339,10 +342,22 @@ through an absolute `DataDir` (ADR 0007); files overridden by module assets
 
 ## 10. Runtime
 
-- Start order MySQL → authserver → worldserver, each gated by readiness
-  (TCP port or log line). Stop in reverse with graceful shutdown.
-- Integrated GM console, streamed and filterable logs, export for support.
-- Crash detection, optional auto-restart, crash report.
+Implemented in `eoa-runtime` (ADR 0011), driven by `eoa start <id>`:
+
+- Start order MySQL → driver `prepare_start` → manifest processes in array
+  order (authserver, worldserver), each gated by readiness (TCP port or output
+  line; a port already open before spawning is an error). Working directory =
+  instance root; arguments from the manifest.
+- Stop in reverse order with the declared method: `close-stdin` (worldserver
+  saves and exits at end of input, also when the launcher dies) or
+  `terminate` (stateless, kill-on-close Job Object). MySQL is stopped last
+  with `mysqladmin shutdown`, never killed; left running if the launcher dies
+  and adopted at the next start.
+- Console: lines go to the stdin of the `close-stdin` process (GM console).
+  Output of every process is streamed (broadcast) and written to
+  `logs/<process>.console.log` (previous run kept as `.previous.log`).
+- Crash detection: any process exit stops the others. Planned: optional
+  auto-restart, crash report.
 
 ## 11. Clients
 
