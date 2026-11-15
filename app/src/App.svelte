@@ -1,13 +1,12 @@
 <script lang="ts">
   import "@fontsource-variable/cinzel";
-  import {
-    asCommandError,
-    catalogOverview,
-    inDesktopApp,
-    openExternal,
-    type CommandError,
-    type EmulatorOverview,
-  } from "./lib/api";
+  import { api, asCommandError, inDesktopApp, openExternal, type CommandError, type EmulatorOverview } from "./lib/api";
+  import Account from "./lib/components/Account.svelte";
+  import Console from "./lib/components/Console.svelte";
+  import CrashNotice from "./lib/components/CrashNotice.svelte";
+  import AppUpdateNotice from "./lib/components/AppUpdateNotice.svelte";
+  import ErrorBox from "./lib/components/ErrorBox.svelte";
+  import { connect, launcher } from "./lib/launcher.svelte";
   import Emblem from "./lib/emblems/Emblem.svelte";
   import Home from "./lib/components/Home.svelte";
   import Rail from "./lib/components/Rail.svelte";
@@ -23,15 +22,12 @@
     | { status: "ready"; realms: EmulatorOverview[] };
 
   const ISSUES_URL = "https://github.com/FayneDre/echoes-of-azeroth/issues";
-  const KNOWN_ERRORS = new Set(["catalog.missing", "catalog.unreadable", "catalog.invalid"]);
-  const errorMessage = (error: CommandError) =>
-    t((KNOWN_ERRORS.has(error.code) ? `error.${error.code}` : "error.unknown") as MessageKey);
 
   type TabId = "home" | "account" | "settings" | "bots" | "backups";
 
   const TABS: { id: TabId; label: MessageKey; ready: boolean }[] = [
     { id: "home", label: "nav.home", ready: true },
-    { id: "account", label: "nav.account", ready: false },
+    { id: "account", label: "nav.account", ready: true },
     { id: "settings", label: "nav.settings", ready: true },
     { id: "bots", label: "nav.bots", ready: false },
     { id: "backups", label: "nav.backups", ready: false },
@@ -40,9 +36,15 @@
   let catalog = $state<CatalogState>({ status: "loading" });
   let selectedId = $state<string | null>(null);
   let tab = $state<TabId>("home");
+  /** Process whose output is shown in the console drawer. */
+  let terminal = $state<string | null>(null);
 
   const realms = $derived(catalog.status === "ready" ? catalog.realms : []);
   const realm = $derived(realms.find((r) => r.id === selectedId) ?? realms[0] ?? null);
+  const instanceId = $derived(
+    launcher.overview?.instances.find((i) => i.record.emulator === realm?.id)?.record.id ?? null,
+  );
+  const session = $derived(instanceId ? launcher.session(instanceId) : null);
 
   $effect(() => {
     document.documentElement.lang = i18n.locale;
@@ -53,11 +55,19 @@
       catalog = { status: "unavailable" };
       return;
     }
-    catalogOverview()
+    connect();
+    api
+      .catalogOverview()
       .then((list) => (catalog = { status: "ready", realms: list }))
       .catch((error: unknown) => (catalog = { status: "error", error: asCommandError(error) }));
   });
 </script>
+
+{#if launcher.closing}
+  <div class="closing" role="alert" aria-live="assertive">
+    <p class="display">{t("app.closing")}</p>
+  </div>
+{/if}
 
 <div class="app" style:--realm-accent={realm?.client?.accent}>
   <!-- Own title bar (native decorations are off): drag anywhere that is not a control. -->
@@ -105,22 +115,22 @@
 
     <div class="main">
       <main>
+        {#if inDesktopApp()}
+          <CrashNotice />
+          <AppUpdateNotice />
+        {/if}
         {#if catalog.status === "loading"}
           <p class="muted">{t("modules.loading")}</p>
         {:else if catalog.status === "unavailable"}
           <p class="muted">{t("modules.unavailable")}</p>
         {:else if catalog.status === "error"}
-          <div class="panel" role="alert">
-            <p class="error">{errorMessage(catalog.error)}</p>
-            <details>
-              <summary class="muted">{t("error.details")}</summary>
-              <pre>{catalog.error.code}: {catalog.error.detail}</pre>
-            </details>
-          </div>
+          <ErrorBox error={catalog.error} />
         {:else if !realm}
           <p class="muted">{t("modules.empty")}</p>
         {:else if tab === "settings"}
           <ServerSettings {realm} />
+        {:else if tab === "account"}
+          <Account {realm} />
         {:else}
           <Home {realm} />
         {/if}
@@ -129,10 +139,26 @@
       {#if realm}
         <div class="terminals">
           <span class="display terminals-title">▸ {t("terminals.title")}</span>
-          {#each ["database", ...realm.processes] as id (id)}
-            <button class="btn" disabled title={t("common.soon")}>{processLabel(id)}</button>
+          {#each realm.processes as id (id)}
+            <button
+              class="btn"
+              class:active={terminal === id}
+              disabled={!session}
+              title={session ? undefined : t("terminals.notStarted")}
+              onclick={() => (terminal = terminal === id ? null : id)}
+            >
+              {processLabel(id)}
+            </button>
           {/each}
         </div>
+        {#if terminal && instanceId && session}
+          <Console
+            instance={instanceId}
+            process={terminal}
+            console={realm.console === terminal}
+            onclose={() => (terminal = null)}
+          />
+        {/if}
       {/if}
 
       <footer>
@@ -249,15 +275,26 @@
     gap: var(--space-5);
   }
 
-  .error {
-    margin: 0 0 var(--space-3);
-    color: var(--danger);
+  .closing {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    background: var(--shade-deep);
+    backdrop-filter: blur(2px);
   }
 
-  pre {
-    white-space: pre-wrap;
-    font-size: 0.8rem;
-    color: var(--text-muted);
+  .closing p {
+    padding: var(--space-5) var(--space-8);
+    border: 2px solid var(--frame-light);
+    background: var(--bg-elevated);
+    color: var(--title);
+  }
+
+  .terminals .btn.active {
+    border-color: var(--frame-light);
+    box-shadow: 0 0 8px var(--glow);
   }
 
   .terminals {

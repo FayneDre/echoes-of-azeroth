@@ -55,3 +55,8 @@ export function t(key: MessageKey, params: Record<string, string | number> = {})
 export function localized(text: LocalizedText): string {
   return (current === "fr" ? text.fr : undefined) ?? text.en;
 }
+
+/** Whether a message exists (error codes come from the backend). */
+export function hasMessage(key: string): key is MessageKey {
+  return key in en;
+}
