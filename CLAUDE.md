@@ -73,6 +73,9 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | Individual Progression optional files are 7z archives in its repo at the pinned commit: `optional/patch-V.7z` (patch-V.mpq + Spell.dbc), `patch-S.7z` (patch-S.mpq + Spell.dbc), `dbc.7z` (Patch-J.mpq, Patch-U.mpq, SkillLine/SkillLineAbility/SkillRaceClassInfo/SpellItemEnchantment.dbc); sha256 pinned in the module manifest. | module `optional/`, `patch-explanations.txt` (e179555) |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
+| Release archives as ZIP with zstd entries (level 19): server build 256 → 173 MB, snapshot 144 → 94 MB vs deflate; packing 8 min on one core; install from them 30 s. `zip` crate reads them with its `zstd` feature. | local measurement on build b8a8e89ebf07aeb9 (2026-11-15) |
+| WebView2 in Tauri ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (Tauri sets its own args): to drive the app over CDP, build with a `--config` override setting the window's `additionalBrowserArgs` to include `--remote-debugging-port`. | local test (2026-11-15) |
+
 Update this table when a fact is (re)verified; date it.
 
 ## 5. Key decisions (see `docs/decisions/`)
@@ -114,6 +117,17 @@ Update this table when a fact is (re)verified; date it.
   client files tracked by sha256 in `clients/<client>.json` (player's own
   file moved to `.eoa-backup`, edited tracked files never deleted);
   `eoa play` prepares, starts, launches, stops the servers when the game exits.
+- **0014** `eoa-launcher`: player actions shared by the app and the CLI
+  (install, update, repair, resume, modules, options, client, accounts);
+  errors as `UiError{code, params, detail}` (`error.<code>` in the locales);
+  progress and session events; `pending.json` makes an interrupted
+  install/update/repair resume with the same plan; repair = update to the
+  current build with a unique backup label.
+- **0015** Distribution: per-user NSIS only (no MSI), `release-app.yml`
+  (manual, draft by default), SignPath when its secrets exist, updater feed
+  `latest.json` in the `app-latest` release (only when `EOA_UPDATER_PUBKEY`
+  + private key are set), opt-in crash reports (local, redacted, GitHub
+  issue opened by the player), release artifacts = ZIP with zstd entries.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -135,6 +149,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ eoa-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
 │  ├─ eoa-runtime/           supervisor: start order, readiness, console, logs, clean stop; driver trait
 │  ├─ eoa-client/            player's client: detection, realmlist, managed patch files, launch
+│  ├─ eoa-launcher/          player actions for app + CLI: errors, progress, sessions, crash reports
 │  └─ eoa-cli/               `eoa` binary (CI, support, power users)
 ├─ drivers/
 │  └─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
@@ -149,9 +164,11 @@ reduced in-game settings) unless the user asks.
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
 ├─ .github/workflows/
 │  ├─ ci.yml                 Windows full checks + Linux portable crates
+│  ├─ release-app.yml        launcher installer: build, SignPath, update feed, release (manual)
 │  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
 │                            changes; reuses the artifact when the build key is unchanged)
-├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs, index.mjs
+├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs, index.mjs,
+│                            zip-zstd.mjs (release archives), app-release.mjs (launcher release)
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
 ├─ .claude/
 │  ├─ settings.json          shared permissions + hooks, co-author attribution off
@@ -207,10 +224,13 @@ cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ct
 cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
 cargo run -p eoa-cli -- module enable|disable <id> <module>...   # servers stopped
 cargo run -p eoa-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
+cargo run -p eoa-cli -- repair <id>           # reinstall server files + configs of the current release
+cargo run -p eoa-cli -- resume <id>           # finish an interrupted install/update/repair/module change
 cargo run -p eoa-cli -- option set|show <id> [<module> <option>=<value>...]   # servers stopped
 cargo run -p eoa-cli -- client set <game folder> [--locale frFR] | show | prepare <id>
 cargo run -p eoa-cli -- play <id> [--keep-running]   # prepare client, start servers, launch the game
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
+node tools/ci/zip-zstd.mjs <dir> <out.zip> [--level 19]   # release archive (ADR 0015)
 ```
 
 Environment (2026-11-13): Windows 11, PowerShell + Git Bash, Rust 1.100 (rustup,
@@ -220,7 +240,9 @@ prepend `%USERPROFILE%\.cargo\bin` to `PATH`. Build Tools reinstalled
 2026-11-15 (C++ workload, MSVC 14.44, SDK 10.0.26100). Run cargo from
 PowerShell: in Git Bash, `/usr/bin/link` shadows MSVC's `link.exe`.
 
-Release builds: `npm run build` (NSIS + MSI). Quick local check without
+Release builds: `npm run build` (per-user NSIS; signed releases only from
+`release-app.yml`). The app uses `EOA_ROOT` when set (e.g. `.local/eoa` to
+see the dev instances). Quick local check without
 installers: `cd app && npx tauri build --debug --no-bundle`.
 
 ## 8. Conventions
@@ -300,3 +322,11 @@ patch-V/S, J/U, classic DBCs) with the server data overlay, `eoa client
 set|show|prepare` and `eoa play` (ADR 0013). Next: phase 5 (public app). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.
+Phase 5 (2026-11-15): `eoa-launcher` (ADR 0014) shared by the CLI and the
+app; UI wired to real states (install wizard, Play/start/stop, consoles,
+modules, options, accounts, resume, update, Repair; verified by driving the
+app over CDP on `pubtest`); `eoa repair|resume`; per-user NSIS, release
+workflow with SignPath + signed update feed, opt-in crash reports, zstd
+release archives (ADR 0015). Remaining: SignPath project and updater key
+(maintainer), first `release-app.yml` run, closed beta. Bots and Backups
+tabs are later phases.

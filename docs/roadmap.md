@@ -76,11 +76,17 @@ Durations assume one full-time developer and are rough.
 
 ## Phase 5: public app (~3 weeks)
 
-- UI: install wizard, Play, modules, settings, logs, Repair
-- NSIS installer, SignPath signing, Tauri updater, opt-in crash reports
-- zstd artifacts (measured 2026-11-14: server 243 → 164 MB, snapshot 137 → 89 MB;
-  extraction speed unchanged): smaller downloads for slow connections
-- Closed beta
+- [x] Shared services for the app and the CLI: `eoa-launcher` (ADR 0014)
+- [x] UI: install wizard (client folder, modules, solo/LAN), Play / start / stop with real
+  server states, consoles (logs + commands), module toggles and options, accounts, resume,
+  update, Repair
+- [x] Per-user NSIS installer (no MSI: admin rights), `release-app.yml` (ADR 0015)
+- [x] Tauri updater: signed feed `latest.json` in the `app-latest` release
+- [x] Opt-in crash reports (local, redacted, GitHub issue submitted by the player)
+- [x] zstd artifacts (measured 2026-11-15: server 256 → 173 MB, snapshot 144 → 94 MB;
+  install from them 30 s): `tools/ci/zip-zstd.mjs` in the publish job
+- [ ] Maintainer: SignPath Foundation project + updater key pair in the repository settings
+- [ ] Closed beta (first `release-app.yml` run, draft release)
 
 ## Later
 

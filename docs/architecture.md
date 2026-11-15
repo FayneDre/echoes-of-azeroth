@@ -158,15 +158,16 @@ of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
 |---|---|---|
 | `eoa-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
 | `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation, signed artifact index (`index`: Ed25519 envelope, trusted keys, anti-rollback, selection by catalog pins, ADR 0010). |
-| `eoa-cli` | ✅ | `eoa catalog validate`, `eoa catalog resolve`, `eoa store fetch`. |
+| `eoa-launcher` | ✅ | Player actions shared by the app and the CLI (ADR 0014): install, update, repair, resume (`pending.json`), modules, options, client preparation, accounts; `UiError` codes; serializable progress (`progress`) and background sessions with console (`session`); opt-in crash reports (`crash`, ADR 0015). |
+| `eoa-cli` | ✅ | `eoa` over `eoa-launcher`: catalog, store, install, start, play, update, repair, resume, module, option, client, account, index. |
 | `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
 | `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
 | `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
 | `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore, adoption of a restored snapshot (§8). Later: Job Object. |
 | `eoa-runtime` | ✅ (first slice) | Supervisor (§10, ADR 0011): MySQL then the manifest processes in order, each gated by readiness; console (stdin of the `close-stdin` process), output to `logs/<process>.console.log` + broadcast, crash detection, clean stop in reverse order; kill-on-close Job Object for `terminate` processes. `EmulatorDriver` trait. |
-| `eoa-client` | planned | Client detection, realmlist, managed patches, launch. |
+| `eoa-client` | ✅ | Client detection (build from the version resource, locales), realmlist + saved setting, cache clearing, managed patch files tracked by sha256, client lock, launch (ADR 0013). |
 | `drivers/azerothcore` | ✅ (first slice) | Game accounts written to the auth database like `AccountMgr::CreateAccount` (SRP6), realm 1 address/port before each start. Later: AHBot account + character, module post-install steps. |
-| `app/src-tauri` | ✅ skeleton | Thin adapter: Tauri commands/events over the crates. |
+| `app/src-tauri` | ✅ | Thin adapter over `eoa-launcher`: commands, `operation` / `session` events (sessions batched every 100 ms), one change at a time, clean stop of the servers on window close, updater plugin when the build has a feed (ADR 0015). |
 
 ### 5.1 Install engine (`eoa-engine`)
 
@@ -495,8 +496,15 @@ Verified 2026-11-15 with the maintainer's 3.3.5a client on a local instance:
 ## 12. Security & distribution
 
 - Trust chain: signed index → per-artifact hash → verified before execution.
-- Authenticode signing via SignPath Foundation (open-source program).
-- Tauri updater with its own signing key.
+- Authenticode signing via SignPath Foundation (open-source program), in
+  `release-app.yml` once its secrets are set (ADR 0015).
+- Tauri updater with its own minisign key: feed `latest.json` in the rolling
+  `app-latest` release, signature made over the final (signed) installer;
+  builds without the public key have no auto-update.
+- Per-user NSIS installer only (no admin rights); no MSI.
+- Crash reports: written locally (redacted), offered as a pre-filled GitHub
+  issue the player submits themselves; no telemetry.
+- Release artifacts: ZIP with zstd entries (`tools/ci/zip-zstd.mjs`).
 - MySQL and SOAP bound to localhost; LAN mode exposes only auth/world ports.
 
 ## 13. Network scope
