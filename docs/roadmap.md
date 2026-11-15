@@ -85,8 +85,20 @@ Durations assume one full-time developer and are rough.
 - [x] Opt-in crash reports (local, redacted, GitHub issue submitted by the player)
 - [x] zstd artifacts (measured 2026-11-15: server 256 → 173 MB, snapshot 144 → 94 MB;
   install from them 30 s): `tools/ci/zip-zstd.mjs` in the publish job
-- [ ] Maintainer: SignPath Foundation project + updater key pair in the repository settings
-- [ ] Closed beta (first `release-app.yml` run, draft release)
+- [x] Updater key pair in the repository settings (2026-11-15)
+- [x] First `release-app.yml` run: draft `app-v0.1.0` (unsigned, update signature made)
+- [ ] Maintainer: SignPath Foundation project
+- [ ] Closed beta
+
+## Phase 6: player tools (started 2026-11-15)
+
+- [x] Bots tab: Playerbots options (counts, levels, LFG/BG, guilds, chat), keys verified at
+  the pinned commit
+- [x] Backups tab + `eoa backup`: manual player-data backups, retention of automatic dumps,
+  restore of the player databases (ADR 0016; verified on `pubtest`: 11 s backup, 38 s restore)
+- [x] Join a LAN realm from another computer (`eoa join`, Home panel)
+- [ ] LAN hosting firewall rule (optional elevation, principle 6)
+- [ ] Backups while the servers run; `assets/` retention
 
 ## Later
 

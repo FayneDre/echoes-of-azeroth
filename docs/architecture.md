@@ -363,7 +363,7 @@ runtime, UI and updates are reused unchanged.
 ├─ instances\<id>\        bin\ sql\ configs\ db\ logs\ instance.json secrets.json  (cwd of the servers)
 ├─ assets\<sha256>\       module assets, unpacked once per archive (ADR 0013)
 ├─ clients\<client>.json  registered client + files the launcher put in it (.lock while used)
-├─ backups\<id>\          database dumps before updates
+├─ backups\<id>\          manual-<secs>.sql (player data, kept), before-<label>-<secs>.sql (newest 5)
 └─ state\                 operation journals, locks
 ```
 
@@ -374,6 +374,21 @@ client version into `serverdata\` and shared through an absolute `DataDir`
 points to the instance overlay `instances\<id>\data\`: junctions to the
 shared directories, `dbc\` rebuilt with hard links plus the overrides
 (ADR 0013). The client itself stays where the player installed it.
+
+### Backups and restore (ADR 0016)
+
+Manual backups dump the player databases only (`playerData: true`); the
+automatic dumps made before an update, repair or restore hold every
+database and are pruned to the newest 5. A restore is an `instance-<id>`
+operation:
+
+```text
+servers-stopped → db-start → db-backup → db-restore → db-import → db-stop
+```
+
+`db-restore` drops, recreates and replays (`mysql --one-database`) only the
+player databases the dump holds; content databases stay as the current
+build made them, and dbimport migrates the restored ones.
 
 ## 8. Database (MySQL 8.4 LTS, portable)
 

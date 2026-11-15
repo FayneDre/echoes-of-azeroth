@@ -20,6 +20,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0013](0013-client-integration.md) | Client integration: managed client files, module assets downloaded from upstream, per-instance server data overlay | Accepted |
 | [0014](0014-launcher-services.md) | Launcher services shared by the app and the CLI: `eoa-launcher`, error codes, progress and session events, pending changes, repair | Accepted |
 | [0015](0015-launcher-distribution.md) | Launcher distribution: per-user NSIS installer, SignPath, signed auto-update feed, opt-in crash reports, zstd artifacts | Accepted |
+| [0016](0016-backups-and-lan-join.md) | Player-data backups, retention, restore of the player databases, joining a LAN realm | Accepted |
 
 Template:
 

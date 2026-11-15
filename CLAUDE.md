@@ -72,9 +72,10 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | `Wow.exe` 3.3.5a: `VS_FIXEDFILEINFO` file version 3.3.5.12340 (build = low word of the low dword). The client reads `Data/<locale>/realmlist.wtf` and also saves `SET realmList "..."` in `WTF/Config.wtf`. | local client (2026-11-15) |
 | Individual Progression optional files are 7z archives in its repo at the pinned commit: `optional/patch-V.7z` (patch-V.mpq + Spell.dbc), `patch-S.7z` (patch-S.mpq + Spell.dbc), `dbc.7z` (Patch-J.mpq, Patch-U.mpq, SkillLine/SkillLineAbility/SkillRaceClassInfo/SpellItemEnchantment.dbc); sha256 pinned in the module manifest. | module `optional/`, `patch-explanations.txt` (e179555) |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
-
 | Release archives as ZIP with zstd entries (level 19): server build 256 → 173 MB, snapshot 144 → 94 MB vs deflate; packing 8 min on one core; install from them 30 s. `zip` crate reads them with its `zstd` feature. | local measurement on build b8a8e89ebf07aeb9 (2026-11-15) |
 | WebView2 in Tauri ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (Tauri sets its own args): to drive the app over CDP, build with a `--config` override setting the window's `additionalBrowserArgs` to include `--remote-debugging-port`. | local test (2026-11-15) |
+| `mysql --one-database <db>` replays only that database's statements from a multi-database `mysqldump --databases` dump (follows its `USE` lines); database-level grants survive `DROP DATABASE`. Player-data restore on `pubtest`: dump 72 MB in 11 s, restore + dbimport 38 s. | local test (2026-11-15), ADR 0016 |
+| Playerbots config keys use the `Playerbots.` prefix at the pinned commit (`Playerbots.MinRandomBots`, `RandomBotAutologin`, `MaxAddedBots`, ...). | `conf/playerbots.conf.dist` @ 405f811 (2026-11-15) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -128,6 +129,11 @@ Update this table when a fact is (re)verified; date it.
   `latest.json` in the `app-latest` release (only when `EOA_UPDATER_PUBKEY`
   + private key are set), opt-in crash reports (local, redacted, GitHub
   issue opened by the player), release artifacts = ZIP with zstd entries.
+- **0016** Backups: manual = player databases only (`manual-<secs>.sql`,
+  kept); automatic `before-*` dumps pruned to the newest 5; restore =
+  resumable `instance-<id>` op (full dump first, drop + replay only the
+  player databases the dump holds with `mysql --one-database`, dbimport);
+  `eoa join <address>` / Home panel points the client at a LAN host.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -229,6 +235,8 @@ cargo run -p eoa-cli -- resume <id>           # finish an interrupted install/up
 cargo run -p eoa-cli -- option set|show <id> [<module> <option>=<value>...]   # servers stopped
 cargo run -p eoa-cli -- client set <game folder> [--locale frFR] | show | prepare <id>
 cargo run -p eoa-cli -- play <id> [--keep-running]   # prepare client, start servers, launch the game
+cargo run -p eoa-cli -- backup list|create <id> | restore|delete <id> <name>   # player-data backups (ADR 0016)
+cargo run -p eoa-cli -- join <address>        # point the client at a LAN host and launch the game
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 node tools/ci/zip-zstd.mjs <dir> <out.zip> [--level 19]   # release archive (ADR 0015)
 ```
@@ -327,6 +335,12 @@ app; UI wired to real states (install wizard, Play/start/stop, consoles,
 modules, options, accounts, resume, update, Repair; verified by driving the
 app over CDP on `pubtest`); `eoa repair|resume`; per-user NSIS, release
 workflow with SignPath + signed update feed, opt-in crash reports, zstd
-release archives (ADR 0015). Remaining: SignPath project and updater key
-(maintainer), first `release-app.yml` run, closed beta. Bots and Backups
-tabs are later phases.
+release archives (ADR 0015). Updater key pair set (2026-11-15, private key
+kept by the maintainer outside the repo); first `release-app.yml` run
+published the draft `app-v0.1.0`. Remaining: SignPath project (maintainer),
+closed beta.
+After phase 5 (2026-11-15): Bots tab (Playerbots options, verified keys;
+options of mandatory modules now listed and settable), Backups tab and
+`eoa backup` (ADR 0016, restore verified on `pubtest`), `eoa join` / LAN
+join panel, stop timeout counted from the last output line, `AlreadyExited`
+stop outcome.
