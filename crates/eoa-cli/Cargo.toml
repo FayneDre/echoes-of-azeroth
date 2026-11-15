@@ -18,7 +18,9 @@ anyhow.workspace = true
 clap.workspace = true
 eoa-catalog.workspace = true
 eoa-core.workspace = true
+eoa-driver-azerothcore.workspace = true
 eoa-engine.workspace = true
+eoa-runtime.workspace = true
 eoa-store.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }

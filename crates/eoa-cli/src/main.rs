@@ -76,6 +76,134 @@ enum Command {
         #[command(subcommand)]
         command: ComponentCommand,
     },
+    /// Start an installed instance in the foreground. Lines typed are sent to
+    /// the server console; Ctrl+C, `.stop` or end of input stops everything cleanly.
+    Start {
+        id: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        /// Data root (`%LOCALAPPDATA%EchoesOfAzeroth` for the launcher).
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Game accounts of an instance.
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum AccountCommand {
+    /// Create a game account (the database is started for it if needed).
+    Create {
+        /// Instance id.
+        instance: String,
+        username: String,
+        /// Read from the first line of stdin when omitted.
+        #[arg(long)]
+        password: Option<String>,
+        /// GM level: 0 player, 1 moderator, 2 game master, 3 administrator.
+        #[arg(long, default_value_t = 0)]
+        gm: u8,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+}
+
+/// The driver named by an emulator manifest.
+fn driver(name: &str) -> Result<Box<dyn eoa_runtime::EmulatorDriver>> {
+    match name {
+        "azerothcore" => Ok(Box::new(eoa_driver_azerothcore::AzerothCore)),
+        other => anyhow::bail!("no driver '{other}' in this build"),
+    }
+}
+
+/// Prints supervisor progress.
+fn print_event(event: eoa_runtime::ServerEvent) {
+    use eoa_runtime::ServerEvent as E;
+    match event {
+        E::DatabaseStarting => eprintln!("== starting the database"),
+        E::DatabaseReady => eprintln!("== database ready"),
+        E::Starting { process } => eprintln!("== starting {process}"),
+        E::Ready { process, after } => {
+            eprintln!("== {process} ready after {:.1} s", after.as_secs_f64())
+        }
+        E::Stopping { process } => eprintln!("== stopping {process}"),
+        E::Stopped { process, how } => eprintln!("== {process} stopped ({how:?})"),
+        E::DatabaseStopped => eprintln!("== database stopped"),
+        E::Warning(message) => eprintln!("warning: {message}"),
+    }
+}
+
+/// `eoa start`: runs until Ctrl+C, `.stop`, end of input or a server exit.
+async fn run_instance(server: eoa_runtime::Server) -> Result<ExitCode> {
+    let server = Arc::new(server);
+    let driver = driver(server.driver_id())?;
+    let mut logs = server.subscribe();
+    tokio::spawn(async move {
+        loop {
+            match logs.recv().await {
+                Ok(line) => println!("[{}] {}", line.process, line.text),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    eprintln!("({n} lines skipped)")
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let running = server.start(driver.as_ref(), &print_event).await?;
+    let record = server.record();
+    eprintln!(
+        "== ready: set your client's realmlist to {} (auth port {}). \
+         Type console commands; Ctrl+C or .stop to stop.",
+        match record.network {
+            install::Network::Solo => "127.0.0.1".to_owned(),
+            install::Network::Lan => eoa_runtime::lan_ipv4()
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "127.0.0.1".into()),
+        },
+        record.ports.get("auth").copied().unwrap_or_default()
+    );
+
+    // stdin is read on a plain thread: tokio's stdin cannot be interrupted.
+    let (tx, mut lines) = tokio::sync::mpsc::unbounded_channel::<String>();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut code = ExitCode::SUCCESS;
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => break,
+            line = lines.recv() => match line.as_deref().map(str::trim) {
+                None | Some(".stop") => break,
+                Some("") => {}
+                Some(command) => match running.console() {
+                    Some(console) => {
+                        if let Err(error) = console.send_line(command).await {
+                            eprintln!("console: {error}");
+                        }
+                    }
+                    None => eprintln!("this server has no console"),
+                },
+            },
+            (process, exit) = running.wait_any_exit() => {
+                eprintln!("== {process} exited (code {:?}); stopping the others", exit.code);
+                code = ExitCode::FAILURE;
+                break;
+            }
+        }
+    }
+    running.stop(&print_event).await;
+    Ok(code)
 }
 
 #[derive(Subcommand)]
@@ -389,6 +517,44 @@ fn main() -> Result<ExitCode> {
                 layout.instance(&record.id).root.display(),
                 record.db_port
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Start { id, catalog, root } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let server = eoa_runtime::Server::open(&catalog, &Layout::new(&root), &id)?;
+            tokio::runtime::Runtime::new()?.block_on(run_instance(server))
+        }
+        Command::Account {
+            command:
+                AccountCommand::Create {
+                    instance,
+                    username,
+                    password,
+                    gm,
+                    catalog,
+                    root,
+                },
+        } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let server = eoa_runtime::Server::open(&catalog, &Layout::new(&root), &instance)?;
+            let password = match password {
+                Some(password) => password,
+                None => {
+                    eprint!("password: ");
+                    let mut line = String::new();
+                    std::io::stdin().read_line(&mut line)?;
+                    line.trim_end_matches(['\r', '\n']).to_owned()
+                }
+            };
+            let account = eoa_runtime::NewAccount {
+                username,
+                password,
+                gm_level: gm,
+            };
+            let driver = driver(server.driver_id())?;
+            let id = tokio::runtime::Runtime::new()?
+                .block_on(server.create_account(driver.as_ref(), &account))?;
+            println!("account '{}' created (id {id})", account.username);
             Ok(ExitCode::SUCCESS)
         }
         Command::Index {
