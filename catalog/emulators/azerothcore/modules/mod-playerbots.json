@@ -19,36 +19,73 @@
     "ref": "master",
     "commit": "405f81196161017eebae3ee7a612d786a3ed2a9d"
   },
-  "compatibleFlavors": ["playerbot"],
+  "compatibleFlavors": [
+    "playerbot"
+  ],
   "requires": [],
   "conflicts": [],
   "removable": false,
-  "activation": { "mode": "always" },
+  "activation": {
+    "mode": "always"
+  },
   "database": {
     "dbimportId": "mod-playerbots",
-    "touches": ["characters", "world", "playerbots"],
+    "touches": [
+      "characters",
+      "world",
+      "playerbots"
+    ],
     "extraDatabases": [
       {
         "id": "playerbots",
         "name": "acore_playerbots",
         "playerData": true,
         "connections": [
-          { "file": "modules/playerbots.conf", "key": "PlayerbotsDatabaseInfo" }
+          {
+            "file": "modules/playerbots.conf",
+            "key": "PlayerbotsDatabaseInfo"
+          }
         ]
       }
     ]
   },
   "config": {
     "files": [
-      { "file": "modules/playerbots.conf", "dist": "modules/playerbots.conf.dist" }
+      {
+        "file": "modules/playerbots.conf",
+        "dist": "modules/playerbots.conf.dist"
+      }
     ]
   },
   "options": [
     {
+      "id": "random-bot-autologin",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots in the world",
+        "fr": "Bots aléatoires dans le monde"
+      },
+      "help": {
+        "en": "Bots that live their own lives: questing, grouping, trading.",
+        "fr": "Des bots qui vivent leur vie : quêtes, groupes, échanges."
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotAutologin"
+      },
+      "default": true
+    },
+    {
       "id": "min-random-bots",
       "type": "integer",
-      "label": { "en": "Minimum random bots", "fr": "Nombre minimum de bots aléatoires" },
-      "target": { "file": "modules/playerbots.conf", "key": "Playerbots.MinRandomBots" },
+      "label": {
+        "en": "Minimum random bots",
+        "fr": "Nombre minimum de bots aléatoires"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.MinRandomBots"
+      },
       "default": 500,
       "min": 0,
       "max": 5000
@@ -56,11 +93,167 @@
     {
       "id": "max-random-bots",
       "type": "integer",
-      "label": { "en": "Maximum random bots", "fr": "Nombre maximum de bots aléatoires" },
-      "target": { "file": "modules/playerbots.conf", "key": "Playerbots.MaxRandomBots" },
+      "label": {
+        "en": "Maximum random bots",
+        "fr": "Nombre maximum de bots aléatoires"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.MaxRandomBots"
+      },
       "default": 500,
       "min": 0,
       "max": 5000
+    },
+    {
+      "id": "random-bot-min-level",
+      "type": "integer",
+      "label": {
+        "en": "Lowest random bot level",
+        "fr": "Niveau minimum des bots aléatoires"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotMinLevel"
+      },
+      "default": 1,
+      "min": 1,
+      "max": 80
+    },
+    {
+      "id": "random-bot-max-level",
+      "type": "integer",
+      "label": {
+        "en": "Highest random bot level",
+        "fr": "Niveau maximum des bots aléatoires"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotMaxLevel"
+      },
+      "default": 80,
+      "min": 1,
+      "max": 80
+    },
+    {
+      "id": "sync-level-with-players",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots follow the players' level",
+        "fr": "Les bots aléatoires suivent le niveau des joueurs"
+      },
+      "help": {
+        "en": "Caps the random bot level at the highest level of the players online.",
+        "fr": "Limite le niveau des bots aléatoires au plus haut niveau des joueurs connectés."
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.SyncLevelWithPlayers"
+      },
+      "default": false
+    },
+    {
+      "id": "max-added-bots",
+      "type": "integer",
+      "label": {
+        "en": "Bots a player can control",
+        "fr": "Bots qu'un joueur peut contrôler"
+      },
+      "help": {
+        "en": "How many bots one player can add to their group or command at once.",
+        "fr": "Combien de bots un joueur peut ajouter à son groupe ou commander à la fois."
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.MaxAddedBots"
+      },
+      "default": 40,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "random-bot-join-lfg",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots use the dungeon finder",
+        "fr": "Les bots aléatoires utilisent la recherche de donjon"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotJoinLfg"
+      },
+      "default": true
+    },
+    {
+      "id": "random-bot-join-bg",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots join battlegrounds and arenas",
+        "fr": "Les bots aléatoires rejoignent champs de bataille et arènes"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotJoinBG"
+      },
+      "default": true
+    },
+    {
+      "id": "random-bot-auto-join-bg",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots start battlegrounds on their own",
+        "fr": "Les bots aléatoires lancent des champs de bataille d'eux-mêmes"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotAutoJoinBG"
+      },
+      "default": false
+    },
+    {
+      "id": "random-bot-guild-count",
+      "type": "integer",
+      "label": {
+        "en": "Guilds of random bots",
+        "fr": "Guildes de bots aléatoires"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotGuildCount"
+      },
+      "default": 20,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "random-bot-talk",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots talk in chat",
+        "fr": "Les bots aléatoires parlent dans le chat"
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.RandomBotTalk"
+      },
+      "default": true
+    },
+    {
+      "id": "enable-broadcasts",
+      "type": "boolean",
+      "label": {
+        "en": "Random bots announce their deeds",
+        "fr": "Les bots aléatoires annoncent leurs exploits"
+      },
+      "help": {
+        "en": "Loot, quest and level-up messages in the general and guild channels.",
+        "fr": "Messages de butin, de quêtes et de niveaux dans les canaux général et de guilde."
+      },
+      "target": {
+        "file": "modules/playerbots.conf",
+        "key": "Playerbots.EnableBroadcasts"
+      },
+      "default": true
     }
   ]
 }

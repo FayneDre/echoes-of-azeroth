@@ -241,7 +241,7 @@
                   "const": "close-stdin"
                 },
                 "timeoutSeconds": {
-                  "description": "Time allowed for the clean shutdown before the process is killed (default 300).",
+                  "description": "Time the clean shutdown may print nothing before the process is killed (default 300): a shutdown that still logs is never killed.",
                   "type": "integer",
                   "minimum": 1
                 }
