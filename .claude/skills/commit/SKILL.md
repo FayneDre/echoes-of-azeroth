@@ -17,6 +17,10 @@ Only commit or push when the user asks.
   e-mail address or local paths (`C:\Users\...`) in commits or files. The
   repository is public. Refer to "the maintainer". Words listed in
   `.git/info/private-words` are rejected by the hooks.
+- **The maintainer decides every push.** A request to commit is not a request
+  to push. Never push on your own initiative, never chain a push after a
+  commit, never push "to trigger CI": after committing, report and wait. Push
+  only when the maintainer explicitly asks for that push.
 - **Never bypass hooks** (`--no-verify`) and never force-push.
 - Commit identity is repository-local: GitHub handle + GitHub no-reply e-mail.
   Do not change `user.name` / `user.email`.
@@ -42,6 +46,8 @@ Only commit or push when the user asks.
    Scopes: core, catalog, cli, app, ui, ci, docs, tools, claude.
 4. Commit with a HEREDOC message (no trailers). If a hook fails, fix the cause and
    create a new commit — never amend someone else's pushed commit.
-5. Push only when asked: `git push` (first push: `git push -u origin main`).
+5. Push only when the maintainer explicitly asks for it (see hard rules):
+   `git push` (first push: `git push -u origin main`). Otherwise stop after the
+   commit and say the work is committed locally, not pushed.
 6. Report to the user in French: commits created (hash + subject), push result,
    any check that was skipped and why.

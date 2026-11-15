@@ -231,7 +231,9 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 ### Git
 - Repository: `github.com/FayneDre/echoes-of-azeroth` (public), default branch `main`.
 - Use the `commit` skill. Conventional Commits, English, no trailers.
-- Commit or push only when the maintainer asks. Never `--no-verify`, never force-push.
+- Commit only when the maintainer asks. **The maintainer decides every push**:
+  a commit request is not a push request; never push on your own initiative
+  (not even to trigger CI). Never `--no-verify`, never force-push.
 - Commit identity is repository-local (GitHub handle + no-reply e-mail); don't change it.
 - Never commit build outputs, installed servers, client files or secrets.
 - Architecture changes need an ADR in `docs/decisions/` (`new-adr` skill).
