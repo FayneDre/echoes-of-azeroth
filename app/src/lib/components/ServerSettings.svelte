@@ -1,21 +1,20 @@
 <script lang="ts">
   // "Server settings" tab: the realm's modules (mandatory ones always
   // installed, optional ones toggled at any time with the servers stopped)
-  // and the options of the enabled modules.
+  // and the options of the enabled modules (bot modules have their own tab).
   import {
     api,
     asCommandError,
     type CommandError,
     type EmulatorOverview,
     type InstanceView,
-    type ModuleOption,
     type ModuleOptions,
-    type OptionValue,
   } from "../api";
   import { untrack } from "svelte";
   import { localized, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import OptionsPanel from "./OptionsPanel.svelte";
   import ProgressPanel from "./ProgressPanel.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
@@ -32,8 +31,6 @@
   /** Module selection being edited (starts from the installed one). */
   let selection = $state<string[]>([]);
   let options = $state<ModuleOptions[]>([]);
-  /** Edited option values, as text, per module. */
-  let drafts = $state<Record<string, Record<string, string>>>({});
   let error = $state<CommandError | null>(null);
   let rebuilds = $state<string[]>([]);
 
@@ -42,18 +39,12 @@
   const toDisable = $derived(installed.filter((m) => !selection.includes(m)));
   const changed = $derived(toEnable.length + toDisable.length > 0);
 
-  function asText(value: OptionValue): string {
-    return String(value);
-  }
-
   async function load() {
     if (!id) return;
     selection = [...installed];
     try {
-      options = await api.options(id);
-      drafts = Object.fromEntries(
-        options.map((m) => [m.module, Object.fromEntries(m.options.map((o) => [o.option.id, asText(o.value)]))]),
-      );
+      const all = await api.options(id);
+      options = all.filter((m) => category(m.module) !== "bots");
     } catch (raw) {
       error = asCommandError(raw);
     }
@@ -97,36 +88,13 @@
     }
   }
 
-  function optionChanged(module: ModuleOptions): boolean {
-    return module.options.some((o) => drafts[module.module]?.[o.option.id] !== asText(o.value));
-  }
-
-  async function applyOptions(module: ModuleOptions) {
-    if (!id) return;
-    const instanceId = id;
-    const draft = drafts[module.module] ?? {};
-    const values = module.options
-      .filter((o) => o.option.id in draft && draft[o.option.id] !== asText(o.value))
-      .map((o) => [o.option.id, draft[o.option.id]] as [string, string]);
-    error = null;
-    try {
-      await runOperation(instanceId, () => api.setOptions(instanceId, module.module, values));
-    } catch (raw) {
-      error = asCommandError(raw);
-    }
-  }
-
   function moduleName(moduleId: string): string {
     const module = realm.modules.find((m) => m.id === moduleId);
     return module ? localized(module.name) : moduleId;
   }
 
-  function setDraft(module: string, option: string, value: string) {
-    drafts[module] = { ...drafts[module], [option]: value };
-  }
-
-  function help(option: ModuleOption): string | null {
-    return option.help ? localized(option.help) : null;
+  function category(moduleId: string): string | undefined {
+    return realm.modules.find((m) => m.id === moduleId)?.category;
   }
 </script>
 
@@ -185,53 +153,15 @@
 </section>
 
 {#each options as module (module.module)}
-  <section class="panel">
-    <h3 class="panel-title">{t("settings.options", { module: moduleName(module.module) })}</h3>
-    <ul class="options">
-      {#each module.options as { option } (option.id)}
-        {@const value = drafts[module.module]?.[option.id] ?? ""}
-        <li>
-          <div class="label">
-            <span>{localized(option.label)}</span>
-            {#if help(option)}<small class="muted">{help(option)}</small>{/if}
-          </div>
-          {#if option.type === "boolean"}
-            <input
-              type="checkbox"
-              disabled={locked}
-              checked={value === "true"}
-              onchange={(e) => setDraft(module.module, option.id, String(e.currentTarget.checked))}
-            />
-          {:else if option.type === "integer"}
-            <input
-              type="number"
-              disabled={locked}
-              min={option.min ?? undefined}
-              max={option.max ?? undefined}
-              {value}
-              onchange={(e) => setDraft(module.module, option.id, e.currentTarget.value)}
-            />
-          {:else}
-            <select
-              disabled={locked}
-              {value}
-              onchange={(e) => setDraft(module.module, option.id, e.currentTarget.value)}
-            >
-              {#each option.choices as choice (choice.id)}
-                <option value={choice.id}>{localized(choice.label)}</option>
-              {/each}
-            </select>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-    <div class="apply">
-      <p class="muted">{t("settings.optionsHint")}</p>
-      <button class="btn btn-play" disabled={!optionChanged(module) || locked} onclick={() => applyOptions(module)}>
-        {t("common.apply")}
-      </button>
-    </div>
-  </section>
+  {#if id}
+    <OptionsPanel
+      instanceId={id}
+      {module}
+      title={t("settings.options", { module: moduleName(module.module) })}
+      {locked}
+      onerror={(e) => (error = e)}
+    />
+  {/if}
 {/each}
 
 <style>
@@ -319,29 +249,5 @@
     flex: 1;
     margin: 0;
     font-size: 0.85rem;
-  }
-
-  .options {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .options li {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .options li:last-child {
-    border-bottom: none;
-  }
-
-  .label {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
   }
 </style>

@@ -60,6 +60,12 @@ pub fn run() {
             commands::check_app_update,
             commands::install_app_update,
             commands::dismiss_crash_report,
+            commands::list_backups,
+            commands::backup_now,
+            commands::delete_backup,
+            commands::restore_backup,
+            commands::open_backups_folder,
+            commands::join_lan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Echoes of Azeroth");

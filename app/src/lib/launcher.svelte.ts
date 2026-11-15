@@ -102,7 +102,8 @@ function applySession(instance: string, list: SessionEvent[]) {
         session.processes[event.process] = "stopping";
         break;
       case "processStopped":
-        session.processes[event.process] = "stopped";
+        // A process that had already ended keeps its "ended unexpectedly" state.
+        if (event.how !== "alreadyExited") session.processes[event.process] = "stopped";
         break;
       case "databaseStopped":
         session.processes.database = "stopped";

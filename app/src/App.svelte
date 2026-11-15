@@ -1,6 +1,8 @@
 <script lang="ts">
   import "@fontsource-variable/cinzel";
   import { api, asCommandError, inDesktopApp, openExternal, type CommandError, type EmulatorOverview } from "./lib/api";
+  import Bots from "./lib/components/Bots.svelte";
+  import Backups from "./lib/components/Backups.svelte";
   import Account from "./lib/components/Account.svelte";
   import Console from "./lib/components/Console.svelte";
   import CrashNotice from "./lib/components/CrashNotice.svelte";
@@ -29,8 +31,8 @@
     { id: "home", label: "nav.home", ready: true },
     { id: "account", label: "nav.account", ready: true },
     { id: "settings", label: "nav.settings", ready: true },
-    { id: "bots", label: "nav.bots", ready: false },
-    { id: "backups", label: "nav.backups", ready: false },
+    { id: "bots", label: "nav.bots", ready: true },
+    { id: "backups", label: "nav.backups", ready: true },
   ];
 
   let catalog = $state<CatalogState>({ status: "loading" });
@@ -131,6 +133,10 @@
           <ServerSettings {realm} />
         {:else if tab === "account"}
           <Account {realm} />
+        {:else if tab === "bots"}
+          <Bots {realm} />
+        {:else if tab === "backups"}
+          <Backups {realm} />
         {:else}
           <Home {realm} />
         {/if}

@@ -15,6 +15,7 @@ use eoa_core::manifest::ModuleCategory;
 use eoa_core::LocalizedText;
 use eoa_engine::install::{InstanceRecord, Network};
 use eoa_engine::CancelToken;
+use eoa_launcher::backups::Backup;
 use eoa_launcher::progress::{EventObserver, OperationEvent};
 use eoa_launcher::session::{Game, Session, SessionEvent};
 use eoa_launcher::{
@@ -551,6 +552,76 @@ pub async fn create_account(
         gm_level,
     };
     launcher.create_account(&id, &account).await.map_err(ui)
+}
+
+// ---------------------------------------------------------------------- lan
+
+/// Points the game at a realm hosted on another computer and launches it;
+/// the client stays locked until the game exits.
+#[tauri::command]
+pub fn join_lan(state: State<'_, AppState>, emulator: String, address: String) -> Result<()> {
+    let launcher = state.launcher()?;
+    let client = launcher
+        .prepare_client_for_lan(&emulator, &address)
+        .map_err(ui)?;
+    let mut child = eoa_client::launch(&client.manifest, &client.state)
+        .map_err(|e| ui(LauncherError::Client(e)))?;
+    tauri::async_runtime::spawn(async move {
+        let _ = child.wait().await;
+        drop(client);
+    });
+    Ok(())
+}
+
+// ------------------------------------------------------------------ backups
+
+#[tauri::command]
+pub fn list_backups(state: State<'_, AppState>, id: String) -> Result<Vec<Backup>> {
+    state.launcher()?.backups(&id).map_err(ui)
+}
+
+#[tauri::command]
+pub async fn backup_now(state: State<'_, AppState>, id: String) -> Result<Backup> {
+    let launcher = state.launcher()?;
+    if state.operation.lock().expect("operation lock").is_some() {
+        return Err(app_error("operation.busy", &id));
+    }
+    launcher.backup_now(&id).await.map_err(ui)
+}
+
+#[tauri::command]
+pub fn delete_backup(state: State<'_, AppState>, id: String, name: String) -> Result<()> {
+    state.launcher()?.delete_backup(&id, &name).map_err(ui)
+}
+
+#[tauri::command]
+pub async fn restore_backup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<InstanceRecord> {
+    let instance = id.clone();
+    operation(
+        app,
+        &state,
+        &instance,
+        |launcher, observer, cancel| async move {
+            launcher.restore(&id, &name, &observer, &cancel).await
+        },
+    )
+    .await
+}
+
+/// Shows the backups folder in the file explorer (created if needed).
+#[tauri::command]
+pub fn open_backups_folder(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = state.launcher()?.backups_dir(&id);
+    std::fs::create_dir_all(&dir).map_err(|e| app_error("backup.folder", e))?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| app_error("backup.folder", e))
 }
 
 // ----------------------------------------------------------------- sessions

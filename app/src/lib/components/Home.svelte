@@ -7,6 +7,7 @@
   import ErrorBox from "./ErrorBox.svelte";
   import InstallWizard from "./InstallWizard.svelte";
   import InstancePanel from "./InstancePanel.svelte";
+  import JoinLan from "./JoinLan.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
@@ -31,4 +32,7 @@
   <InstancePanel {realm} {instance} {client} />
 {:else}
   <InstallWizard {realm} {client} instanceId={newId} />
+{/if}
+{#if overview && !launcher.error}
+  <JoinLan {realm} {client} />
 {/if}

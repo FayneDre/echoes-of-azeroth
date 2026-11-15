@@ -140,6 +140,17 @@ export interface ModuleOptions {
   options: { option: ModuleOption; value: OptionValue }[];
 }
 
+/** A database backup of an instance (`backups/<id>/<name>`). */
+export interface Backup {
+  name: string;
+  kind: "manual" | "update" | "repair" | "restore" | "other";
+  /** Unix seconds. */
+  created: number;
+  size: number;
+  /** Automatic dumps: only the newest few are kept. */
+  automatic: boolean;
+}
+
 export interface CrashReport {
   id: string;
   text: string;
@@ -171,7 +182,7 @@ export type SessionEvent =
   | { kind: "processReady"; process: string; afterMs: number }
   | { kind: "ready"; address: string; authPort: number }
   | { kind: "processStopping"; process: string }
-  | { kind: "processStopped"; process: string; killed: boolean }
+  | { kind: "processStopped"; process: string; how: "clean" | "killed" | "alreadyExited" }
   | { kind: "databaseStopped" }
   | { kind: "warning"; message: string }
   | { kind: "log"; process: string; stderr: boolean; text: string }
@@ -218,6 +229,12 @@ export const api = {
     invoke<void>("start_instance", { id, play, keepRunning }),
   stop: (id: string) => invoke<void>("stop_instance", { id }),
   console: (id: string, line: string) => invoke<void>("console_command", { id, line }),
+  joinLan: (emulator: string, address: string) => invoke<void>("join_lan", { emulator, address }),
+  backups: (id: string) => invoke<Backup[]>("list_backups", { id }),
+  backupNow: (id: string) => invoke<Backup>("backup_now", { id }),
+  deleteBackup: (id: string, name: string) => invoke<void>("delete_backup", { id, name }),
+  restoreBackup: (id: string, name: string) => invoke<InstanceRecord>("restore_backup", { id, name }),
+  openBackupsFolder: (id: string) => invoke<void>("open_backups_folder", { id }),
   crashReports: () => invoke<CrashReport[]>("crash_reports"),
   dismissCrashReport: (id: string) => invoke<void>("dismiss_crash_report", { id }),
   /** `null` when up to date or when this build has no update feed. */
