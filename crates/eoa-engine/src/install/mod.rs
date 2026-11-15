@@ -6,6 +6,7 @@
 //! instance: binaries and SQL from the server artifact, a private MySQL,
 //! rendered configs, dbimport.
 
+pub mod assets;
 pub mod bindings;
 pub mod config;
 pub mod index;
@@ -15,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use eoa_core::manifest::EmulatorManifest;
+use eoa_core::manifest::{EmulatorManifest, OptionValue};
 use eoa_core::template::TemplateError;
 use eoa_core::{Catalog, Resolution, ResolveError};
 use eoa_store::{FetchRequest, Store};
@@ -84,6 +85,8 @@ pub struct InstancePaths {
     pub secrets: PathBuf,
     /// Results of module post-install steps.
     pub bindings: PathBuf,
+    /// Server data overlay, only while a module asset overrides a file.
+    pub data: PathBuf,
 }
 
 impl Layout {
@@ -113,6 +116,14 @@ impl Layout {
     pub fn backups(&self, id: &str) -> PathBuf {
         self.root.join("backups").join(id)
     }
+    /// Unpacked module assets, by archive sha256 (ADR 0013).
+    pub fn assets(&self) -> PathBuf {
+        self.root.join("assets")
+    }
+    /// Registered game clients and the files the launcher put in them.
+    pub fn clients(&self) -> PathBuf {
+        self.root.join("clients")
+    }
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
     }
@@ -127,6 +138,7 @@ impl Layout {
             record: root.join("instance.json"),
             secrets: root.join("secrets.json"),
             bindings: root.join("bindings.json"),
+            data: root.join("data"),
             root,
         }
     }
@@ -173,6 +185,10 @@ pub struct InstanceRecord {
     /// `None` for instances made before it was recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<String>,
+    /// Module option values chosen by the player (module -> option -> value);
+    /// absent options use the manifest default.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, BTreeMap<String, OptionValue>>,
 }
 
 /// `secrets.json`: service account of the instance database. Never journaled.
@@ -267,6 +283,7 @@ pub fn open_or_create(
         created: crate::journal::now(),
         regenerate: Vec::new(),
         build: None,
+        options: BTreeMap::new(),
     };
     let secrets = Secrets {
         db_user: "eoa".into(),
@@ -497,6 +514,12 @@ pub struct InstancePlan {
     pub databases: Vec<String>,
     pub render: RenderConfigs,
     pub import: RunTool,
+    /// Module assets selected by the option values (ADR 0013).
+    pub assets: Vec<assets::SelectedAsset>,
+    /// Shared server data and the directory `DataDir` points at (the
+    /// instance overlay while a server override exists).
+    pub server_data: PathBuf,
+    pub data: PathBuf,
 }
 
 /// Plans the configs and dbimport of an instance from the catalog and its
@@ -529,18 +552,26 @@ pub fn instance_plan(
         .map(|rel| mysql_dir.join(rel))
         .ok_or_else(|| PlanError::Unknown(format!("client executable of '{}'", mysql.id)))?;
     let db = Arc::new(database(catalog, layout, record)?);
+    let selected_assets = assets::selected(catalog, &resolution, &record.options)?;
+    let server_data = layout.server_data(&client.id, &client.server_data.version);
+    let data = if selected_assets.iter().any(|a| !a.asset.server.is_empty()) {
+        paths.data.clone()
+    } else {
+        server_data.clone()
+    };
 
     let values = InstanceValues {
         root: &paths.root,
         logs: &paths.logs,
         sql: &paths.sql,
-        data: &layout.server_data(&client.id, &client.server_data.version),
+        data: &data,
         mysql_client: &mysql_client,
         ports: &record.ports,
         bind: record.network.bind(),
         db_port: record.db_port,
         db_user: &secrets.db_user,
         db_password: &secrets.db_password,
+        options: &record.options,
     };
     let files = plan_configs(catalog, &resolution, &values)?;
     let databases = databases(catalog, &resolution)?
@@ -566,6 +597,9 @@ pub fn instance_plan(
             log: paths.logs.join("dbimport.log"),
         },
         resolution,
+        assets: selected_assets,
+        server_data,
+        data,
     })
 }
 

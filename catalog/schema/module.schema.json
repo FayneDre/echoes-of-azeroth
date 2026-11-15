@@ -412,35 +412,87 @@
       ]
     },
     "asset": {
+      "description": "Files shipped in the module repository (client MPQ patches, server DBC overrides), downloaded from the pinned commit and verified by sha256; never re-hosted (ADR 0006, ADR 0013).",
       "type": "object",
       "required": [
         "id",
-        "artifact"
+        "source"
       ],
       "properties": {
         "id": {
           "$ref": "common.schema.json#/$defs/id"
         },
-        "artifact": {
-          "description": "Artifact name published by CI.",
-          "type": "string"
+        "source": {
+          "description": "An archive (.zip or .7z) of the module repository at its pinned commit.",
+          "type": "object",
+          "required": [
+            "path",
+            "size",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "description": "Path in the module repository.",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/relativePath"
+                },
+                {
+                  "type": "string",
+                  "pattern": "\\.(zip|7z)$"
+                }
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
         },
         "client": {
-          "description": "Files copied into the client 'Data' directory (tracked and removable).",
+          "description": "Archive members copied into the client patch directory (tracked and removable).",
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/assetFile"
           }
         },
         "server": {
-          "description": "Files overlaid on the instance server data directory (e.g. 'dbc/Spell.dbc').",
+          "description": "Archive members overlaid on the instance server data directory (e.g. 'dbc/Spell.dbc').",
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/assetFile"
           }
         }
       },
       "additionalProperties": false
+    },
+    "assetFile": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "description": "Member of the archive.",
+          "$ref": "#/$defs/relativePath"
+        },
+        "to": {
+          "description": "Destination relative to the client patch directory or the server data directory.",
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "additionalProperties": false
+    },
+    "relativePath": {
+      "description": "Relative path: '/' separators, segments of letters, digits, '.', '_' or '-', never '.' or '..'.",
+      "type": "string",
+      "pattern": "^(?!\\.\\.?(/|$))(?!.*/\\.\\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
     },
     "postInstallStep": {
       "oneOf": [

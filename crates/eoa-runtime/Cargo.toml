@@ -13,6 +13,7 @@ repository.workspace = true
 eoa-core.workspace = true
 eoa-db.workspace = true
 eoa-engine.workspace = true
+eoa-store.workspace = true
 futures-util.workspace = true
 regex.workspace = true
 thiserror.workspace = true

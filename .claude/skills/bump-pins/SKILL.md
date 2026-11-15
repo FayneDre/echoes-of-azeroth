@@ -16,7 +16,9 @@ description: Update pinned upstream commits (core flavors, modules) and componen
    gh api repos/<owner>/<repo>/contents/<path>.conf.dist?ref=<new> -H "Accept: application/vnd.github.raw"
    ```
 3. Update `commit`, and any key/option/override affected. Keep Playerbots on the
-   fork commit that its module version expects (they move together).
+   fork commit that its module version expects (they move together). A module
+   with `assets` (ADR 0013): re-download each `source.path` at the new commit,
+   update `size` / `sha256`, and check that the listed archive members still exist.
 4. MySQL: stay on 8.4 LTS (AzerothCore rejects 9.x/26.x). Update `version` and `upstream`.
 5. Validate: `npm run validate:catalog` and `cargo test -p eoa-catalog`.
 6. Summarise for the user (in French): old → new commit, notable upstream changes,

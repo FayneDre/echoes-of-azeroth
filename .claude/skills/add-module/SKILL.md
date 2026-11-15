@@ -40,7 +40,11 @@ files (MPQ) or server DBC overrides, accounts/characters it needs.
 - `config.coreOverrides` only for settings the module *requires*.
 - `options`: a few user-friendly settings, labels in `en` and `fr`, defaults = upstream
   defaults unless the user asks otherwise (never throttle in-game behaviour).
-- Never commit client files: assets reference CI artifacts.
+- Never commit client files. An asset names an archive of the module repository at
+  its pinned commit (`source.path`, `size`, `sha256`; `.zip` or `.7z`) and the members
+  it uses (`client` / `server`, each `{from, to}`, ADR 0013). Download the archive
+  from the pinned commit to measure size and sha256, and list its members before
+  writing them. Re-check both on every pin bump.
 
 ## 3. Validate
 

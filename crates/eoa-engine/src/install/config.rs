@@ -5,7 +5,8 @@ use std::path::Path;
 
 use eoa_conf::{Layer, LayerKind};
 use eoa_core::manifest::{
-    Activation, ConfigChanges, ConfigMap, ConfigValue, Database, ModuleOption, PostInstallStep,
+    Activation, ConfigChanges, ConfigMap, ConfigValue, Database, ModuleOption, OptionValue,
+    PostInstallStep,
 };
 use eoa_core::template::{self, Variables};
 use eoa_core::{Catalog, Resolution};
@@ -27,6 +28,36 @@ pub struct InstanceValues<'a> {
     pub db_port: u16,
     pub db_user: &'a str,
     pub db_password: &'a str,
+    /// Option values chosen by the player, by module (`instance.json`).
+    pub options: &'a BTreeMap<String, BTreeMap<String, OptionValue>>,
+}
+
+/// The config changes one option value makes.
+fn option_changes(option: &ModuleOption, value: &OptionValue) -> ConfigChanges {
+    let mut changes = ConfigChanges::new();
+    match (option, value) {
+        (ModuleOption::Boolean { target, .. }, OptionValue::Bool(b)) => {
+            changes
+                .entry(target.file.clone())
+                .or_default()
+                .insert(target.key.clone(), ConfigValue::Integer(i64::from(*b)));
+        }
+        (ModuleOption::Integer { target, .. }, OptionValue::Integer(n)) => {
+            changes
+                .entry(target.file.clone())
+                .or_default()
+                .insert(target.key.clone(), ConfigValue::Integer(*n));
+        }
+        (ModuleOption::Choice { choices, .. }, OptionValue::Choice(id)) => {
+            if let Some(choice) = choices.iter().find(|c| &c.id == id) {
+                for (file, map) in &choice.config {
+                    changes.entry(file.clone()).or_default().extend(map.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+    changes
 }
 
 /// One config file to render: `configs/<file>` from `bin/configs/<dist>`.
@@ -153,37 +184,24 @@ pub fn plan_configs(
             (Activation::Always, _) => {}
         }
         if on {
-            let mut options = ConfigChanges::new();
+            // Option defaults, then the player's choices (a value that no
+            // longer fits the option falls back to its default).
+            let chosen_values = values.options.get(&module.id);
             for option in &module.options {
-                match option {
-                    ModuleOption::Boolean {
-                        target, default, ..
-                    } => {
-                        options.entry(target.file.clone()).or_default().insert(
-                            target.key.clone(),
-                            ConfigValue::Integer(i64::from(*default)),
-                        );
-                    }
-                    ModuleOption::Integer {
-                        target, default, ..
-                    } => {
-                        options
-                            .entry(target.file.clone())
-                            .or_default()
-                            .insert(target.key.clone(), ConfigValue::Integer(*default));
-                    }
-                    ModuleOption::Choice {
-                        default, choices, ..
-                    } => {
-                        if let Some(choice) = choices.iter().find(|c| &c.id == default) {
-                            for (file, map) in &choice.config {
-                                options.entry(file.clone()).or_default().extend(map.clone());
-                            }
-                        }
-                    }
+                add(
+                    &option_changes(option, &option.default_value()),
+                    LayerKind::ModuleDefault,
+                    &module.id,
+                );
+                let value = chosen_values.and_then(|v| v.get(option.id()));
+                if value.is_some_and(|v| option.effective(Some(v)) == *v) {
+                    add(
+                        &option_changes(option, value.expect("checked")),
+                        LayerKind::User,
+                        &module.id,
+                    );
                 }
             }
-            add(&options, LayerKind::ModuleDefault, &module.id);
             // Post-install results (account ids...): locked, expanded at
             // render time from the instance's bindings (`bindings.rs`).
             for step in &module.post_install {

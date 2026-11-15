@@ -3,9 +3,13 @@
 //! [`apply_modules_operation`] brings an instance in line with its record:
 //!
 //! ```text
-//! servers-stopped → db-start → post-install → [regenerate-<db>]
-//!   → render-config → db-import → db-stop
+//! servers-stopped → [download/unpack assets] → server-data → db-start
+//!   → post-install → [regenerate-<db>] → render-config → db-import → db-stop
 //! ```
+//!
+//! - assets: the files the option choices select (ADR 0013), downloaded from
+//!   the module's pinned commit; `server-data` overlays their server files
+//!   on the shared data (`DataDir`); client files wait for `eoa play`.
 //!
 //! - `post-install` runs the manifest steps of every chosen module once
 //!   (accounts, characters), through the driver; results go to
@@ -23,6 +27,9 @@
 
 use std::path::Path;
 use std::sync::Arc;
+
+use eoa_engine::install::assets::{self, ServerOverlay};
+use eoa_store::Store;
 
 use eoa_core::manifest::{EmulatorManifest, PostInstallStep, Readiness};
 use eoa_core::Catalog;
@@ -121,13 +128,18 @@ pub fn apply_modules_operation(
     record: &InstanceRecord,
     secrets: &Secrets,
     driver: Arc<dyn EmulatorDriver>,
+    store: &Arc<Store>,
 ) -> Result<Operation<()>, RuntimeError> {
     let plan = install::instance_plan(catalog, layout, record, secrets)?;
     let (stopped, post_install) = common_steps(catalog, layout, record, &plan, driver)?;
     // Its own journal: an install interrupted after `instance-<id>` resumes
     // this one without disturbing the finished install journal.
-    let op = Operation::new(install::modules_operation_id(&record.id))
-        .step(stopped)
+    let mut op = Operation::new(install::modules_operation_id(&record.id)).step(stopped);
+    for step in assets::asset_steps(layout, store, &plan.assets) {
+        op.push(step);
+    }
+    let op = op
+        .step(overlay(layout, record, &plan))
         .step(DbStart {
             db: plan.db.clone(),
         })
@@ -157,6 +169,7 @@ pub fn update_operation(
     record: &InstanceRecord,
     secrets: &Secrets,
     driver: Arc<dyn EmulatorDriver>,
+    store: &Arc<Store>,
     server_artifact: &Path,
 ) -> Result<Operation<()>, RuntimeError> {
     // An interrupted module change (tables moved aside) must finish first.
@@ -175,18 +188,83 @@ pub fn update_operation(
             short(&to)
         )),
     };
-    Ok(Operation::new(install::instance_operation_id(&record.id))
-        .step(stopped)
+    let mut op = Operation::new(install::instance_operation_id(&record.id)).step(stopped);
+    // The catalog of the new release may pin other asset files.
+    for step in assets::asset_steps(layout, store, &plan.assets) {
+        op.push(step);
+    }
+    Ok(op
         .step(DbStart {
             db: plan.db.clone(),
         })
         .step(backup)
         .step(Extract::new("extract-bin", server_artifact, &paths.bin).subdir("dist"))
         .step(Extract::new("extract-sql", server_artifact, &paths.sql).subdir("sql"))
+        .step(overlay(layout, record, &plan))
         .step(post_install)
         .step(plan.render)
         .step(plan.import)
         .step(DbStop { db: plan.db }))
+}
+
+/// `server-data`: the instance overlay of the selected server files.
+fn overlay(
+    layout: &Layout,
+    record: &InstanceRecord,
+    plan: &install::InstancePlan,
+) -> ServerOverlay {
+    ServerOverlay {
+        shared: plan.server_data.clone(),
+        target: layout.instance(&record.id).data,
+        files: assets::server_files(layout, &plan.assets),
+    }
+}
+
+/// Sets module option values (`<option>=<value>` already parsed per
+/// option) and saves them in `instance.json`. Returns (new, previous)
+/// records, like [`set_modules`]; the module must be chosen.
+pub fn set_options(
+    catalog: &Catalog,
+    layout: &Layout,
+    id: &str,
+    module: &str,
+    values: &[(String, String)],
+) -> Result<(InstanceRecord, InstanceRecord), RuntimeError> {
+    let (old, _) = install::open_existing(layout, id)?;
+    install::ensure_finished(layout, &[install::instance_operation_id(id)])?;
+    let module_error = |message: String| RuntimeError::Module {
+        module: module.to_owned(),
+        message,
+    };
+    if !old.modules.iter().any(|m| m == module) {
+        return Err(module_error(
+            "this module is not enabled on the instance".into(),
+        ));
+    }
+    let manifest = catalog
+        .emulator(&old.emulator)
+        .and_then(|e| e.modules.get(module))
+        .ok_or_else(|| module_error("unknown module".into()))?;
+    let mut new = old.clone();
+    for (option, text) in values {
+        let spec = manifest
+            .options
+            .iter()
+            .find(|o| o.id() == option)
+            .ok_or_else(|| module_error(format!("no option '{option}'")))?;
+        let value = spec
+            .parse_value(text)
+            .map_err(|e| module_error(format!("{option}: {e}")))?;
+        let options = new.options.entry(module.to_owned()).or_default();
+        if value == spec.default_value() {
+            options.remove(option);
+        } else {
+            options.insert(option.clone(), value);
+        }
+    }
+    new.options.retain(|_, v| !v.is_empty());
+    install::save_record(layout, &new)?;
+    Ok((new, old))
 }
 
 fn short(key: &str) -> &str {

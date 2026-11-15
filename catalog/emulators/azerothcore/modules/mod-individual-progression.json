@@ -101,25 +101,50 @@
   "assets": [
     {
       "id": "patch-v",
-      "artifact": "mod-individual-progression/patch-v",
-      "client": ["patch-V.mpq"],
-      "server": ["dbc/Spell.dbc"]
+      "source": {
+        "path": "optional/patch-V.7z",
+        "size": 9857139,
+        "sha256": "4b596fc637e195382542dca321e8e465ac7736251be248bd7000803a59b84771"
+      },
+      "client": [{ "from": "patch-V.mpq", "to": "patch-V.mpq" }],
+      "server": [{ "from": "Spell.dbc", "to": "dbc/Spell.dbc" }]
     },
     {
       "id": "patch-s",
-      "artifact": "mod-individual-progression/patch-s",
-      "client": ["patch-S.mpq"],
-      "server": ["dbc/Spell.dbc"]
+      "source": {
+        "path": "optional/patch-S.7z",
+        "size": 9851062,
+        "sha256": "f52823f31b60e4f21912ea240a72602f387254b2af3dde57837d95d27bcddb0c"
+      },
+      "client": [{ "from": "patch-S.mpq", "to": "patch-S.mpq" }],
+      "server": [{ "from": "Spell.dbc", "to": "dbc/Spell.dbc" }]
     },
     {
       "id": "vanilla-visuals",
-      "artifact": "mod-individual-progression/vanilla-visuals",
-      "client": ["patch-J.mpq", "patch-U.mpq"]
+      "source": {
+        "path": "optional/dbc.7z",
+        "size": 15009759,
+        "sha256": "f305ab118262ee902216a2475995c09b98a229cffdf5e66320eb5e90daea618a"
+      },
+      "client": [
+        { "from": "Patch-J.mpq", "to": "patch-J.mpq" },
+        { "from": "Patch-U.mpq", "to": "patch-U.mpq" }
+      ]
     },
     {
       "id": "classic-spells",
-      "artifact": "mod-individual-progression/classic-spells",
-      "server": ["dbc/SkillLine.dbc", "dbc/SkillLineAbility.dbc", "dbc/SkillRaceClassInfo.dbc", "dbc/SpellItemEnchantment.dbc"]
+      "source": {
+        "path": "optional/dbc.7z",
+        "size": 15009759,
+        "sha256": "f305ab118262ee902216a2475995c09b98a229cffdf5e66320eb5e90daea618a"
+      },
+      "server": [
+        { "from": "SkillLine.dbc", "to": "dbc/SkillLine.dbc" },
+        { "from": "SkillLineAbility.dbc", "to": "dbc/SkillLineAbility.dbc" },
+        { "from": "SkillRaceClassInfo.dbc", "to": "dbc/SkillRaceClassInfo.dbc" },
+        { "from": "SpellItemEnchantment.dbc", "to": "dbc/SpellItemEnchantment.dbc" }
+      ]
     }
   ]
+
 }

@@ -17,6 +17,20 @@ impl fmt::Display for Issue {
     }
 }
 
+/// `relativePath` of `module.schema.json`: `/`-separated segments of ASCII
+/// letters, digits, `.`, `_` or `-`, never `.` or `..`.
+fn is_safe_relative(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        })
+}
+
 /// Checks references between manifests. Returns every issue found (empty = valid).
 pub fn validate(catalog: &Catalog) -> Vec<Issue> {
     let mut issues = Vec::new();
@@ -170,6 +184,21 @@ pub fn validate(catalog: &Catalog) -> Vec<Issue> {
             }
 
             let asset_ids: BTreeSet<&str> = module.assets.iter().map(|a| a.id.as_str()).collect();
+            // Asset paths end up joined to the client and data folders: the
+            // schema's rule again, so no manifest can write outside them.
+            for asset in &module.assets {
+                let files = asset.client.iter().chain(&asset.server);
+                let paths = std::iter::once(asset.source.path.as_str())
+                    .chain(files.flat_map(|f| [f.from.as_str(), f.to.as_str()]));
+                for path in paths {
+                    if !is_safe_relative(path) {
+                        push(
+                            here.clone(),
+                            format!("asset '{}': unsafe path '{path}'", asset.id),
+                        );
+                    }
+                }
+            }
             let mut option_ids = BTreeSet::new();
             for option in &module.options {
                 if !option_ids.insert(option.id()) {

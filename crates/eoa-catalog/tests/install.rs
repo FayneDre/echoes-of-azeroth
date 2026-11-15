@@ -20,6 +20,7 @@ fn plan(modules: &[&str]) -> Vec<ConfigFilePlan> {
         ("world".to_owned(), 8085),
         ("soap".to_owned(), 7878),
     ]);
+    let options = BTreeMap::new();
     let values = InstanceValues {
         root: Path::new(r"C:\eoa\instances\solo"),
         logs: Path::new(r"C:\eoa\instances\solo\logs"),
@@ -31,6 +32,7 @@ fn plan(modules: &[&str]) -> Vec<ConfigFilePlan> {
         db_port: 3307,
         db_user: "eoa",
         db_password: "s3cret",
+        options: &options,
     };
     plan_configs(&catalog, &resolution, &values).unwrap()
 }
@@ -264,4 +266,60 @@ fn ahbot_account_and_character_come_from_its_post_install_bindings() {
         .layers
         .iter()
         .all(|l| !l.values.contains_key("AuctionHouseBot.GUID")));
+}
+
+/// Individual Progression's choices select its upstream files (ADR 0013).
+#[test]
+fn option_choices_select_module_assets() {
+    use eoa_core::manifest::OptionValue;
+    use eoa_engine::install::assets::selected;
+
+    let catalog = catalog();
+    let module = "mod-individual-progression";
+    let resolution = eoa_core::resolve(&catalog, "azerothcore", None, &[module]).unwrap();
+    let none = selected(&catalog, &resolution, &BTreeMap::new()).unwrap();
+    assert!(none.is_empty(), "defaults install no file");
+
+    let options = BTreeMap::from([(
+        module.to_owned(),
+        BTreeMap::from([
+            (
+                "mana-costs".to_owned(),
+                OptionValue::Choice("era-adjusted".into()),
+            ),
+            (
+                "vanilla-visuals".to_owned(),
+                OptionValue::Choice("on".into()),
+            ),
+            (
+                "classic-spells".to_owned(),
+                OptionValue::Choice("on".into()),
+            ),
+        ]),
+    )]);
+    let chosen = selected(&catalog, &resolution, &options).unwrap();
+    let ids: Vec<&str> = chosen.iter().map(|a| a.asset.id.as_str()).collect();
+    assert_eq!(ids, ["patch-v", "vanilla-visuals", "classic-spells"]);
+    let commit = &catalog.emulator("azerothcore").unwrap().modules[module]
+        .source
+        .commit;
+    assert_eq!(
+        chosen[0].url,
+        format!(
+            "https://raw.githubusercontent.com/ZhengPeiRu21/mod-individual-progression/{commit}/optional/patch-V.7z"
+        )
+    );
+    let server: Vec<&str> = chosen
+        .iter()
+        .flat_map(|a| a.asset.server.iter().map(|f| f.to.as_str()))
+        .collect();
+    assert!(server.contains(&"dbc/Spell.dbc"));
+    assert!(server.contains(&"dbc/SkillLine.dbc"));
+
+    // A choice that no longer exists falls back to the default.
+    let stale = BTreeMap::from([(
+        module.to_owned(),
+        BTreeMap::from([("mana-costs".to_owned(), OptionValue::Choice("gone".into()))]),
+    )]);
+    assert!(selected(&catalog, &resolution, &stale).unwrap().is_empty());
 }

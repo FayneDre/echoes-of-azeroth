@@ -17,6 +17,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 eoa-catalog.workspace = true
+eoa-client.workspace = true
 eoa-core.workspace = true
 eoa-driver-azerothcore.workspace = true
 eoa-engine.workspace = true

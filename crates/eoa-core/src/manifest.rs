@@ -301,6 +301,99 @@ impl ModuleOption {
             | ModuleOption::Choice { id, .. } => id,
         }
     }
+
+    pub fn default_value(&self) -> OptionValue {
+        match self {
+            ModuleOption::Boolean { default, .. } => OptionValue::Bool(*default),
+            ModuleOption::Integer { default, .. } => OptionValue::Integer(*default),
+            ModuleOption::Choice { default, .. } => OptionValue::Choice(default.clone()),
+        }
+    }
+
+    /// Parses a value typed by the player (`true`/`false`/`1`/`0`, a number
+    /// in range, or a choice id) and checks it.
+    pub fn parse_value(&self, text: &str) -> Result<OptionValue, String> {
+        match self {
+            ModuleOption::Boolean { .. } => match text {
+                "true" | "1" | "on" => Ok(OptionValue::Bool(true)),
+                "false" | "0" | "off" => Ok(OptionValue::Bool(false)),
+                _ => Err(format!("'{text}' is not true or false")),
+            },
+            ModuleOption::Integer { min, max, .. } => {
+                let n: i64 = text
+                    .parse()
+                    .map_err(|_| format!("'{text}' is not a whole number"))?;
+                if min.is_some_and(|m| n < m) || max.is_some_and(|m| n > m) {
+                    return Err(format!(
+                        "{n} is out of range ({} to {})",
+                        min.map_or("-".into(), |m| m.to_string()),
+                        max.map_or("-".into(), |m| m.to_string())
+                    ));
+                }
+                Ok(OptionValue::Integer(n))
+            }
+            ModuleOption::Choice { choices, .. } => {
+                if choices.iter().any(|c| c.id == text) {
+                    Ok(OptionValue::Choice(text.to_owned()))
+                } else {
+                    let ids: Vec<&str> = choices.iter().map(|c| c.id.as_str()).collect();
+                    Err(format!("'{text}' is not one of: {}", ids.join(", ")))
+                }
+            }
+        }
+    }
+
+    /// The value in force: the chosen one when it fits this option, else
+    /// the default (an option whose type or choices changed upstream).
+    pub fn effective(&self, chosen: Option<&OptionValue>) -> OptionValue {
+        let fits = |v: &OptionValue| match (self, v) {
+            (ModuleOption::Boolean { .. }, OptionValue::Bool(_)) => true,
+            (ModuleOption::Integer { min, max, .. }, OptionValue::Integer(n)) => {
+                !(min.is_some_and(|m| *n < m) || max.is_some_and(|m| *n > m))
+            }
+            (ModuleOption::Choice { choices, .. }, OptionValue::Choice(c)) => {
+                choices.iter().any(|x| &x.id == c)
+            }
+            _ => false,
+        };
+        match chosen {
+            Some(v) if fits(v) => v.clone(),
+            _ => self.default_value(),
+        }
+    }
+}
+
+/// A module option value chosen by the player (`instance.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OptionValue {
+    Bool(bool),
+    Integer(i64),
+    Choice(String),
+}
+
+impl ModuleManifest {
+    /// Assets selected by the effective option values, in manifest order.
+    pub fn selected_assets(
+        &self,
+        values: Option<&std::collections::BTreeMap<String, OptionValue>>,
+    ) -> Vec<&Asset> {
+        let mut ids: Vec<&str> = Vec::new();
+        for option in &self.options {
+            if let ModuleOption::Choice { choices, .. } = option {
+                let value = option.effective(values.and_then(|v| v.get(option.id())));
+                if let OptionValue::Choice(chosen) = value {
+                    if let Some(choice) = choices.iter().find(|c| c.id == chosen) {
+                        ids.extend(choice.assets.iter().map(String::as_str));
+                    }
+                }
+            }
+        }
+        self.assets
+            .iter()
+            .filter(|a| ids.contains(&a.id.as_str()))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -316,17 +409,54 @@ pub struct OptionChoice {
     pub config: ConfigChanges,
 }
 
+/// Optional files a module ships in its own repository (client MPQ patches,
+/// server DBC overrides). Downloaded from the module's pinned commit and
+/// verified by sha256, never re-hosted (like server data, ADR 0006).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Asset {
     pub id: String,
-    pub artifact: String,
-    /// Files copied into the client patch directory (tracked, removable).
+    pub source: AssetSource,
+    /// Archive members copied into the client patch directory (tracked,
+    /// removed again when the choice changes).
     #[serde(default)]
-    pub client: Vec<String>,
-    /// Files overlaid on the instance server data directory.
+    pub client: Vec<AssetFile>,
+    /// Archive members overlaid on the instance's server data directory.
     #[serde(default)]
-    pub server: Vec<String>,
+    pub server: Vec<AssetFile>,
+}
+
+/// A file of the module repository at its pinned commit (`.zip` or `.7z`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetSource {
+    /// Path in the module repository.
+    pub path: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetFile {
+    /// Member of the archive.
+    pub from: String,
+    /// Destination, relative to the client patch directory or the server
+    /// data directory (`/` separators).
+    pub to: String,
+}
+
+impl GitSource {
+    /// Download URL of one file of the repository at the pinned commit.
+    /// Only GitHub repositories are supported.
+    pub fn raw_url(&self, path: &str) -> Option<String> {
+        let repo = self.repo.strip_prefix("https://github.com/")?;
+        let repo = repo.trim_end_matches('/').trim_end_matches(".git");
+        Some(format!(
+            "https://raw.githubusercontent.com/{repo}/{}/{path}",
+            self.commit
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -406,6 +536,19 @@ pub struct ClientDetection {
 pub struct Realmlist {
     /// Path template; `{locale}` is replaced.
     pub file: String,
+    /// Line template; `{address}` is replaced.
+    pub line: String,
+    /// A settings file where the client also saves the address: its lines
+    /// starting with `prefix` (any case) are rewritten when the file exists.
+    #[serde(default)]
+    pub saved: Option<SavedSetting>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SavedSetting {
+    pub file: String,
+    pub prefix: String,
     /// Line template; `{address}` is replaced.
     pub line: String,
 }

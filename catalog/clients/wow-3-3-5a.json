@@ -32,7 +32,12 @@
   ],
   "realmlist": {
     "file": "Data/{locale}/realmlist.wtf",
-    "line": "set realmlist {address}"
+    "line": "set realmlist {address}",
+    "saved": {
+      "file": "WTF/Config.wtf",
+      "prefix": "SET realmList ",
+      "line": "SET realmList \"{address}\""
+    }
   },
   "patches": {
     "directory": "Data"

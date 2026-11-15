@@ -110,6 +110,85 @@ enum Command {
         #[command(subcommand)]
         command: ModuleCommand,
     },
+    /// Module options of an instance (servers stopped).
+    Option {
+        #[command(subcommand)]
+        command: OptionCommand,
+    },
+    /// Your game client (never distributed: point the launcher at yours).
+    Client {
+        #[command(subcommand)]
+        command: ClientCommand,
+    },
+    /// Prepare the client, start the servers and launch the game once the
+    /// world is ready. The servers stop when the game is closed.
+    Play {
+        id: String,
+        /// Keep the servers running after the game is closed.
+        #[arg(long)]
+        keep_running: bool,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum OptionCommand {
+    /// Set option values (`<option>=<value>`); the default value clears it.
+    Set {
+        instance: String,
+        module: String,
+        #[arg(required = true, value_name = "OPTION=VALUE")]
+        values: Vec<String>,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Show the options of the instance's modules and their values.
+    Show {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClientCommand {
+    /// Register the game folder (the one that contains the executable).
+    Set {
+        path: PathBuf,
+        /// Client manifest; defaults to the only one in the catalog.
+        #[arg(long)]
+        client: Option<String>,
+        /// Game language (e.g. enUS, frFR) when several are installed.
+        #[arg(long)]
+        locale: Option<String>,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Show the registered clients and the files the launcher put in them.
+    Show {
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Prepare the client for an instance without starting anything
+    /// (realmlist, cache, the instance's patch files); `eoa play` does it too.
+    Prepare {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -150,14 +229,31 @@ fn change_modules(
     let _lock = install::lock_instance(&layout, instance)?;
     let (record, old) =
         eoa_runtime::modules::set_modules(&catalog, &layout, instance, enable, disable)?;
-    let (_, secrets) = install::open_existing(&layout, instance)?;
+    let record = apply_record(&catalog, &layout, record, &old)?;
+    println!(
+        "instance '{}' modules: {}",
+        record.id,
+        record.modules.join(", ")
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Runs `modules-<id>` for a record just saved; puts `old` back if it fails.
+fn apply_record(
+    catalog: &eoa_core::Catalog,
+    layout: &Layout,
+    record: install::InstanceRecord,
+    old: &install::InstanceRecord,
+) -> Result<install::InstanceRecord> {
+    let store = Arc::new(eoa_store::Store::open(layout.store())?);
+    let (_, secrets) = install::open_existing(layout, &record.id)?;
     let emu = &catalog
         .emulator(&record.emulator)
         .ok_or_else(|| anyhow::anyhow!("unknown emulator '{}'", record.emulator))?
         .manifest;
     let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
     let op = eoa_runtime::modules::apply_modules_operation(
-        &catalog, &layout, &record, &secrets, driver,
+        catalog, layout, &record, &secrets, driver, &store,
     )?;
     if !record.regenerate.is_empty() {
         eprintln!(
@@ -165,17 +261,254 @@ fn change_modules(
             record.regenerate.join(", ")
         );
     }
-    if let Err(error) = run_operation(&layout, &op) {
-        install::save_record(&layout, &old)?;
+    if let Err(error) = run_operation(layout, &op) {
+        install::save_record(layout, old)?;
         return Err(error);
     }
-    let record = eoa_runtime::modules::finished(&layout, &record)?;
-    println!(
-        "instance '{}' modules: {}",
-        record.id,
-        record.modules.join(", ")
-    );
+    Ok(eoa_runtime::modules::finished(layout, &record)?)
+}
+
+/// `eoa option set`: saves the values, then applies them like a module change.
+fn set_options(
+    catalog: &std::path::Path,
+    root: &std::path::Path,
+    instance: &str,
+    module: &str,
+    values: &[String],
+) -> Result<ExitCode> {
+    let catalog = eoa_catalog::load_dir(catalog)?;
+    let layout = Layout::new(root);
+    let _lock = install::lock_instance(&layout, instance)?;
+    let pairs = values
+        .iter()
+        .map(|v| {
+            v.split_once('=')
+                .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+                .ok_or_else(|| anyhow::anyhow!("'{v}': expected <option>=<value>"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (record, old) =
+        eoa_runtime::modules::set_options(&catalog, &layout, instance, module, &pairs)?;
+    let record = apply_record(&catalog, &layout, record, &old)?;
+    print_options(&catalog, &record);
     Ok(ExitCode::SUCCESS)
+}
+
+fn print_options(catalog: &eoa_core::Catalog, record: &install::InstanceRecord) {
+    use eoa_core::manifest::OptionValue;
+    let Some(entry) = catalog.emulator(&record.emulator) else {
+        return;
+    };
+    for module in &record.modules {
+        let Some(manifest) = entry.modules.get(module) else {
+            continue;
+        };
+        if manifest.options.is_empty() {
+            continue;
+        }
+        println!("{module}:");
+        let chosen = record.options.get(module);
+        for option in &manifest.options {
+            let value = option.effective(chosen.and_then(|c| c.get(option.id())));
+            let changed = value != option.default_value();
+            let text = match value {
+                OptionValue::Bool(b) => b.to_string(),
+                OptionValue::Integer(n) => n.to_string(),
+                OptionValue::Choice(c) => c,
+            };
+            let mark = if changed { "  (changed)" } else { "" };
+            println!("  {} = {text}{mark}", option.id());
+        }
+    }
+}
+
+/// The client manifest named, or the only one in the catalog.
+fn client_manifest<'a>(
+    catalog: &'a eoa_core::Catalog,
+    id: Option<&str>,
+) -> Result<&'a eoa_core::manifest::ClientManifest> {
+    match id {
+        Some(id) => catalog
+            .clients
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("unknown client '{id}'")),
+        None => {
+            let mut all = catalog.clients.values();
+            match (all.next(), all.next()) {
+                (Some(one), None) => Ok(one),
+                _ => anyhow::bail!("several clients in the catalog: choose one with --client"),
+            }
+        }
+    }
+}
+
+/// The game started by `eoa play`.
+struct Game {
+    manifest: eoa_core::manifest::ClientManifest,
+    state: eoa_client::ClientState,
+    keep_running: bool,
+    _lock: eoa_client::ClientLock,
+}
+
+/// Points the registered client at the instance and syncs its managed
+/// files (the instance's client assets). Returns the client, still locked.
+fn prepare_client(
+    catalog: &eoa_core::Catalog,
+    layout: &Layout,
+    record: &install::InstanceRecord,
+) -> Result<(
+    eoa_core::manifest::ClientManifest,
+    eoa_client::ClientState,
+    eoa_client::ClientLock,
+)> {
+    let emu = &catalog
+        .emulator(&record.emulator)
+        .ok_or_else(|| anyhow::anyhow!("unknown emulator '{}'", record.emulator))?
+        .manifest;
+    let manifest = client_manifest(catalog, Some(&emu.client))?;
+    // A half-applied module or option change would give the client the
+    // wrong files: it must be resumed first (the start checks it too).
+    install::ensure_finished(
+        layout,
+        &[
+            install::instance_operation_id(&record.id),
+            install::modules_operation_id(&record.id),
+        ],
+    )?;
+    let clients = layout.clients();
+    let lock = eoa_client::lock(&clients, &manifest.id)?;
+    let mut state = eoa_client::load(&clients, &manifest.id)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "no {} client registered: run `eoa client set <game folder>`",
+            manifest.version
+        )
+    })?;
+    let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
+    let resolution = eoa_core::resolve(catalog, &record.emulator, Some(&record.flavor), &selected)?;
+    let assets = install::assets::selected(catalog, &resolution, &record.options)?;
+    let files = install::assets::client_files(layout, &assets);
+    if let Some((missing, _)) = files.iter().find(|(src, _)| !src.is_file()) {
+        anyhow::bail!(
+            "{} is missing: apply the module options again (`eoa option set`)",
+            missing.display()
+        );
+    }
+    // The local client always reaches the servers through the loopback.
+    let report = eoa_client::prepare(
+        &clients,
+        manifest,
+        &mut state,
+        "127.0.0.1",
+        &record.id,
+        &files,
+    )?;
+    eprintln!(
+        "== client {} prepared for '{}' ({})",
+        state.path.display(),
+        record.id,
+        report.realmlist.display()
+    );
+    if report.cache_cleared {
+        eprintln!("   cache cleared (another server was played last)");
+    }
+    for added in &report.added {
+        eprintln!("   + {added}");
+    }
+    for removed in &report.removed {
+        eprintln!("   - {removed}");
+    }
+    for warning in &report.warnings {
+        eprintln!("warning: {warning}");
+    }
+    Ok((manifest.clone(), state, lock))
+}
+
+/// `eoa play`: client prepared first (fails fast), then the servers, then
+/// the game once the world is ready.
+fn play(
+    catalog: &std::path::Path,
+    root: &std::path::Path,
+    id: &str,
+    keep_running: bool,
+) -> Result<ExitCode> {
+    let catalog = eoa_catalog::load_dir(catalog)?;
+    let layout = Layout::new(root);
+    let server = eoa_runtime::Server::open(&catalog, &layout, id)?;
+    let (manifest, state, lock) = prepare_client(&catalog, &layout, server.record())?;
+    let game = Game {
+        manifest,
+        state,
+        keep_running,
+        _lock: lock,
+    };
+    tokio::runtime::Runtime::new()?.block_on(run_instance(server, Some(game)))
+}
+
+fn client_command(command: ClientCommand) -> Result<ExitCode> {
+    match command {
+        ClientCommand::Set {
+            path,
+            client,
+            locale,
+            catalog,
+            root,
+        } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let layout = Layout::new(&root);
+            let manifest = client_manifest(&catalog, client.as_deref())?;
+            let clients = layout.clients();
+            let _lock = eoa_client::lock(&clients, &manifest.id)?;
+            let (state, warning) =
+                eoa_client::register(&clients, manifest, &path, locale.as_deref())?;
+            if let Some(warning) = warning {
+                eprintln!("warning: {warning}");
+            }
+            println!(
+                "{} client registered: {} ({}, build {})",
+                manifest.version,
+                state.path.display(),
+                state.locale,
+                manifest.detection.build
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        ClientCommand::Prepare {
+            instance,
+            catalog,
+            root,
+        } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let layout = Layout::new(&root);
+            let (record, _) = install::open_existing(&layout, &instance)?;
+            prepare_client(&catalog, &layout, &record)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        ClientCommand::Show { catalog, root } => {
+            let catalog = eoa_catalog::load_dir(&catalog)?;
+            let layout = Layout::new(&root);
+            for manifest in catalog.clients.values() {
+                match eoa_client::load(&layout.clients(), &manifest.id)? {
+                    None => println!("{}: not registered", manifest.id),
+                    Some(state) => {
+                        let status = match eoa_client::detect(manifest, &state.path) {
+                            Ok(_) => "ok".to_owned(),
+                            Err(e) => e.to_string(),
+                        };
+                        println!(
+                            "{}: {} ({}) - {status}",
+                            manifest.id,
+                            state.path.display(),
+                            state.locale
+                        );
+                        for file in &state.managed {
+                            println!("  managed: {}", file.path);
+                        }
+                    }
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -267,7 +600,7 @@ fn update_instance(
         .manifest;
     let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
     let op = eoa_runtime::modules::update_operation(
-        &catalog, &layout, &record, &secrets, driver, &server,
+        &catalog, &layout, &record, &secrets, driver, &store, &server,
     )?;
     eprintln!(
         "updating '{id}' from build {} to {to}; every database is backed up first",
@@ -306,8 +639,9 @@ fn print_event(event: eoa_runtime::ServerEvent) {
     }
 }
 
-/// `eoa start`: runs until Ctrl+C, `.stop`, end of input or a server exit.
-async fn run_instance(server: eoa_runtime::Server) -> Result<ExitCode> {
+/// `eoa start` / `eoa play`: runs until Ctrl+C, `.stop`, end of input, a
+/// server exit, or (with a game, unless kept running) the game's exit.
+async fn run_instance(server: eoa_runtime::Server, game: Option<Game>) -> Result<ExitCode> {
     let server = Arc::new(server);
     let driver = driver(server.driver_id())?;
     let mut logs = server.subscribe();
@@ -324,17 +658,46 @@ async fn run_instance(server: eoa_runtime::Server) -> Result<ExitCode> {
     });
     let running = server.start(driver.as_ref(), &print_event).await?;
     let record = server.record();
-    eprintln!(
-        "== ready: set your client's realmlist to {} (auth port {}). \
-         Type console commands; Ctrl+C or .stop to stop.",
-        match record.network {
-            install::Network::Solo => "127.0.0.1".to_owned(),
-            install::Network::Lan => eoa_runtime::lan_ipv4()
-                .map(|ip| ip.to_string())
-                .unwrap_or_else(|| "127.0.0.1".into()),
+    let mut child = match &game {
+        Some(game) => match eoa_client::launch(&game.manifest, &game.state) {
+            Ok(child) => {
+                eprintln!("== game started");
+                Some(child)
+            }
+            Err(error) => {
+                eprintln!("error: {error}");
+                running.stop(&print_event).await;
+                return Ok(ExitCode::FAILURE);
+            }
         },
-        record.ports.get("auth").copied().unwrap_or_default()
-    );
+        None => None,
+    };
+    let keep_running = game.as_ref().is_none_or(|g| g.keep_running);
+    let address = match record.network {
+        install::Network::Solo => "127.0.0.1".to_owned(),
+        install::Network::Lan => eoa_runtime::lan_ipv4()
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| "127.0.0.1".into()),
+    };
+    let auth = record.ports.get("auth").copied().unwrap_or_default();
+    match (&game, record.network) {
+        (None, _) => eprintln!(
+            "== ready: set your client's realmlist to {address} (auth port {auth}). \
+             Type console commands; Ctrl+C or .stop to stop."
+        ),
+        (Some(_), install::Network::Lan) => eprintln!(
+            "== ready: other computers use realmlist {address} (auth port {auth}). \
+             Type console commands; the servers stop when the game is closed."
+        ),
+        (Some(_), install::Network::Solo) => eprintln!(
+            "== ready. Type console commands; {}",
+            if keep_running {
+                "Ctrl+C or .stop to stop the servers."
+            } else {
+                "the servers stop when the game is closed."
+            }
+        ),
+    }
 
     // stdin is read on a plain thread: tokio's stdin cannot be interrupted.
     let (tx, mut lines) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -367,6 +730,21 @@ async fn run_instance(server: eoa_runtime::Server) -> Result<ExitCode> {
                 eprintln!("== {process} exited (code {:?}); stopping the others", exit.code);
                 code = ExitCode::FAILURE;
                 break;
+            }
+            status = async {
+                match child.as_mut() {
+                    Some(c) => c.wait().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                child = None;
+                eprintln!("== the game was closed ({})", match status {
+                    Ok(s) => s.to_string(),
+                    Err(e) => e.to_string(),
+                });
+                if !keep_running {
+                    break;
+                }
             }
         }
     }
@@ -661,7 +1039,7 @@ fn main() -> Result<ExitCode> {
             // the final configs.
             let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
             let op = eoa_runtime::modules::apply_modules_operation(
-                &catalog, &layout, &record, &secrets, driver,
+                &catalog, &layout, &record, &secrets, driver, &store,
             )?;
             run_operation(&layout, &op)?;
             println!(
@@ -675,7 +1053,7 @@ fn main() -> Result<ExitCode> {
         Command::Start { id, catalog, root } => {
             let catalog = eoa_catalog::load_dir(&catalog)?;
             let server = eoa_runtime::Server::open(&catalog, &Layout::new(&root), &id)?;
-            tokio::runtime::Runtime::new()?.block_on(run_instance(server))
+            tokio::runtime::Runtime::new()?.block_on(run_instance(server, None))
         }
         Command::Account {
             command:
@@ -731,6 +1109,32 @@ fn main() -> Result<ExitCode> {
                 root,
             } => change_modules(&catalog, &root, &instance, &[], &modules),
         },
+        Command::Option { command } => match command {
+            OptionCommand::Set {
+                instance,
+                module,
+                values,
+                catalog,
+                root,
+            } => set_options(&catalog, &root, &instance, &module, &values),
+            OptionCommand::Show {
+                instance,
+                catalog,
+                root,
+            } => {
+                let catalog = eoa_catalog::load_dir(&catalog)?;
+                let (record, _) = install::open_existing(&Layout::new(&root), &instance)?;
+                print_options(&catalog, &record);
+                Ok(ExitCode::SUCCESS)
+            }
+        },
+        Command::Client { command } => client_command(command),
+        Command::Play {
+            id,
+            keep_running,
+            catalog,
+            root,
+        } => play(&catalog, &root, &id, keep_running),
         Command::Index {
             command: IndexCommand::Show { source },
         } => {

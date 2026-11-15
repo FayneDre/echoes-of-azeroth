@@ -104,6 +104,17 @@
         "line": {
           "description": "Line template; {address} is replaced.",
           "type": "string"
+        },
+        "saved": {
+          "description": "Settings file where the client also saves the address. When the file exists, its lines starting with 'prefix' (any case) are rewritten with 'line'.",
+          "type": "object",
+          "required": ["file", "prefix", "line"],
+          "properties": {
+            "file": { "type": "string" },
+            "prefix": { "type": "string", "minLength": 1 },
+            "line": { "type": "string" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
