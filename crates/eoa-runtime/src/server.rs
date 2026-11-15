@@ -48,6 +48,7 @@ pub type Observer<'a> = &'a (dyn Fn(ServerEvent) + Send + Sync);
 
 /// An installed instance, ready to be started.
 pub struct Server {
+    layout: Layout,
     db: eoa_db::Instance,
     emulator: EmulatorManifest,
     record: InstanceRecord,
@@ -100,6 +101,7 @@ impl Server {
             .collect::<Result<Vec<_>, RuntimeError>>()?;
         let (logs, _) = broadcast::channel(4096);
         Ok(Self {
+            layout: layout.clone(),
             db,
             emulator,
             record,
@@ -169,12 +171,23 @@ impl Server {
         observer: Observer<'_>,
     ) -> Result<Running, RuntimeError> {
         self.check_driver(driver)?;
+        let id = &self.record.id;
+        let lock = install::lock_instance(&self.layout, id)?;
+        // A half-applied install, update or module change is resumed first.
+        install::ensure_finished(
+            &self.layout,
+            &[
+                install::instance_operation_id(id),
+                install::modules_operation_id(id),
+            ],
+        )?;
         observer(ServerEvent::DatabaseStarting);
         self.db.start().await?;
         observer(ServerEvent::DatabaseReady);
         let mut running = Running {
             server: self.clone(),
             processes: Vec::new(),
+            _lock: lock,
         };
         if let Err(error) = self.start_processes(driver, observer, &mut running).await {
             running.stop(observer).await;
@@ -249,6 +262,8 @@ impl Server {
 pub struct Running {
     server: Arc<Server>,
     processes: Vec<Process>,
+    /// Released once the processes are stopped (dropped after them).
+    _lock: install::InstanceLock,
 }
 
 impl Running {

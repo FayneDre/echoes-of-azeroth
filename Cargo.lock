@@ -1287,6 +1287,7 @@ dependencies = [
 name = "eoa-runtime"
 version = "0.1.0"
 dependencies = [
+ "eoa-catalog",
  "eoa-core",
  "eoa-db",
  "eoa-engine",

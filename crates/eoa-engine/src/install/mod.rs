@@ -24,7 +24,8 @@ use thiserror::Error;
 
 pub use config::{databases, dbimport_modules, plan_configs, ConfigFilePlan, InstanceValues};
 pub use steps::{
-    DbAdopt, DbClaim, DbInit, DbProvision, DbStart, DbStop, RenderConfigs, RunTool, ToolFailed,
+    DbAdopt, DbBackup, DbClaim, DbInit, DbProvision, DbRegenerate, DbStart, DbStop, RenderConfigs,
+    RunTool, ToolFailed,
 };
 
 use crate::steps::{read_entry, Extract, Fetch, Strip};
@@ -52,6 +53,16 @@ pub enum PlanError {
     Index(#[from] eoa_catalog::index::IndexError),
     #[error("database snapshot {path} does not fit this instance: {reason}")]
     SnapshotMismatch { path: PathBuf, reason: String },
+    #[error(
+        "instance '{0}' is in use by another command \
+         (its server is running, or it is being changed)"
+    )]
+    InstanceBusy(String),
+    #[error(
+        "operation '{0}' is unfinished on this instance: run the command \
+         that started it again to resume it first"
+    )]
+    Unfinished(String),
 }
 
 /// Where everything lives under the data root (`%LOCALAPPDATA%\EchoesOfAzeroth`).
@@ -97,6 +108,10 @@ impl Layout {
         self.root
             .join("serverdata")
             .join(format!("{client}-{version}"))
+    }
+    /// Database dumps of an instance (kept: they hold player data).
+    pub fn backups(&self, id: &str) -> PathBuf {
+        self.root.join("backups").join(id)
     }
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
@@ -149,6 +164,15 @@ pub struct InstanceRecord {
     pub ports: BTreeMap<String, u16>,
     pub db_port: u16,
     pub created: u64,
+    /// Content databases to rebuild at the next module operation (a removed
+    /// module changed them). Saved before the operation, so a resumed one
+    /// has the same plan; cleared once it completes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regenerate: Vec<String>,
+    /// Build key of the installed server (`build-info.json` of the artifact);
+    /// `None` for instances made before it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// `secrets.json`: service account of the instance database. Never journaled.
@@ -241,6 +265,8 @@ pub fn open_or_create(
         ports: emu.ports.clone(),
         db_port,
         created: crate::journal::now(),
+        regenerate: Vec::new(),
+        build: None,
     };
     let secrets = Secrets {
         db_user: "eoa".into(),
@@ -409,6 +435,18 @@ fn read_manifest<T: for<'de> Deserialize<'de>>(archive: &Path, name: &str) -> Re
     })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildInfo {
+    build_key: String,
+}
+
+/// Build key of a server artifact (its `build-info.json`).
+pub fn artifact_build_key(server_artifact: &Path) -> Result<String, PlanError> {
+    let build: BuildInfo = read_manifest(server_artifact, "build-info.json")?;
+    Ok(build.build_key)
+}
+
 /// A snapshot fits when it was made from the same server build and MySQL
 /// version, and holds no SQL of a module the instance does not allow.
 fn check_snapshot(
@@ -417,13 +455,10 @@ fn check_snapshot(
     mysql: (&str, &str),
     allowed: &[String],
 ) -> Result<(), PlanError> {
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct BuildInfo {
-        build_key: String,
-    }
     let manifest: SnapshotManifest = read_manifest(snapshot, "snapshot.json")?;
-    let build: BuildInfo = read_manifest(server_artifact, "build-info.json")?;
+    let build = BuildInfo {
+        build_key: artifact_build_key(server_artifact)?,
+    };
     let mismatch = |reason: String| PlanError::SnapshotMismatch {
         path: snapshot.to_owned(),
         reason,
@@ -549,7 +584,7 @@ pub fn instance_operation(
     let plan = instance_plan(catalog, layout, record, secrets)?;
     let paths = layout.instance(&record.id);
     let db = plan.db;
-    let op = Operation::new(format!("instance-{}", record.id))
+    let op = Operation::new(instance_operation_id(&record.id))
         .step(Extract::new("extract-bin", server_artifact, &paths.bin).subdir("dist"))
         .step(Extract::new("extract-sql", server_artifact, &paths.sql).subdir("sql"));
     let op = match db_snapshot {
@@ -583,6 +618,55 @@ pub fn instance_operation(
 /// Writes `instance.json` after a change of modules (atomic).
 pub fn save_record(layout: &Layout, record: &InstanceRecord) -> Result<(), PlanError> {
     write_json(&layout.instance(&record.id).record, record)
+}
+
+/// Exclusive OS lock on one instance, released when dropped (also on crash).
+/// Held while its servers run and while it is changed, so that a module
+/// change or an update never runs under a server that is still loading.
+#[derive(Debug)]
+pub struct InstanceLock {
+    _file: std::fs::File,
+}
+
+pub fn lock_instance(layout: &Layout, id: &str) -> Result<InstanceLock, PlanError> {
+    let path = layout.instance(id).root.join("instance.lock");
+    let io = |e: std::io::Error| crate::EngineError::Io {
+        path: path.clone(),
+        source: e,
+    };
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(io)?;
+    match file.try_lock() {
+        Ok(()) => Ok(InstanceLock { _file: file }),
+        Err(std::fs::TryLockError::WouldBlock) => Err(PlanError::InstanceBusy(id.to_owned())),
+        Err(std::fs::TryLockError::Error(e)) => Err(io(e).into()),
+    }
+}
+
+/// Journal ids of the operations that change an installed instance.
+pub fn instance_operation_id(id: &str) -> String {
+    format!("instance-{id}")
+}
+pub fn modules_operation_id(id: &str) -> String {
+    format!("modules-{id}")
+}
+
+/// Fails when one of `operations` was interrupted (running, rolling back,
+/// or needing repair): the instance is half-changed until it is resumed.
+pub fn ensure_finished(layout: &Layout, operations: &[String]) -> Result<(), PlanError> {
+    let engine = crate::Engine::new(layout.state());
+    for operation in operations {
+        if let Some(journal) = engine.status(operation)? {
+            if !journal.status.is_terminal() {
+                return Err(PlanError::Unfinished(operation.clone()));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

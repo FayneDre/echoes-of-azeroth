@@ -208,6 +208,219 @@ impl<C: Sync> Step<C> for DbStop {
     }
 }
 
+/// `db-backup`: dumps the instance's databases before a migration
+/// (principle 4). The dump is kept after success (it holds player data).
+///
+/// `undo` puts every database back as it was: each one is dropped, then the
+/// dump recreates it (dropping first also removes tables a newer migration
+/// created). Resumable: a finished dump is not made again.
+pub struct DbBackup {
+    pub db: Arc<eoa_db::Instance>,
+    pub databases: Vec<String>,
+    pub out: PathBuf,
+}
+
+impl<C: Sync> Step<C> for DbBackup {
+    fn id(&self) -> &str {
+        "db-backup"
+    }
+    fn kind(&self) -> &str {
+        "db-backup"
+    }
+    fn fingerprint(&self) -> String {
+        format!("{:?} {:?}", self.databases, self.out)
+    }
+    /// `out` only exists while the operation is in flight: `finalize` renames
+    /// it with a timestamp and a successful `undo` deletes it. A file found
+    /// here is therefore this operation's own dump (written atomically, so
+    /// complete), never a stale one that would lose later play on rollback.
+    fn run<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            if self.out.is_file() {
+                return Ok(());
+            }
+            if let Some(dir) = self.out.parent() {
+                std::fs::create_dir_all(dir).map_err(EngineError::io(dir))?;
+            }
+            let databases: Vec<&str> = self.databases.iter().map(String::as_str).collect();
+            Ok(self.db.backup(&databases, &self.out).await?)
+        })
+    }
+    fn undo<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            if !self.out.is_file() {
+                return Ok(()); // nothing was changed after a missing dump
+            }
+            self.db.start().await?;
+            for name in &self.databases {
+                eoa_db::validate_identifier(name)?;
+                self.db
+                    .execute(&format!("DROP DATABASE IF EXISTS `{name}`;"))
+                    .await?;
+            }
+            self.db.restore(&self.out).await?;
+            // The databases now hold exactly this dump: drop it, so that a
+            // later attempt dumps the state of that time.
+            std::fs::remove_file(&self.out).map_err(EngineError::io(&self.out))?;
+            Ok(())
+        })
+    }
+    /// Keeps the dump under a unique name (`<name>-<unix seconds>.sql`).
+    fn finalize<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            if !self.out.is_file() {
+                return Ok(()); // finalize resumed after the rename
+            }
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let stem = self
+                .out
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let kept = self.out.with_file_name(format!("{stem}-{secs}.sql"));
+            std::fs::rename(&self.out, &kept).map_err(EngineError::io(&self.out))?;
+            Ok(())
+        })
+    }
+}
+
+/// `regenerate-<database>`: empties a content database (never one with
+/// `playerData`) so that the following dbimport rebuilds it from the base
+/// SQL and the remaining modules' SQL (ADR 0003, module removal).
+///
+/// The tables are moved, not dropped: one atomic `RENAME TABLE` into
+/// `<name>_eoa_previous`, which is instant whatever their size. `undo` puts
+/// them back (after dropping what dbimport wrote), `finalize` drops the old
+/// copy. Resumable: the state of the two schemas tells how far it went.
+pub struct DbRegenerate {
+    pub db: Arc<eoa_db::Instance>,
+    pub database: String,
+    id: String,
+}
+
+impl DbRegenerate {
+    pub fn new(db: Arc<eoa_db::Instance>, database: impl Into<String>) -> Self {
+        let database = database.into();
+        Self {
+            id: format!("regenerate-{database}"),
+            db,
+            database,
+        }
+    }
+
+    fn previous(&self) -> String {
+        format!("{}_eoa_previous", self.database)
+    }
+
+    async fn tables(&self, schema: &str) -> Result<Vec<String>, StepError> {
+        let out = self
+            .db
+            .execute(&format!(
+                "SELECT TABLE_NAME FROM information_schema.TABLES \
+                 WHERE TABLE_SCHEMA = '{schema}' ORDER BY TABLE_NAME;"
+            ))
+            .await?;
+        let tables: Vec<String> = out.lines().map(str::to_owned).collect();
+        if let Some(bad) = tables.iter().find(|t| t.contains('`')) {
+            return Err(format!("unexpected table name {bad:?} in {schema}").into());
+        }
+        Ok(tables)
+    }
+
+    /// One statement, so all tables move or none does.
+    async fn move_tables(&self, from: &str, to: &str) -> Result<(), StepError> {
+        let tables = self.tables(from).await?;
+        if tables.is_empty() {
+            return Ok(());
+        }
+        let pairs: Vec<String> = tables
+            .iter()
+            .map(|t| format!("`{from}`.`{t}` TO `{to}`.`{t}`"))
+            .collect();
+        self.db
+            .execute(&format!(
+                "SET FOREIGN_KEY_CHECKS = 0;\nRENAME TABLE {};\n",
+                pairs.join(", ")
+            ))
+            .await?;
+        Ok(())
+    }
+}
+
+impl<C: Sync> Step<C> for DbRegenerate {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn kind(&self) -> &str {
+        "db-regenerate"
+    }
+    fn fingerprint(&self) -> String {
+        self.database.clone()
+    }
+    fn run<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            eoa_db::validate_identifier(&self.database)?;
+            let (name, previous) = (&self.database, self.previous());
+            let kept = self.tables(&previous).await?;
+            let current = self.tables(name).await?;
+            match (kept.is_empty(), current.is_empty()) {
+                // Moved before a crash; dbimport has not run yet (a later
+                // step, so it only runs once this one is done).
+                (false, true) => Ok(()),
+                // A copy left by an earlier, completed regeneration whose
+                // cleanup failed: older than the live tables, drop it.
+                (false, false) => {
+                    self.db
+                        .execute(&format!("DROP DATABASE `{previous}`;"))
+                        .await?;
+                    self.db.create_database(&previous).await?;
+                    self.move_tables(name, &previous).await
+                }
+                (true, _) => {
+                    self.db.create_database(&previous).await?;
+                    self.move_tables(name, &previous).await
+                }
+            }
+        })
+    }
+    fn undo<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            let (name, previous) = (&self.database, self.previous());
+            // A rollback may resume after a restart, with MySQL stopped.
+            self.db.start().await?;
+            if self.tables(&previous).await?.is_empty() {
+                return Ok(()); // never moved
+            }
+            // What dbimport rebuilt goes; the original tables come back.
+            self.db.execute(&format!("DROP DATABASE `{name}`;")).await?;
+            self.db.create_database(name).await?;
+            self.move_tables(&previous, name).await?;
+            self.db
+                .execute(&format!("DROP DATABASE `{previous}`;"))
+                .await?;
+            Ok(())
+        })
+    }
+    fn finalize<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            // Runs after db-stop: start MySQL for the cleanup, stop it again.
+            let was_running = self.db.ping().await;
+            self.db.start().await?;
+            let dropped = self
+                .db
+                .execute(&format!("DROP DATABASE IF EXISTS `{}`;", self.previous()))
+                .await;
+            if !was_running {
+                self.db.stop().await?;
+            }
+            dropped?;
+            Ok(())
+        })
+    }
+}
+
 /// `render-config`: renders every config file into `configs/`, atomically.
 ///
 /// Reads each `.conf.dist` from the build (`dist_dir`), applies the layers

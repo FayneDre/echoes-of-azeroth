@@ -91,6 +91,20 @@ enum Command {
         #[command(subcommand)]
         command: AccountCommand,
     },
+    /// Install the server build of the current catalog release on an
+    /// instance (core or module pins changed). Databases are backed up first.
+    Update {
+        id: String,
+        /// Server build ZIP; without it, the build is found in the signed index.
+        #[arg(long, conflicts_with = "index")]
+        server: Option<PathBuf>,
+        #[arg(long)]
+        index: Option<String>,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
     /// Turn modules on or off on an installed instance (servers stopped).
     Module {
         #[command(subcommand)]
@@ -133,6 +147,7 @@ fn change_modules(
 ) -> Result<ExitCode> {
     let catalog = eoa_catalog::load_dir(catalog)?;
     let layout = Layout::new(root);
+    let _lock = install::lock_instance(&layout, instance)?;
     let (record, old) =
         eoa_runtime::modules::set_modules(&catalog, &layout, instance, enable, disable)?;
     let (_, secrets) = install::open_existing(&layout, instance)?;
@@ -144,10 +159,17 @@ fn change_modules(
     let op = eoa_runtime::modules::apply_modules_operation(
         &catalog, &layout, &record, &secrets, driver,
     )?;
+    if !record.regenerate.is_empty() {
+        eprintln!(
+            "rebuilding {} without the removed module(s): this takes several minutes",
+            record.regenerate.join(", ")
+        );
+    }
     if let Err(error) = run_operation(&layout, &op) {
         install::save_record(&layout, &old)?;
         return Err(error);
     }
+    let record = eoa_runtime::modules::finished(&layout, &record)?;
     println!(
         "instance '{}' modules: {}",
         record.id,
@@ -174,6 +196,89 @@ enum AccountCommand {
         #[arg(long, default_value = ".local/eoa")]
         root: PathBuf,
     },
+}
+
+/// Finds the build matching the catalog pins in the signed index and
+/// downloads it (and its database snapshot when `want_snapshot` and usable).
+fn fetch_build(
+    catalog: &eoa_core::Catalog,
+    layout: &Layout,
+    store: &Arc<eoa_store::Store>,
+    record: &install::InstanceRecord,
+    index: Option<&str>,
+    want_snapshot: bool,
+) -> Result<(PathBuf, Option<PathBuf>)> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let source = index.unwrap_or(eoa_catalog::index::DEFAULT_URL);
+    let envelope = read_document(&runtime, store, source)?;
+    let keys = eoa_catalog::index::trusted_keys();
+    let accepted = install::index::accept_index(layout, &envelope, &keys)?;
+    let build = eoa_catalog::index::select(
+        &accepted,
+        catalog,
+        &record.emulator,
+        &record.flavor,
+        &install::platform(),
+    )?;
+    let with_snapshot = match (&build.db_snapshot, want_snapshot) {
+        (Some(snapshot), true) => install::index::snapshot_usable(catalog, record, snapshot)?,
+        _ => false,
+    };
+    println!(
+        "index serial {}: build {}{}",
+        accepted.serial,
+        build.build_key,
+        match (want_snapshot, with_snapshot) {
+            (false, _) => "",
+            (true, true) => " with its database snapshot",
+            (true, false) => ", no usable database snapshot (full import)",
+        }
+    );
+    let (op, files) = install::index::build_operation(store.clone(), build, with_snapshot);
+    run_operation(layout, &op)?;
+    Ok((files.server, files.db_snapshot))
+}
+
+/// `eoa update`: installs the server build of the current catalog release.
+fn update_instance(
+    catalog: &std::path::Path,
+    root: &std::path::Path,
+    id: &str,
+    server: Option<PathBuf>,
+    index: Option<&str>,
+) -> Result<ExitCode> {
+    let catalog = eoa_catalog::load_dir(catalog)?;
+    let layout = Layout::new(root);
+    let store = Arc::new(eoa_store::Store::open(layout.store())?);
+    let (record, secrets) = install::open_existing(&layout, id)?;
+    let _lock = install::lock_instance(&layout, id)?;
+    let server = match server {
+        Some(server) => server,
+        None => fetch_build(&catalog, &layout, &store, &record, index, false)?.0,
+    };
+    let to = install::artifact_build_key(&server)?;
+    if record.build.as_deref() == Some(to.as_str()) {
+        println!("instance '{id}' already runs build {to}");
+        return Ok(ExitCode::SUCCESS);
+    }
+    let emu = &catalog
+        .emulator(&record.emulator)
+        .ok_or_else(|| anyhow::anyhow!("unknown emulator '{}'", record.emulator))?
+        .manifest;
+    let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
+    let op = eoa_runtime::modules::update_operation(
+        &catalog, &layout, &record, &secrets, driver, &server,
+    )?;
+    eprintln!(
+        "updating '{id}' from build {} to {to}; every database is backed up first",
+        record.build.as_deref().unwrap_or("(unknown)")
+    );
+    run_operation(&layout, &op)?;
+    let mut record = record;
+    record.build = Some(to.clone());
+    install::save_record(&layout, &record)?;
+    println!("instance '{id}' now runs build {to}");
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The driver named by an emulator manifest.
@@ -300,7 +405,15 @@ fn run_operation(layout: &Layout, op: &eoa_engine::Operation<()>) -> Result<()> 
         op.id(),
         started.elapsed().as_secs_f64()
     );
-    Ok(())
+    use eoa_engine::Outcome;
+    match outcome {
+        Outcome::Completed | Outcome::AlreadyCompleted => Ok(()),
+        // An interrupted rollback finished: the change did NOT happen.
+        Outcome::RolledBack { failure } => {
+            anyhow::bail!("{} was rolled back: {failure}", op.id())
+        }
+        Outcome::Cancelled => anyhow::bail!("{} was cancelled; run it again to resume", op.id()),
+    }
 }
 
 /// Prints engine events: steps, and progress at most every 5 %.
@@ -530,40 +643,7 @@ fn main() -> Result<ExitCode> {
             let (record, secrets) = install::open_or_create(&catalog, &layout, &request)?;
             let (server, db_snapshot) = match server {
                 Some(server) => (server, db_snapshot),
-                None => {
-                    let runtime = tokio::runtime::Runtime::new()?;
-                    let source = index.as_deref().unwrap_or(eoa_catalog::index::DEFAULT_URL);
-                    let envelope = read_document(&runtime, &store, source)?;
-                    let keys = eoa_catalog::index::trusted_keys();
-                    let accepted = install::index::accept_index(&layout, &envelope, &keys)?;
-                    let build = eoa_catalog::index::select(
-                        &accepted,
-                        &catalog,
-                        &record.emulator,
-                        &record.flavor,
-                        &install::platform(),
-                    )?;
-                    let with_snapshot = match &build.db_snapshot {
-                        Some(snapshot) => {
-                            install::index::snapshot_usable(&catalog, &record, snapshot)?
-                        }
-                        None => false,
-                    };
-                    println!(
-                        "index serial {}: build {}{}",
-                        accepted.serial,
-                        build.build_key,
-                        if with_snapshot {
-                            " with its database snapshot"
-                        } else {
-                            ", no usable database snapshot (full import)"
-                        }
-                    );
-                    let (op, files) =
-                        install::index::build_operation(store.clone(), build, with_snapshot);
-                    run_operation(&layout, &op)?;
-                    (files.server, files.db_snapshot)
-                }
+                None => fetch_build(&catalog, &layout, &store, &record, index.as_deref(), true)?,
             };
             let op = install::instance_operation(
                 &catalog,
@@ -574,6 +654,9 @@ fn main() -> Result<ExitCode> {
                 db_snapshot.as_deref(),
             )?;
             run_operation(&layout, &op)?;
+            let mut record = record;
+            record.build = Some(install::artifact_build_key(&server)?);
+            install::save_record(&layout, &record)?;
             // Post-install steps of the chosen modules (accounts...), then
             // the final configs.
             let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
@@ -627,6 +710,13 @@ fn main() -> Result<ExitCode> {
             println!("account '{}' created (id {id})", account.username);
             Ok(ExitCode::SUCCESS)
         }
+        Command::Update {
+            id,
+            server,
+            index,
+            catalog,
+            root,
+        } => update_instance(&catalog, &root, &id, server, index.as_deref()),
         Command::Module { command } => match command {
             ModuleCommand::Enable {
                 instance,
