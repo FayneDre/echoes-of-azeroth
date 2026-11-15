@@ -116,6 +116,27 @@ pub struct ProcessSpec {
     pub executable: String,
     pub config_file: String,
     pub readiness: Readiness,
+    /// Command-line arguments; the working directory is the instance root.
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub stop: StopMethod,
+}
+
+/// How a server process is stopped cleanly (ADR 0011).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum StopMethod {
+    /// Close stdin: the process saves and exits at end of input. This also
+    /// happens when the launcher dies, since the pipe closes with it.
+    #[serde(rename_all = "camelCase")]
+    CloseStdin {
+        /// Time allowed before the process is killed (default 300 s).
+        #[serde(default)]
+        timeout_seconds: Option<u64>,
+    },
+    /// Kill: only for processes that keep no unsaved state. The process is
+    /// killed with the launcher too (Job Object).
+    Terminate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

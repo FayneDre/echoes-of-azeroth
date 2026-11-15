@@ -85,13 +85,17 @@
       "id": "authserver",
       "executable": "bin/authserver.exe",
       "configFile": "authserver.conf",
-      "readiness": { "type": "tcp", "port": "auth" }
+      "args": ["-c", "configs/authserver.conf"],
+      "readiness": { "type": "tcp", "port": "auth" },
+      "stop": { "type": "terminate" }
     },
     {
       "id": "worldserver",
       "executable": "bin/worldserver.exe",
       "configFile": "worldserver.conf",
-      "readiness": { "type": "tcp", "port": "world" }
+      "args": ["-c", "configs/worldserver.conf"],
+      "readiness": { "type": "tcp", "port": "world" },
+      "stop": { "type": "close-stdin", "timeoutSeconds": 600 }
     }
   ]
 }

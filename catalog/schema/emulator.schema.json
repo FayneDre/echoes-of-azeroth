@@ -171,12 +171,6 @@
     },
     "process": {
       "type": "object",
-      "required": [
-        "id",
-        "executable",
-        "configFile",
-        "readiness"
-      ],
       "properties": {
         "id": {
           "$ref": "common.schema.json#/$defs/id"
@@ -225,8 +219,58 @@
               "additionalProperties": false
             }
           ]
+        },
+        "args": {
+          "description": "Command-line arguments. The working directory is the instance root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stop": {
+          "description": "How the supervisor stops the process cleanly (ADR 0011).",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "description": "Close stdin: the process saves and exits on end of input. Also happens when the launcher dies.",
+                  "const": "close-stdin"
+                },
+                "timeoutSeconds": {
+                  "description": "Time allowed for the clean shutdown before the process is killed (default 300).",
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "description": "Kill: only for processes that keep no unsaved state. Killed with the launcher too.",
+                  "const": "terminate"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         }
       },
+      "required": [
+        "id",
+        "executable",
+        "configFile",
+        "readiness",
+        "stop"
+      ],
       "additionalProperties": false
     }
   }
