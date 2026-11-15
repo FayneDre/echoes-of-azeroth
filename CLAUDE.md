@@ -101,6 +101,10 @@ Update this table when a fact is (re)verified; date it.
   stateless, kill-on-close Job Object); MySQL never killed, adopted on next
   start; `EmulatorDriver` trait in `eoa-runtime`; AzerothCore accounts written
   directly (SRP6 like upstream), realm 1 address set before each start.
+- **0012** World regeneration on module removal: `regenerate` in the
+  instance record; tables moved to `<db>_eoa_previous` (one `RENAME TABLE`),
+  dbimport rebuilds from base SQL + remaining modules (~2 min); finalize drops
+  the copy, rollback moves it back. Player databases never rebuilt.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -193,6 +197,7 @@ cargo run -p eoa-cli -- index show [<file|url>]   # verify and print the index
 cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ctrl+C / .stop = clean stop
 cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
 cargo run -p eoa-cli -- module enable|disable <id> <module>...   # servers stopped
+cargo run -p eoa-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 ```
 
@@ -271,7 +276,10 @@ Phase 3 started (2026-11-15): `eoa-runtime` supervisor and the AzerothCore
 driver (`drivers/azerothcore`): `eoa start <id>` (console, clean stop) and
 `eoa account create` verified locally; the maintainer logged in and played
 (phase exit). Module lifecycle: `eoa module enable|disable` with post-install
-steps (AHBot account + character, `bindings.json`), verified. Next: world
-regeneration for removing world-changing modules, module updates. UI: left
+steps (AHBot account + character, `bindings.json`) and world regeneration on
+removal of a world-changing module (`RENAME TABLE` aside + dbimport), and
+`eoa update` (new build: full dump, swap, dbimport; rollback restores the
+dump), verified. Instance lock shared by start / module / update. Phase 3
+done; next: phase 4 (client). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

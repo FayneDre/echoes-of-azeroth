@@ -16,6 +16,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0009](0009-database-snapshot.md) | Database snapshot: cold copy of the MySQL data directory after base dbimport | Accepted |
 | [0010](0010-signed-index.md) | Signed artifact index: one envelope file, ed25519, serial anti-rollback, selection by catalog pins | Accepted |
 | [0011](0011-runtime-supervisor.md) | Runtime supervisor: stop methods declared per process, Job Object for stateless ones, accounts written by the driver (SRP6) | Accepted |
+| [0012](0012-world-regeneration.md) | World regeneration on module removal: tables moved aside with one RENAME TABLE, rebuilt by dbimport | Accepted |
 
 Template:
 

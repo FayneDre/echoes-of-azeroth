@@ -57,8 +57,10 @@ Durations assume one full-time developer and are rough.
 - [x] Driver: AHBot account + character, module post-install steps (bindings, 2026-11-15:
   249 auctions per house on the first cycle)
 - [x] Module lifecycle: enable / disable on an existing instance (`eoa module`)
-- [ ] Module removal that needs the `world` database regenerated (Individual Progression)
-- [ ] Module update (new pinned commit) on an existing instance
+- [x] Module removal that needs the `world` database regenerated (Individual Progression:
+  2 min 05 s, rollback restores the previous world)
+- [x] Module update (new pinned commit) on an existing instance: `eoa update` installs the
+  build of the current catalog release, every database dumped first, rollback restores it
 - [x] Log in and play with the maintainer's 3.3.5a client (2026-11-15: character created, in game, bots present)
 - **Exit:** start, log in and play through the CLI
 

@@ -69,8 +69,9 @@ can add or remove modules at any time, building one binary per combination
   `dbimport.conf.dist`), running dbimport, running `postInstall` steps,
   restarting the server (§5.3).
 - The launcher **removes** a module by: applying its `disable` config,
-  regenerating the `world` database (content, not player data) from the build's
-  snapshot and re-applying the remaining modules' SQL. `playerData` databases
+  regenerating the `world` database (content, not player data) with dbimport
+  from the base SQL of the build and re-applying the remaining modules' SQL
+  (§5.3). `playerData` databases
   (auth, characters, playerbots) are never regenerated; module tables there are
   left inert (optional purge).
 - Every module manifest declares an `activation` mode. CI must prove that a
@@ -235,10 +236,12 @@ and, when usable, its snapshot into the store (ADR 0010). Then:
 
 `eoa module enable|disable <id> <module>...` saves the new set in
 `instance.json` (validated by the resolver; restored if the operation fails),
-then runs `instance-<id>` (`eoa_runtime::modules`):
+then runs `modules-<id>` (`eoa_runtime::modules`; its own journal, so an
+install interrupted after `instance-<id>` resumes here):
 
 ```
-db-start → post-install → render-config → db-import → db-stop
+servers-stopped → db-start → post-install → [regenerate-<db>]
+  → render-config → db-import → db-stop
 ```
 
 - `post-install` runs the manifest steps of the chosen modules through the
@@ -253,13 +256,57 @@ db-start → post-install → render-config → db-import → db-stop
   fingerprint, does not depend on ids the database chose). A value whose
   binding does not exist yet is left out: the key keeps its upstream default.
 - Disabling applies the module's `disable` values; its bindings stay out of
-  the configs. Only modules whose SQL is harmless while disabled
-  (`applyWhenDisabled`) can be disabled for now; the others need the `world`
-  database regenerated (§3), refused with a clear message until then.
+  the configs. A module whose SQL is harmless while disabled
+  (`applyWhenDisabled`) needs nothing more. For the others, every content
+  database it `touches` (`playerData: false`, i.e. `world`) is listed in the
+  record's `regenerate` (saved first, so a resumed operation has the same
+  plan; cleared when it completes) and rebuilt (§3): `regenerate-<db>` moves
+  all its tables into `<db>_eoa_previous` with one atomic `RENAME TABLE`
+  (instant, 554 MB of tables), dbimport then rebuilds it from the base SQL
+  and the remaining modules' SQL; finalize drops the old copy, rollback
+  drops the rebuilt tables and moves the old ones back. Player databases
+  keep the module's tables, inert.
 
 Verified 2026-11-15 with AHBot on a local instance: account 104 + character
 1002 created in 13.6 s, 249 auctions posted in each of the three houses on
 the first cycle, re-enable `AlreadyCompleted`, disable back to the defaults.
+Individual Progression: enable 70 s; disable with the world rebuild 2 min 05 s
+(its tables gone, characters and AHBot auctions untouched, server starts).
+
+### 5.4 Updating an instance
+
+`eoa update <id> [--server <artifact.zip>] [--index <file|url>]` installs the
+build of the current catalog release (core or module pins changed: the index
+entry selected by the catalog pins, ADR 0010). The record keeps the build key
+it runs (`build`); the same key is "already up to date". Op `instance-<id>`:
+
+```
+servers-stopped → db-start → db-backup → extract-bin → extract-sql
+  → post-install → render-config → db-import → db-stop
+```
+
+- `db-backup` dumps **every** database (player data included) to
+  `backups/<id>/before-update-<from>-to-<to>.sql` (atomic: `.partial`, then
+  rename). That name exists only while the operation runs: finalize renames
+  the dump `…-<unix seconds>.sql` (kept), and a successful undo deletes it
+  once restored, so a dump found on resume is always this operation's own,
+  never a stale one that a rollback would restore over later play.
+- `db-import` migrates with the new SQL tree. Any failure swaps the old
+  `bin/`, `sql/` and `configs/` back, drops each database and restores the
+  dump; the record keeps the old build.
+
+**Exclusion.** `eoa start`, `eoa module` and `eoa update` hold an OS lock on
+`instances/<id>/instance.lock` (released on exit or crash), so nothing
+changes an instance whose servers are running or still loading, and two
+changes never overlap. A half-done `instance-<id>` blocks module changes and
+starts, a half-done `modules-<id>` blocks updates and starts, until the
+command that began it is run again (resume). `servers-stopped` also checks
+the server ports, for servers started outside the launcher.
+
+Verified 2026-11-15 on a local instance: update 28.6 s (dump 395 MB); same
+build again "already runs"; an artifact without `dbimport.exe` fails at
+`db-import` and rolls back in 80 s (binaries back, 1002 characters and 747
+AHBot auctions intact, record unchanged); a real update then repairs it.
 
 The config layers are a pure function of the catalog, the resolution and the
 instance values (`eoa_engine::install::plan_configs`), tested against the real
