@@ -20,8 +20,8 @@ Durations assume one full-time developer and are rough.
 - [x] Prove disabled modules are inert (smoke test round A; AHBot needs its tables, ADR 0008)
 - [x] MySQL 8.4 database snapshot made and validated by the smoke test (ADR 0009)
 - [x] Signed index (ADR 0010): `tools/ci/index.mjs`, publish job (release per build + `index` release)
-- [ ] Signing key in the repository secrets (publication skipped until then)
-- [ ] zstd packaging
+- [x] Signing key in the repository secrets; first publication (index serial 1, 2026-11-14)
+- zstd packaging: moved to phase 5
 - [x] Server data: pinned upstream release (ADR 0006)
 - [x] Smoke tests: start with modules off/on (`tools/ci/smoke-test.mjs`, green 2026-11-14)
 - [ ] Smoke tests later: login, bots, AH posts
@@ -62,6 +62,8 @@ Durations assume one full-time developer and are rough.
 
 - UI: install wizard, Play, modules, settings, logs, Repair
 - NSIS installer, SignPath signing, Tauri updater, opt-in crash reports
+- zstd artifacts (measured 2026-11-14: server 243 → 164 MB, snapshot 137 → 89 MB;
+  extraction speed unchanged): smaller downloads for slow connections
 - Closed beta
 
 ## Later
