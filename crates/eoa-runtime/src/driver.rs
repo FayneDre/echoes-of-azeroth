@@ -47,6 +47,16 @@ pub struct NewAccount {
     pub gm_level: u8,
 }
 
+/// A character to create without a client (e.g. the AHBot seller).
+#[derive(Debug, Clone)]
+pub struct NewCharacter {
+    pub account_id: u32,
+    pub name: String,
+    /// Emulator-defined names (`human`, `warrior`...); `None` = driver default.
+    pub race: Option<String>,
+    pub class: Option<String>,
+}
+
 pub trait EmulatorDriver: Send + Sync {
     /// Id matched against the emulator manifest's `driver` field.
     fn id(&self) -> &str;
@@ -61,4 +71,26 @@ pub trait EmulatorDriver: Send + Sync {
         cx: &'a DriverContext<'a>,
         account: &'a NewAccount,
     ) -> DriverFuture<'a, u32>;
+
+    /// Id of an existing account (resuming an interrupted post-install).
+    fn find_account<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+        username: &'a str,
+    ) -> DriverFuture<'a, Option<u32>>;
+
+    /// Creates a character directly in the database; returns its guid. The
+    /// world server must be stopped (it allocates guids at startup).
+    fn create_character<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+        character: &'a NewCharacter,
+    ) -> DriverFuture<'a, u32>;
+
+    /// `(account id, guid)` of an existing character.
+    fn find_character<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+        name: &'a str,
+    ) -> DriverFuture<'a, Option<(u32, u32)>>;
 }

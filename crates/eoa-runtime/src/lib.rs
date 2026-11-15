@@ -21,11 +21,14 @@
 
 mod driver;
 mod error;
+pub mod modules;
 mod network;
 mod process;
 mod server;
 
-pub use driver::{DriverContext, DriverError, DriverFuture, EmulatorDriver, NewAccount};
+pub use driver::{
+    DriverContext, DriverError, DriverFuture, EmulatorDriver, NewAccount, NewCharacter,
+};
 pub use error::RuntimeError;
 pub use network::lan_ipv4;
 pub use process::{Exit, LogLine, Process, ProcessConfig, Ready, Stopped, Stream};

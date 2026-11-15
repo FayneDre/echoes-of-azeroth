@@ -91,6 +91,69 @@ enum Command {
         #[command(subcommand)]
         command: AccountCommand,
     },
+    /// Turn modules on or off on an installed instance (servers stopped).
+    Module {
+        #[command(subcommand)]
+        command: ModuleCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModuleCommand {
+    /// Enable modules: config, SQL and post-install steps (accounts...).
+    Enable {
+        instance: String,
+        #[arg(required = true)]
+        modules: Vec<String>,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+    /// Disable modules (their config makes them inert; data is kept).
+    Disable {
+        instance: String,
+        #[arg(required = true)]
+        modules: Vec<String>,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/eoa")]
+        root: PathBuf,
+    },
+}
+
+/// Saves the new module set and applies it; restores the previous set if
+/// the operation fails.
+fn change_modules(
+    catalog: &std::path::Path,
+    root: &std::path::Path,
+    instance: &str,
+    enable: &[String],
+    disable: &[String],
+) -> Result<ExitCode> {
+    let catalog = eoa_catalog::load_dir(catalog)?;
+    let layout = Layout::new(root);
+    let (record, old) =
+        eoa_runtime::modules::set_modules(&catalog, &layout, instance, enable, disable)?;
+    let (_, secrets) = install::open_existing(&layout, instance)?;
+    let emu = &catalog
+        .emulator(&record.emulator)
+        .ok_or_else(|| anyhow::anyhow!("unknown emulator '{}'", record.emulator))?
+        .manifest;
+    let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
+    let op = eoa_runtime::modules::apply_modules_operation(
+        &catalog, &layout, &record, &secrets, driver,
+    )?;
+    if let Err(error) = run_operation(&layout, &op) {
+        install::save_record(&layout, &old)?;
+        return Err(error);
+    }
+    println!(
+        "instance '{}' modules: {}",
+        record.id,
+        record.modules.join(", ")
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 #[derive(Subcommand)]
@@ -511,6 +574,13 @@ fn main() -> Result<ExitCode> {
                 db_snapshot.as_deref(),
             )?;
             run_operation(&layout, &op)?;
+            // Post-install steps of the chosen modules (accounts...), then
+            // the final configs.
+            let driver: Arc<dyn eoa_runtime::EmulatorDriver> = Arc::from(driver(&emu.driver)?);
+            let op = eoa_runtime::modules::apply_modules_operation(
+                &catalog, &layout, &record, &secrets, driver,
+            )?;
+            run_operation(&layout, &op)?;
             println!(
                 "instance '{}' ready in {} (database on 127.0.0.1:{})",
                 record.id,
@@ -557,6 +627,20 @@ fn main() -> Result<ExitCode> {
             println!("account '{}' created (id {id})", account.username);
             Ok(ExitCode::SUCCESS)
         }
+        Command::Module { command } => match command {
+            ModuleCommand::Enable {
+                instance,
+                modules,
+                catalog,
+                root,
+            } => change_modules(&catalog, &root, &instance, &modules, &[]),
+            ModuleCommand::Disable {
+                instance,
+                modules,
+                catalog,
+                root,
+            } => change_modules(&catalog, &root, &instance, &[], &modules),
+        },
         Command::Index {
             command: IndexCommand::Show { source },
         } => {

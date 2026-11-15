@@ -33,6 +33,8 @@ pub enum RuntimeError {
     Pattern { process: String, message: String },
     #[error("unknown port '{port}' in the readiness of {process}")]
     UnknownPort { process: String, port: String },
+    #[error("module {module}: {message}")]
+    Module { module: String, message: String },
     #[error("could not attach {process} to a job object: {message}")]
     Job { process: String, message: String },
     #[error(transparent)]
