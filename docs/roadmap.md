@@ -54,8 +54,11 @@ Durations assume one full-time developer and are rough.
   auth dies, MySQL adopted at next start)
 - [x] Driver: accounts (`eoa account create`, SRP6 matches worldserver), realm address,
   console (stdin of worldserver)
-- [ ] Driver: AHBot account + character, module post-install steps
-- [ ] Module lifecycle: install / remove / update at any time
+- [x] Driver: AHBot account + character, module post-install steps (bindings, 2026-11-15:
+  249 auctions per house on the first cycle)
+- [x] Module lifecycle: enable / disable on an existing instance (`eoa module`)
+- [ ] Module removal that needs the `world` database regenerated (Individual Progression)
+- [ ] Module update (new pinned commit) on an existing instance
 - [x] Log in and play with the maintainer's 3.3.5a client (2026-11-15: character created, in game, bots present)
 - **Exit:** start, log in and play through the CLI
 

@@ -67,6 +67,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | With `Console.Enable = 1`, worldserver **shuts down cleanly when its stdin reaches EOF**: the supervisor must keep stdin open (it is also the GM console). First local start: auth 2 s, world ~1-4 min with 500 bots. | local E2E start (2026-11-14) |
 | A cleanly stopped MySQL 8.4 data directory copied without `auto.cnf`, `*.pem`, `#innodb_temp/` and spare redo files (`#innodb_redo/*_tmp`) starts in ~2 s (new UUID, keys, spares); `--init-file` sets root before listening. dbimport on up-to-date databases: ~9 s (vs 6-14 min from empty). `updates_include` paths are `$/`-relative (portable). | local test (2026-11-14), ADR 0009 |
 | worldserver with stdin as a **pipe** reads commands with `std::getline` and calls `World::StopNow` at EOF (clean: bots logged out, DB pools closed), also when the launcher is killed. Accounts: SRP6 `v = g^H(s‖H(USER:PASS)) mod N`, SHA-1, g = 7, little-endian; our verifier matches one made by worldserver. | fork `CliRunnable.cpp`, `SRP6.cpp`, `AccountMgr.cpp`; local test (2026-11-15) |
+| mod-ah-bot never loads its character: it builds an in-memory `Player` with `Initialize(AuctionHouseBot.GUID)` and owns auctions by that guid; `Account`/`GUID = 0` → "Account id and player id missing" and no bot. A `characters` row (next guid, worldserver stopped) is enough. | mod-ah-bot `c11d831` `AuctionHouseBot.cpp`, local test (2026-11-15) |
 | Client 3.3.5a = build **12340**. Ports: auth 3724, world 8085, SOAP 7878. | AzerothCore defaults |
 | MySQL 8.4.13 winx64 ZIP: 281 154 912 B, sha256 `e9cd98b1…a3ea54` (pinned in `catalog/components/mysql-8-4.json`, MD5 cross-checked with dev.mysql.com). Current GA is on `cdn.mysql.com/Downloads/`, superseded ones on `/archives/`; `dev.mysql.com/get` returns 403 to scripts. | dev.mysql.com downloads page, cdn.mysql.com (2026-11-13) |
 
@@ -191,6 +192,7 @@ cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <sna
 cargo run -p eoa-cli -- index show [<file|url>]   # verify and print the index
 cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ctrl+C / .stop = clean stop
 cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
+cargo run -p eoa-cli -- module enable|disable <id> <module>...   # servers stopped
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 ```
 
@@ -267,7 +269,9 @@ verified end to end locally (servers start), and `--db-snapshot` restore
 (ADR 0009) and `--index` (signed index, ADR 0010).
 Phase 3 started (2026-11-15): `eoa-runtime` supervisor and the AzerothCore
 driver (`drivers/azerothcore`): `eoa start <id>` (console, clean stop) and
-`eoa account create` verified locally. Next: log in with a real client, AHBot
-account/character, module lifecycle. UI: left
+`eoa account create` verified locally; the maintainer logged in and played
+(phase exit). Module lifecycle: `eoa module enable|disable` with post-install
+steps (AHBot account + character, `bindings.json`), verified. Next: world
+regeneration for removing world-changing modules, module updates. UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.

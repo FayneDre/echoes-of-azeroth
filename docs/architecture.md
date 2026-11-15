@@ -67,7 +67,7 @@ can add or remove modules at any time, building one binary per combination
   rendering its config files, allowing its SQL in dbimport
   (`Updates.AllowedModules`, confirmed present in the Playerbot fork's
   `dbimport.conf.dist`), running dbimport, running `postInstall` steps,
-  restarting the server.
+  restarting the server (§5.3).
 - The launcher **removes** a module by: applying its `disable` config,
   regenerating the `world` database (content, not player data) from the build's
   snapshot and re-applying the remaining modules' SQL. `playerData` databases
@@ -228,6 +228,38 @@ and, when usable, its snapshot into the store (ADR 0010). Then:
    rule), `extract-db` (snapshot `data/` → `db/data`) and `db-adopt`. The
    snapshot must match the artifact's build key, the MySQL version and the
    instance's dbimport modules, or the plan fails before any step (ADR 0009).
+4. The module operation below (post-install steps of the chosen modules,
+   final configs).
+
+### 5.3 Modules on an existing instance
+
+`eoa module enable|disable <id> <module>...` saves the new set in
+`instance.json` (validated by the resolver; restored if the operation fails),
+then runs `instance-<id>` (`eoa_runtime::modules`):
+
+```
+db-start → post-install → render-config → db-import → db-stop
+```
+
+- `post-install` runs the manifest steps of the chosen modules through the
+  driver, once: `create-account` (random password; the driver finds an
+  existing account by name, so a crash never duplicates it) and
+  `create-character`. Results go to `instances/<id>/bindings.json` per
+  module (`ahbot_account.id`, `ahbot_character.guid`). It refuses to run
+  while a server port is open. Rollback keeps what was created (player-data
+  databases); re-enabling reuses it.
+- `set-config` values are locked `Launcher` layers whose placeholders are
+  expanded **at render time** from the bindings (the plan, and so its
+  fingerprint, does not depend on ids the database chose). A value whose
+  binding does not exist yet is left out: the key keeps its upstream default.
+- Disabling applies the module's `disable` values; its bindings stay out of
+  the configs. Only modules whose SQL is harmless while disabled
+  (`applyWhenDisabled`) can be disabled for now; the others need the `world`
+  database regenerated (§3), refused with a clear message until then.
+
+Verified 2026-11-15 with AHBot on a local instance: account 104 + character
+1002 created in 13.6 s, 249 auctions posted in each of the three houses on
+the first cycle, re-enable `AlreadyCompleted`, disable back to the defaults.
 
 The config layers are a pure function of the catalog, the resolution and the
 instance values (`eoa_engine::install::plan_configs`), tested against the real
@@ -257,13 +289,18 @@ trait EmulatorDriver: Send + Sync {
     fn id(&self) -> &str;                                   // manifest `driver`
     fn prepare_start(&self, cx: &DriverContext) -> DriverFuture<()>;   // DB up, servers not yet
     fn create_account(&self, cx: &DriverContext, a: &NewAccount) -> DriverFuture<u32>;
+    fn find_account(&self, cx: &DriverContext, name: &str) -> DriverFuture<Option<u32>>;
+    fn create_character(&self, cx: &DriverContext, c: &NewCharacter) -> DriverFuture<u32>; // servers stopped
+    fn find_character(&self, cx: &DriverContext, name: &str) -> DriverFuture<Option<(u32, u32)>>;
 }
 ```
 
 `DriverContext` gives the running database, the emulator manifest, the
 instance record and the realm address (`127.0.0.1` solo, LAN address in LAN
 mode). Console commands, readiness and stop are declared in the manifest,
-not in the driver. Planned: character creation (AHBot), module post-install.
+not in the driver. The AzerothCore driver writes characters as one
+`characters` row with the next guid (mod-ah-bot never loads its character:
+it builds an in-memory `Player` from the guid).
 
 Adding an emulator = manifests + one driver. Download, database, client,
 runtime, UI and updates are reused unchanged.
