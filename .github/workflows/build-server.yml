@@ -444,7 +444,8 @@ jobs:
           out="$RUNNER_TEMP/out"; mkdir -p "$out"
           server="server-$BUILD_KEY.zip"
           snapshot="db-snapshot-$BUILD_KEY-r$GITHUB_RUN_ID.zip"
-          (cd "$RUNNER_TEMP/db-snapshot" && zip -q -r -6 "$out/$snapshot" .)
+          # zstd entries (ADR 0015): about a third smaller than deflate.
+          node tools/ci/zip-zstd.mjs "$RUNNER_TEMP/db-snapshot" "$out/$snapshot"
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "release $TAG exists"
           else
@@ -455,7 +456,7 @@ jobs:
             # Never replaced: reuse the published bytes (the index hashes them).
             gh release download "$TAG" --pattern "$server" --dir "$out"
           else
-            (cd "$RUNNER_TEMP/server" && zip -q -r -9 "$out/$server" .)
+            node tools/ci/zip-zstd.mjs "$RUNNER_TEMP/server" "$out/$server"
             gh release upload "$TAG" "$out/$server"
           fi
           gh release upload "$TAG" "$out/$snapshot"

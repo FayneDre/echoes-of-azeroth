@@ -1,0 +1,209 @@
+name: Release launcher
+
+# Builds the Windows installer (NSIS, per-user, no admin rights) and
+# publishes it as release `app-v<version>`; the update feed `latest.json`
+# lives in the rolling `app-latest` release (ADR 0015).
+#
+# Optional, each enabled by its repository settings:
+# - code signing through SignPath: secret SIGNPATH_API_TOKEN, variables
+#   SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG;
+# - auto-update: variable EOA_UPDATER_PUBKEY, secrets
+#   TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# Without them the installer is published unsigned / without auto-update.
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes (shown by the launcher's update notice)
+        required: false
+        default: ""
+      draft:
+        description: Publish as a draft (closed beta)
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-app
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+  HAS_UPDATER: ${{ vars.EOA_UPDATER_PUBKEY != '' && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+
+jobs:
+  build:
+    name: Build installer
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      unsigned-id: ${{ steps.unsigned.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Checks
+        run: npm run check
+
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(node tools/ci/app-release.mjs version)" >> "$GITHUB_OUTPUT"
+
+      - name: Release config
+        shell: bash
+        env:
+          PUBKEY: ${{ env.HAS_UPDATER == 'true' && vars.EOA_UPDATER_PUBKEY || '' }}
+        run: |
+          node tools/ci/app-release.mjs config --out "$RUNNER_TEMP/release.conf.json" \
+            --pubkey "$PUBKEY" \
+            --feed "https://github.com/${{ github.repository }}/releases/download/app-latest/latest.json"
+
+      - name: Build
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd app
+          npx tauri build --bundles nsis --config "$RUNNER_TEMP/release.conf.json"
+
+      # Tauri names it after the product ("Echoes of Azeroth_..."): a name
+      # without spaces keeps the release asset URL in the feed exact.
+      - name: Collect the installer
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/unsigned"
+          built=(target/release/bundle/nsis/*-setup.exe)
+          [ "${#built[@]}" -eq 1 ] || { echo "::error::expected one installer, found ${#built[@]}"; exit 1; }
+          cp "${built[0]}" "$RUNNER_TEMP/unsigned/EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          ls -l "$RUNNER_TEMP/unsigned"
+
+      - name: Upload the unsigned installer
+        id: unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-unsigned
+          path: ${{ runner.temp }}/unsigned/*-setup.exe
+          if-no-files-found: error
+
+  sign:
+    name: Sign (SignPath)
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: Submit the signing request
+        if: env.HAS_SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.build.outputs.unsigned-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/installer
+
+      - name: Unsigned installer (no SignPath configuration)
+        if: env.HAS_SIGNPATH != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: installer-unsigned
+          path: ${{ runner.temp }}/installer
+
+      - name: Note
+        if: env.HAS_SIGNPATH != 'true'
+        shell: bash
+        run: echo "::warning::SignPath is not configured, the installer is published unsigned."
+
+      - name: Upload the installer to publish
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer
+          path: ${{ runner.temp }}/installer/*-setup.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [build, sign]
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer
+          path: ${{ runner.temp }}/out
+
+      # The update signature covers the final (signed) installer bytes.
+      - name: Update signature and feed
+        if: env.HAS_UPDATER == 'true'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/out"
+          installer="EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          (cd "$GITHUB_WORKSPACE/app" && npx tauri signer sign "$RUNNER_TEMP/out/$installer")
+          node "$GITHUB_WORKSPACE/tools/ci/app-release.mjs" feed --version "$VERSION" \
+            --installer-url "https://github.com/$GITHUB_REPOSITORY/releases/download/app-v$VERSION/$installer" \
+            --signature "$installer.sig" --notes "$NOTES" --out latest.json
+
+      - name: Release
+        shell: bash
+        env:
+          NOTES: ${{ inputs.notes }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/out"
+          tag="app-v$VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "::error::$tag already exists: bump the version in app/src-tauri/tauri.conf.json"
+            exit 1
+          fi
+          flags=(--title "Echoes of Azeroth $VERSION" --notes "${NOTES:-Echoes of Azeroth $VERSION}")
+          [ "$DRAFT" = "true" ] && flags+=(--draft)
+          gh release create "$tag" --target "$GITHUB_SHA" "${flags[@]}" "EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          # The feed moves only for a public release: a draft (closed beta)
+          # never reaches the players' auto-update.
+          if [ -f latest.json ] && [ "$DRAFT" != "true" ]; then
+            if ! gh release view app-latest > /dev/null 2>&1; then
+              gh release create app-latest --latest=false --title "Launcher update feed" \
+                --notes "Read by the launcher's auto-update. Not meant to be downloaded by hand."
+            fi
+            gh release upload app-latest latest.json --clobber
+          fi
