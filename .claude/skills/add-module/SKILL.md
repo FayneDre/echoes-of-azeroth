@@ -1,6 +1,6 @@
 ---
 name: add-module
-description: Add or update a server module in the Echoes of Azeroth catalog (manifest, pinned commit, config keys, options, assets, post-install). Use when the user asks to support a new module (e.g. mod-transmog) or change an existing module manifest.
+description: Add or update a server module in the RealmKeeper catalog (manifest, pinned commit, config keys, options, assets, post-install). Use when the user asks to support a new module (e.g. mod-transmog) or change an existing module manifest.
 ---
 
 # Add a module to the catalog
@@ -50,8 +50,8 @@ files (MPQ) or server DBC overrides, accounts/characters it needs.
 
 ```sh
 npm run validate:catalog
-cargo test -p eoa-catalog
-cargo run -p eoa-cli -- catalog resolve --emulator <emulator> --module <id>
+cargo test -p rk-catalog
+cargo run -p rk-cli -- catalog resolve --emulator <emulator> --module <id>
 ```
 
 ## 4. Report

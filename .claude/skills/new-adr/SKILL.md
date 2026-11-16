@@ -1,6 +1,6 @@
 ---
 name: new-adr
-description: Record an architecture decision for Echoes of Azeroth as an ADR in docs/decisions/. Use when a structural choice is made or changed (technology, data model, distribution, security, scope), or when the user says "on part sur X" for something architectural.
+description: Record an architecture decision for RealmKeeper as an ADR in docs/decisions/. Use when a structural choice is made or changed (technology, data model, distribution, security, scope), or when the user says "on part sur X" for something architectural.
 ---
 
 # Record an architecture decision

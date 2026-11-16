@@ -1,6 +1,6 @@
 ---
 name: add-emulator
-description: Add support for a new emulator family (e.g. TrinityCore, CMaNGOS, vMaNGOS) or a new client version to Echoes of Azeroth. Use when the user wants another emulator, core flavor or game client.
+description: Add support for a new emulator family (e.g. TrinityCore, CMaNGOS, vMaNGOS) or a new client version to RealmKeeper. Use when the user wants another emulator, core flavor or game client.
 ---
 
 # Add an emulator, flavor or client

@@ -1,6 +1,6 @@
 ---
 name: bump-pins
-description: Update pinned upstream commits (core flavors, modules) and component versions in the Echoes of Azeroth catalog. Use when the user asks to update AzerothCore, the Playerbot fork, a module, or MySQL.
+description: Update pinned upstream commits (core flavors, modules) and component versions in the RealmKeeper catalog. Use when the user asks to update AzerothCore, the Playerbot fork, a module, or MySQL.
 ---
 
 # Bump pinned versions
@@ -20,6 +20,6 @@ description: Update pinned upstream commits (core flavors, modules) and componen
    with `assets` (ADR 0013): re-download each `source.path` at the new commit,
    update `size` / `sha256`, and check that the listed archive members still exist.
 4. MySQL: stay on 8.4 LTS (AzerothCore rejects 9.x/26.x). Update `version` and `upstream`.
-5. Validate: `npm run validate:catalog` and `cargo test -p eoa-catalog`.
+5. Validate: `npm run validate:catalog` and `cargo test -p rk-catalog`.
 6. Summarise for the user (in French): old → new commit, notable upstream changes,
    anything needing a CI smoke test.

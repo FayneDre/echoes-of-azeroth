@@ -8,7 +8,7 @@
       "Bash(cargo test:*)",
       "Bash(cargo clippy:*)",
       "Bash(cargo fmt:*)",
-      "Bash(cargo run -p eoa-cli:*)",
+      "Bash(cargo run -p rk-cli:*)",
       "Bash(npm run check:*)",
       "Bash(npm run build:*)",
       "Bash(npm run validate:catalog:*)",

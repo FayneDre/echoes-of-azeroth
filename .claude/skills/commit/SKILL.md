@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Prepare and create git commits (and optionally push) for Echoes of Azeroth following the repository rules - checks, Conventional Commits, no AI co-author, no private information. Use whenever the user asks to commit, push, or save work to git.
+description: Prepare and create git commits (and optionally push) for RealmKeeper following the repository rules - checks, Conventional Commits, no AI co-author, no private information. Use whenever the user asks to commit, push, or save work to git.
 ---
 
 # Commit (and push)
