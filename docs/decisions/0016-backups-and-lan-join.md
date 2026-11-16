@@ -31,7 +31,7 @@
 
 ## Decision
 
-1. **Manual backups.** "Back up now" (`eoa backup create`) dumps the
+1. **Manual backups.** "Back up now" (`rk backup create`) dumps the
    **player databases** to `manual-<secs>.sql`.
    - The servers must be stopped, which the instance lock enforces. The
      database is started for the dump and stopped afterwards.
@@ -41,7 +41,7 @@
    - Manual dumps are never pruned.
    - A dump of an operation still in flight has no time suffix yet, so it is
      never pruned.
-3. **Restore** (`eoa backup restore`, the Restore button) is an
+3. **Restore** (`rk backup restore`, the Restore button) is an
    `instance-<id>` operation, recorded in `pending.json` as
    `Pending::Restore{dump, databases, label}` and resumable like an update:
 
@@ -66,7 +66,7 @@
    - Restore, behind an explicit confirmation;
    - Delete.
 5. **Joining a LAN realm.** The Home tab has a "Join a game on the local
-   network" panel, and the CLI has `eoa join <address>`.
+   network" panel, and the CLI has `rk join <address>`.
    - It points the registered client at the host's address and launches the
      game. No server runs on the joining computer.
    - The address must be an IPv4 address or a host name.

@@ -25,5 +25,5 @@ repository declares no license. ADR 0005 planned to re-host every artifact.
 - Availability depends on upstream; the mirror list mechanism may later point to
   other community mirrors of the *same* file (same sha256), never to a copy we host.
 - The download (~1.1 GB) is the largest install step: parallel ranged download and
-  resume are mandatory in `eoa-store`.
+  resume are mandatory in `rk-store`.
 - Extracting map data from the user's own client stays possible as a future fallback.

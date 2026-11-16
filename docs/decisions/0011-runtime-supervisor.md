@@ -42,7 +42,7 @@ below were checked in the Playerbot fork at the pinned commit `32fd347`:
 - **Console.** A `close-stdin` process takes console commands: its stdin is
   a command line. No other marker is needed.
 - **MySQL is never killed.** If the launcher dies, MySQL keeps running, so
-  a world shutdown can still save. The next start or stop adopts it: `eoa-db`
+  a world shutdown can still save. The next start or stop adopts it: `rk-db`
   pings it with the instance's root credentials.
 - **Readiness.** A TCP readiness port that is already open before spawning
   is an error (`PortInUse`). Otherwise an orphan or a foreign program would
@@ -51,7 +51,7 @@ below were checked in the Playerbot fork at the pinned commit `32fd347`:
 - **Output.** Output goes to `logs/<process>.console.log`; the previous run's
   file is kept as `.previous.log`. It is also sent to a broadcast channel for
   the UI and the CLI.
-- **Driver interface.** The `EmulatorDriver` trait lives in `eoa-runtime`:
+- **Driver interface.** The `EmulatorDriver` trait lives in `rk-runtime`:
   `prepare_start` (runs once the database is up, before the servers) and
   `create_account`. The AzerothCore driver (`drivers/azerothcore`) does both
   directly in the database:

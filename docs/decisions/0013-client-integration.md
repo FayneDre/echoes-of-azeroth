@@ -32,7 +32,7 @@ Phase 4 makes the launcher prepare and start the player's own client
 
 1. **Option values in the instance record.** `instance.json` gains `options`
    (module → option → value). A value is validated against the manifest when
-   it is set (`eoa option set`). A value that no longer fits the option falls
+   it is set (`rk option set`). A value that no longer fits the option falls
    back to its default. Chosen values are rendered as `User` config layers.
 2. **Module assets come from upstream.** An asset names an archive of the
    module repository (`source.path`, `size`, `sha256`) and the members to use
@@ -55,9 +55,9 @@ Phase 4 makes the launcher prepare and start the player's own client
    - The overlay is built in a staging directory and swapped in with
      `DirSwap`. It is undone on rollback, and removed once no override is
      left. Links are removed, never followed.
-4. **Registered client and managed files** (`eoa-client`, state in
+4. **Registered client and managed files** (`rk-client`, state in
    `clients/<client id>.json`).
-   - **Registration:** `eoa client set` checks the executable's build and
+   - **Registration:** `rk client set` checks the executable's build and
      the locale folders.
    - **Preparation:** before each launch the launcher:
      - rewrites `realmlist.wtf`, and the `saved` setting declared in the
@@ -67,14 +67,14 @@ Phase 4 makes the launcher prepare and start the player's own client
      - reconciles the patch files with the instance's choices.
    - **Tracking:** managed files are tracked by sha256.
      - A file of the player at the same path is moved to
-       `<name>.eoa-backup` and put back when the launcher removes its own.
+       `<name>.rk-backup` and put back when the launcher removes its own.
      - The same content already in place is adopted.
      - A tracked file the player changed is never deleted.
      - Each change is recorded before it is made, so an interrupted
        preparation is finished by the next one.
    - **Locking:** a client lock (`clients/<id>.lock`) is held while the
      client is prepared and while the game started by the launcher runs.
-5. **Synchronised launch (`eoa play`).** The launcher prepares the client
+5. **Synchronised launch (`rk play`).** The launcher prepares the client
    first, to fail fast. It then starts the servers, and launches the
    executable from the client folder when the last server is ready. The
    local client always uses `127.0.0.1`.

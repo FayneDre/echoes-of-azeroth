@@ -45,17 +45,17 @@ player did not choose it.
   `disable` values of modules not chosen (CoreOverride, locked), `instance`
   values and connections (Launcher, locked). Every catalog module compatible
   with the flavor gets its config file, enabled or disabled.
-- Layout under the data root (`%LOCALAPPDATA%\EchoesOfAzeroth`):
+- Layout under the data root (`%LOCALAPPDATA%\RealmKeeperData`):
   ```
   components/<id>/                 shared runtimes (own operation each)
   serverdata/<client>-<version>/   shared server data (own operation each)
   instances/<id>/                  cwd of the servers
     bin/       artifact dist/      sql/      artifact sql/
     configs/   rendered            logs/
-    db/        eoa-db instance     instance.json, secrets.json
+    db/        rk-db instance     instance.json, secrets.json
   state/                           journals and locks
   ```
-- `eoa install` runs the shared operations first, then one `instance-<id>`
+- `rk install` runs the shared operations first, then one `instance-<id>`
   operation: extract `bin` and `sql`, initialise and start MySQL, create the
   databases and the service account, render the configs, run dbimport, stop
   MySQL cleanly. Its rollback never touches shared directories.

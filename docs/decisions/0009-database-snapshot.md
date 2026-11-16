@@ -46,7 +46,7 @@ created first, then imported one by one.
   `data/**` plus `snapshot.json` (`format`, `buildKey`, MySQL component
   `id`/`version`/`sha256`, `databases`, the base `modules`). The smoke test
   then restores it the way the launcher does and runs both rounds on it.
-- **Restore** (`eoa install --db-snapshot`) only creates a new database. It
+- **Restore** (`rk install --db-snapshot`) only creates a new database. It
   never replaces an existing one (`db-claim` refuses a database that this run
   did not create). The steps are `db-claim`, `extract-db` (archive `data/` →
   `db/data`, atomic), then `db-adopt`. `db-adopt` writes `my.ini` and
@@ -68,7 +68,7 @@ created first, then imported one by one.
 - The snapshot is tied to one MySQL version, so a MySQL pin bump needs a new
   snapshot. The CI job makes one on every smoke-test run.
 - Measured locally (2026-11-14): 1.1 GB unpacked, 144 MB as a deflate ZIP.
-  `eoa install --db-snapshot` takes 17 s in all, against 6-14 min, and the
+  `rk install --db-snapshot` takes 17 s in all, against 6-14 min, and the
   servers start on the result. Compression (zstd), signing and the index
   entry follow the server artifact (phase 1 remainder).
 - The empty root password exists only inside the archive. The server only

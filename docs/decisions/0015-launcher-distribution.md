@@ -45,7 +45,7 @@ Facts:
    publishes the installer unsigned, with a warning.
 3. **Auto-update.**
    - **When it is on.** It is enabled only when the variable
-     `EOA_UPDATER_PUBKEY` and the secret `TAURI_SIGNING_PRIVATE_KEY` exist.
+     `RK_UPDATER_PUBKEY` and the secret `TAURI_SIGNING_PRIVATE_KEY` exist.
      `tools/ci/app-release.mjs config` then adds `plugins.updater` (public
      key, feed URL, passive install mode) and `createUpdaterArtifacts` to the
      release build.

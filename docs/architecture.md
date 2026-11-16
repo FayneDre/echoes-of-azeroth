@@ -1,6 +1,6 @@
 # Architecture
 
-Echoes of Azeroth is a Windows-first desktop launcher that installs, runs and
+RealmKeeper is a Windows-first desktop launcher that installs, runs and
 updates World of Warcraft server emulators, their modules, and launches the
 player's own game client. AzerothCore (with Playerbots) is the first supported
 emulator; the architecture is built so that other emulators, clients and modules
@@ -24,8 +24,11 @@ Decisions behind this document are recorded in [`decisions/`](decisions/).
 5. **Zero in-game compromise.** Optimisation targets the *installation*
    (speed, size, reliability). Server settings are never throttled.
 6. **Isolation, no admin rights.** Each instance owns its binaries, database,
-   config and logs under `%LOCALAPPDATA%`. No Windows service. The only elevated
-   action is an optional firewall rule for LAN play.
+   config and logs under one data root: `%LOCALAPPDATA%\RealmKeeperData` by
+   default, or a folder the player picks (ADR 0017, 0019; it can be renamed or
+   moved later, then pointed at again).
+   No Windows service. The only elevated action is an optional firewall rule
+   for LAN play.
 7. **The client is never distributed.** The user points to their own client.
 
 ## 2. Domain model
@@ -53,7 +56,7 @@ Component     = shared third-party runtime (MySQL 8.4 LTS, VC++ redistributable)
 | Instance | "My solo realm" | Fully independent; a user may have several. |
 
 Manifests live in [`catalog/`](../catalog/) and are validated by JSON Schema
-(`catalog/schema/`) and by the Rust `eoa-catalog` crate (cross-references).
+(`catalog/schema/`) and by the Rust `rk-catalog` crate (cross-references).
 
 ## 3. Module strategy: the "full build"
 
@@ -152,24 +155,24 @@ the exact source commits recorded in the manifests.
 ## 5. Launcher architecture
 
 Tauri 2 (Rust) + Svelte 5 UI. The Rust core is a set of libraries independent
-of Tauri, reusable by the `eoa` CLI (CI, support, power users) and testable.
+of Tauri, reusable by the `rk` CLI (CI, support, power users) and testable.
 
 | Crate | Status | Responsibility |
 |---|---|---|
-| `eoa-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
-| `eoa-catalog` | ✅ | Load catalog from disk, cross-manifest validation, signed artifact index (`index`: Ed25519 envelope, trusted keys, anti-rollback, selection by catalog pins, ADR 0010). |
-| `eoa-launcher` | ✅ | Player actions shared by the app and the CLI (ADR 0014): install, update, repair, resume (`pending.json`), modules, options, client preparation, accounts; `UiError` codes; serializable progress (`progress`) and background sessions with console (`session`); opt-in crash reports (`crash`, ADR 0015). |
-| `eoa-cli` | ✅ | `eoa` over `eoa-launcher`: catalog, store, install, start, play, update, repair, resume, module, option, client, account, index. |
-| `eoa-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
-| `eoa-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
-| `eoa-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
-| `eoa-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore, adoption of a restored snapshot (§8). Later: Job Object. |
-| `eoa-runtime` | ✅ (first slice) | Supervisor (§10, ADR 0011): MySQL then the manifest processes in order, each gated by readiness; console (stdin of the `close-stdin` process), output to `logs/<process>.console.log` + broadcast, crash detection, clean stop in reverse order; kill-on-close Job Object for `terminate` processes. `EmulatorDriver` trait. |
-| `eoa-client` | ✅ | Client detection (build from the version resource, locales), realmlist + saved setting, cache clearing, managed patch files tracked by sha256, client lock, launch (ADR 0013). |
+| `rk-core` | ✅ | Manifest types, `Catalog`, module resolver. Pure, no I/O. |
+| `rk-catalog` | ✅ | Load catalog from disk, cross-manifest validation, signed artifact index (`index`: Ed25519 envelope, trusted keys, anti-rollback, selection by catalog pins, ADR 0010). |
+| `rk-launcher` | ✅ | Player actions shared by the app and the CLI (ADR 0014): install, update, repair, resume (`pending.json`), modules, options, client preparation, accounts; `UiError` codes; serializable progress (`progress`) and background sessions with console (`session`); opt-in crash reports (`crash`, ADR 0015). |
+| `rk-cli` | ✅ | `rk` over `rk-launcher`: catalog, store, install, start, play, update, repair, resume, module, option, client, account, index. |
+| `rk-store` | ✅ | Content-addressed store: parallel ranged downloads (8 × 16 MiB segments by default), resume from persisted segment state (also across mirrors), mirror fallback (also when a mirror serves corrupted bytes), size + sha256 verification before a blob becomes visible, OS file lock per blob (concurrent fetches download once), fail-fast on permanent HTTP errors. |
+| `rk-conf` | ✅ | Lossless `.conf` parser and layered renderer (§9). Pure, no I/O. |
+| `rk-engine` | ✅ (executor) | Transactional step executor (§5.1): durable journal, OS lock per operation, resume after crash or cancel, plan fingerprint, reverse-order rollback (itself resumable), repair state, finalize, `DirSwap` atomic directory replacement. Concrete steps come with their phase. |
+| `rk-db` | ✅ (first slice) | Portable MySQL instance: `my.ini`, secure init, start/readiness, clean stop, databases + service accounts, backup/restore, adoption of a restored snapshot (§8). Later: Job Object. |
+| `rk-runtime` | ✅ (first slice) | Supervisor (§10, ADR 0011): MySQL then the manifest processes in order, each gated by readiness; console (stdin of the `close-stdin` process), output to `logs/<process>.console.log` + broadcast, crash detection, clean stop in reverse order; kill-on-close Job Object for `terminate` processes. `EmulatorDriver` trait. |
+| `rk-client` | ✅ | Client detection (build from the version resource, locales), realmlist + saved setting, cache clearing, managed patch files tracked by sha256, client lock, launch (ADR 0013). |
 | `drivers/azerothcore` | ✅ (first slice) | Game accounts written to the auth database like `AccountMgr::CreateAccount` (SRP6), realm 1 address/port before each start. Later: AHBot account + character, module post-install steps. |
-| `app/src-tauri` | ✅ | Thin adapter over `eoa-launcher`: commands, `operation` / `session` events (sessions batched every 100 ms), one change at a time, clean stop of the servers on window close, updater plugin when the build has a feed (ADR 0015). |
+| `app/src-tauri` | ✅ | Thin adapter over `rk-launcher`: commands, `operation` / `session` events (sessions batched every 100 ms), one change at a time, clean stop of the servers on window close, updater plugin when the build has a feed (ADR 0015). |
 
-### 5.1 Install engine (`eoa-engine`)
+### 5.1 Install engine (`rk-engine`)
 
 An **operation** (install, update, module toggle...) is an id plus an ordered
 list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
@@ -199,17 +202,17 @@ list of **steps** (`run`, `undo`, `finalize`). One id per thing being changed
   used for player data.
 - Step errors stay typed (`Box<dyn Error>`), so the UI can translate the
   underlying `StoreError`, `DbError`... (principle 8).
-- Built-in steps (`eoa_engine::steps`): `download` (`Fetch`, into the store;
+- Built-in steps (`rk_engine::steps`): `download` (`Fetch`, into the store;
   cancellable, resumes from the store's segments) and `extract` (`Extract`:
   ZIP into a `DirSwap` staging directory, several threads largest files first,
   CRC-32 checked per entry, absolute / `..` / drive / link entries rejected
   before anything is written, optional strip of the single root directory).
-  `eoa component install mysql-8-4` chains them: 281 MB download + 1.26 GB
+  `rk component install mysql-8-4` chains them: 281 MB download + 1.26 GB
   extraction in about 6 s on a fast connection (2026-11-14).
 
 ### 5.2 Installing an instance (ADR 0007)
 
-`eoa install <id> [--index <file|url> | --server <artifact.zip> [--db-snapshot <snapshot.zip>]] [--module ...] [--lan]`.
+`rk install <id> [--index <file|url> | --server <artifact.zip> [--db-snapshot <snapshot.zip>]] [--module ...] [--lan]`.
 Without `--server`, the signed index (default: the published one) is
 accepted (`state/index.json` keeps the last one, anti-rollback), the build
 matching the catalog pins is selected and `build-<key>` downloads its server
@@ -224,7 +227,7 @@ and, when usable, its snapshot into the store (ADR 0010). Then:
    `db-init` (refuses a database it did not create; undo deletes only its
    own), `db-start`, `db-provision` (databases + service account),
    `render-config` (every file of the full build, layered, swapped in
-   atomically, reference copy in `configs/.eoa-rendered/`), `db-import`
+   atomically, reference copy in `configs/.rk-rendered/`), `db-import`
    (`run-tool`: dbimport with cwd = instance root, log in `logs/`), `db-stop`.
    With `--db-snapshot`, `db-init` + `db-start` become `db-claim` (same
    rule), `extract-db` (snapshot `data/` → `db/data`) and `db-adopt`. The
@@ -235,9 +238,9 @@ and, when usable, its snapshot into the store (ADR 0010). Then:
 
 ### 5.3 Modules on an existing instance
 
-`eoa module enable|disable <id> <module>...` saves the new set in
+`rk module enable|disable <id> <module>...` saves the new set in
 `instance.json` (validated by the resolver; restored if the operation fails),
-then runs `modules-<id>` (`eoa_runtime::modules`; its own journal, so an
+then runs `modules-<id>` (`rk_runtime::modules`; its own journal, so an
 install interrupted after `instance-<id>` resumes here):
 
 ```
@@ -262,7 +265,7 @@ servers-stopped → db-start → post-install → [regenerate-<db>]
   database it `touches` (`playerData: false`, i.e. `world`) is listed in the
   record's `regenerate` (saved first, so a resumed operation has the same
   plan; cleared when it completes) and rebuilt (§3): `regenerate-<db>` moves
-  all its tables into `<db>_eoa_previous` with one atomic `RENAME TABLE`
+  all its tables into `<db>_rk_previous` with one atomic `RENAME TABLE`
   (instant, 554 MB of tables), dbimport then rebuilds it from the base SQL
   and the remaining modules' SQL; finalize drops the old copy, rollback
   drops the rebuilt tables and moves the old ones back. Player databases
@@ -276,7 +279,7 @@ Individual Progression: enable 70 s; disable with the world rebuild 2 min 05 s
 
 ### 5.4 Updating an instance
 
-`eoa update <id> [--server <artifact.zip>] [--index <file|url>]` installs the
+`rk update <id> [--server <artifact.zip>] [--index <file|url>]` installs the
 build of the current catalog release (core or module pins changed: the index
 entry selected by the catalog pins, ADR 0010). The record keeps the build key
 it runs (`build`); the same key is "already up to date". Op `instance-<id>`:
@@ -296,7 +299,7 @@ servers-stopped → db-start → db-backup → extract-bin → extract-sql
   `bin/`, `sql/` and `configs/` back, drops each database and restores the
   dump; the record keeps the old build.
 
-**Exclusion.** `eoa start`, `eoa module` and `eoa update` hold an OS lock on
+**Exclusion.** `rk start`, `rk module` and `rk update` hold an OS lock on
 `instances/<id>/instance.lock` (released on exit or crash), so nothing
 changes an instance whose servers are running or still loading, and two
 changes never overlap. A half-done `instance-<id>` blocks module changes and
@@ -310,8 +313,8 @@ build again "already runs"; an artifact without `dbimport.exe` fails at
 AHBot auctions intact, record unchanged); a real update then repairs it.
 
 The config layers are a pure function of the catalog, the resolution and the
-instance values (`eoa_engine::install::plan_configs`), tested against the real
-catalog in `crates/eoa-catalog/tests/install.rs`.
+instance values (`rk_engine::install::plan_configs`), tested against the real
+catalog in `crates/rk-catalog/tests/install.rs`.
 
 ### Install engine step vocabulary
 
@@ -324,7 +327,7 @@ steps are delegated to the driver.
 
 ### Resolution
 
-`eoa_core::resolve` turns a selection into a deterministic set: adds the
+`rk_core::resolve` turns a selection into a deterministic set: adds the
 flavor's required modules and transitive `requires`, rejects incompatible
 flavors, conflicts and contradictory core overrides, and orders dependencies
 first. The UI shows the resulting plan before anything runs.
@@ -332,7 +335,7 @@ first. The UI shows the resulting plan before anything runs.
 ## 6. Emulator drivers
 
 ```rust
-// eoa-runtime (ADR 0011); futures are boxed, errors typed for the UI.
+// rk-runtime (ADR 0011); futures are boxed, errors typed for the UI.
 trait EmulatorDriver: Send + Sync {
     fn id(&self) -> &str;                                   // manifest `driver`
     fn prepare_start(&self, cx: &DriverContext) -> DriverFuture<()>;   // DB up, servers not yet
@@ -340,6 +343,7 @@ trait EmulatorDriver: Send + Sync {
     fn find_account(&self, cx: &DriverContext, name: &str) -> DriverFuture<Option<u32>>;
     fn create_character(&self, cx: &DriverContext, c: &NewCharacter) -> DriverFuture<u32>; // servers stopped
     fn find_character(&self, cx: &DriverContext, name: &str) -> DriverFuture<Option<(u32, u32)>>;
+    fn population(&self, cx: &DriverContext) -> DriverFuture<Option<Population>>; // default: unknown (ADR 0018)
 }
 ```
 
@@ -356,14 +360,14 @@ runtime, UI and updates are reused unchanged.
 ## 7. On-disk layout
 
 ```
-%LOCALAPPDATA%\EchoesOfAzeroth\
-├─ store\                 blobs by hash (shared cache)
+%LOCALAPPDATA%\RealmKeeperData\   launcher folder: crash-reports\, location.json (ADR 0017)
+<data root>\               = the launcher folder, or the picked folder (ADR 0019; marker .realmkeeper)\n├─ store\                 blobs by hash (shared cache)
 ├─ components\mysql-8-4\
 ├─ serverdata\<client>-<version>\   shared server data (ADR 0006)
 ├─ instances\<id>\        bin\ sql\ configs\ db\ logs\ instance.json secrets.json  (cwd of the servers)
 ├─ assets\<sha256>\       module assets, unpacked once per archive (ADR 0013)
 ├─ clients\<client>.json  registered client + files the launcher put in it (.lock while used)
-├─ backups\<id>\          manual-<secs>.sql (player data, kept), before-<label>-<secs>.sql (newest 5)
+├─ backups\<id>\          manual-<secs>.sql, import-<secs>.sql (player data, kept), before-<label>-<secs>.sql (newest 5)
 └─ state\                 operation journals, locks
 ```
 
@@ -379,7 +383,10 @@ shared directories, `dbc\` rebuilt with hard links plus the overrides
 
 Manual backups dump the player databases only (`playerData: true`); the
 automatic dumps made before an update, repair or restore hold every
-database and are pruned to the newest 5. A restore is an `instance-<id>`
+database and are pruned to the newest 5. Daily backups (`daily-<secs>.sql`,
+ADR 0018) hold the player databases, are made after a clean stop at most
+once a day when the launcher preference allows it, and are pruned to the
+newest 7. A restore is an `instance-<id>`
 operation:
 
 ```text
@@ -404,7 +411,7 @@ build made them, and dbimport migrates the restored ones.
   command line). DPAPI would add nothing: upstream servers read their DB
   password in clear text from their `.conf` files. Protection = `127.0.0.1`
   bind + per-user profile ACL.
-- `my.ini` (rendered by `eoa-db`): `mysqlx=OFF` (no port 33060 shared between
+- `my.ini` (rendered by `rk-db`): `mysqlx=OFF` (no port 33060 shared between
   realms), `disable-log-bin` (no replication: binary logs only cost disk and
   import speed), utf8mb4, durable `innodb_flush_log_at_trx_commit=1`, buffer
   pool 1 GiB and redo log 512 MiB by default (performance, not minimised).
@@ -414,9 +421,33 @@ build made them, and dbimport migrates the restored ones.
   Planned: Job Object (orphans), refuse datadirs inside cloud-synced folders.
 - Backups: `mysqldump --single-transaction` (routines, triggers, events), written
   atomically; restore replays them. Covered by a real-MySQL lifecycle test
-  (`EOA_MYSQL_BASEDIR`, run in Windows CI).
+  (`RK_MYSQL_BASEDIR`, run in Windows CI).
 - Automatic backups before every migration and on a schedule.
 - Optional "external database" mode for advanced users (MySQL 8.4 required).
+
+### Uninstall (ADR 0017)
+
+`rk uninstall <id>` / Home › Maintenance: optional last player-data
+backup (kept), database stopped, launcher files removed from the game
+folder, `instances\<id>` renamed aside then deleted, its journals
+forgotten. With the last realm gone, `components`, `serverdata`, `assets`
+and `store` go too (with their journals); backups, clients and the
+accepted index stay.
+
+### Several realms (ADR 0020)
+
+- `rk realm duplicate <source> <id>`: cold copy of a stopped realm, built
+  in `instances\.copy-<id>-<secs>` then renamed into place. `bin\` and
+  `sql\` are hard-linked; the database folder is copied without its server
+  identity. The copy gets a new database port, then `modules-<id>` writes
+  its configs, overlay and module files.
+- `rk realm export <id> <file>`: an `.rkrealm` ZIP holding `realm.json`
+  (choices, no machine-bound values), `bindings.json` and
+  `player-data.sql`.
+- `rk realm import <file> <id>`: install from the index, then options and
+  name, restore of the player databases, exported bindings and
+  `modules-<id>`. `instances\<id>\import.json` tracks what is left, and
+  `resume` finishes it.
 
 ## 9. Configuration layering
 
@@ -427,9 +458,11 @@ build made them, and dbimport migrates the restored ones.
   + CoreOverride    values a module requires in core files   locked
   + Launcher        paths, ports, DB credentials,            locked
                     Updates.EnableDatabases = 0
-  ──────────────── eoa_conf::render ───────────────►  effective .conf
+  ──────────────── rk_conf::render ───────────────►  effective .conf
 ```
 
+- Realm settings (`settings` in the emulator manifest, ADR 0017) are `User`
+  values of the core files, written only when the player changed them.
 - Layers apply by kind (order above), then in the given order within a kind.
   `render` returns, for every managed key, its **provenance** (which layer and
   source won, and which values it shadowed), so the UI can show *why* a value is
@@ -443,11 +476,11 @@ build made them, and dbimport migrates the restored ones.
   "back to the upstream default").
 - Verified lossless on the fork's `worldserver.conf.dist` (592 keys),
   `authserver.conf.dist` and `playerbots.conf.dist` (897 keys):
-  `EOA_CONF_SAMPLES=<files> cargo test -p eoa-conf --test upstream`.
+  `RK_CONF_SAMPLES=<files> cargo test -p rk-conf --test upstream`.
 
 ## 10. Runtime
 
-Implemented in `eoa-runtime` (ADR 0011), driven by `eoa start <id>`:
+Implemented in `rk-runtime` (ADR 0011), driven by `rk start <id>`:
 
 - Start order MySQL → driver `prepare_start` → manifest processes in array
   order (authserver, worldserver), each gated by readiness (TCP port or output
@@ -466,28 +499,28 @@ Implemented in `eoa-runtime` (ADR 0011), driven by `eoa start <id>`:
 
 ## 11. Clients
 
-Implemented in `eoa-client` (ADR 0013); the client is never distributed.
+Implemented in `rk-client` (ADR 0013); the client is never distributed.
 
-- `eoa client set <folder>`: the executable's version resource must carry the
+- `rk client set <folder>`: the executable's version resource must carry the
   manifest build (`Wow.exe` 3.3.5.12340); the locale comes from the
   `Data/<locale>` folders (asked when several). State in
   `clients/<client>.json`.
-- Module options (`eoa option set <id> <module> <option>=<value>`) select
+- Module options (`rk option set <id> <module> <option>=<value>`) select
   assets; the module operation downloads them from the module's pinned
   commit (sha256-pinned `.zip` or `.7z`), unpacks them once and builds the
   server overlay (§7).
-- Before each launch (`eoa play`, or `eoa client prepare <id>`):
+- Before each launch (`rk play`, or `rk client prepare <id>`):
   - `Data/<locale>/realmlist.wtf` and the `SET realmList` line of
     `WTF/Config.wtf` (when present) point at `127.0.0.1`;
   - the cache is cleared when another instance was played last;
   - the instance's client files (MPQ patches) are reconciled, tracked by
     sha256. A file of the player at the same place is moved to
-    `.eoa-backup` and restored later, and a tracked file the player edited
+    `.rk-backup` and restored later, and a tracked file the player edited
     is never deleted.
 
   Each change is recorded first, so the next preparation finishes an
   interrupted one.
-- `eoa play <id>` prepares the client and starts the servers. It launches the
+- `rk play <id>` prepares the client and starts the servers. It launches the
   game from its folder once worldserver is ready, and stops the servers when
   the game exits (`--keep-running` keeps them up). A client lock prevents
   two sessions from rewriting the same client.
@@ -502,7 +535,7 @@ Verified 2026-11-15 with the maintainer's 3.3.5a client on a local instance:
 - **Options:** Individual Progression options (patch-V, Vanilla visuals)
   apply in 15 s, including the 25 MB download. The overlay links the four
   big directories, and its `Spell.dbc` has the upstream sha256.
-- **Play:** `eoa play` starts worldserver in 74 s on the overlay (112 data
+- **Play:** `rk play` starts worldserver in 74 s on the overlay (112 data
   stores, no DBC error) and launches the game. Closing the game stops
   every server cleanly.
 - **Back to the defaults:** the overlay and the three MPQs are removed, and

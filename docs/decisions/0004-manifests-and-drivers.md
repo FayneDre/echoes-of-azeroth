@@ -11,12 +11,12 @@ their clients and modules must be addable without rewriting the launcher.
 ## Decision
 
 - Everything describable is data: JSON manifests under `catalog/`, validated by
-  JSON Schema (`catalog/schema/`) and by `eoa-catalog` for cross-references.
+  JSON Schema (`catalog/schema/`) and by `rk-catalog` for cross-references.
 - Flavor and module ids are unique within an emulator; files are named after ids.
 - What cannot be declared (account creation, console, config dialect) is a Rust
   `EmulatorDriver` implementation, selected by the emulator's `driver` field.
 - The engine exposes a closed, tested step vocabulary.
-- Manifest types in `eoa-core` mirror the schemas with `deny_unknown_fields`.
+- Manifest types in `rk-core` mirror the schemas with `deny_unknown_fields`.
 
 ## Consequences
 

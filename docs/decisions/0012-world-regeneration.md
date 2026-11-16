@@ -29,7 +29,7 @@ Measured on a local instance on 2026-11-15:
   same plan. The field is cleared when the operation completes. Player
   databases are never rebuilt: the module's tables stay there, inert.
 - **Step `regenerate-<db>`**, placed between post-install and render-config:
-  1. One atomic `RENAME TABLE` moves every table into `<db>_eoa_previous`,
+  1. One atomic `RENAME TABLE` moves every table into `<db>_rk_previous`,
      with foreign key checks off. This takes no time, whatever the size.
   2. The following dbimport rebuilds `<db>` from the base SQL and the
      remaining modules' SQL.
@@ -43,7 +43,7 @@ Measured on a local instance on 2026-11-15:
   - old copy empty: do the move;
   - both full: a copy left by a completed run whose cleanup failed; it is
     older than the live tables, so it is dropped and the move is done again.
-- **Same command, same plan.** Repeating `eoa module disable` resumes the
+- **Same command, same plan.** Repeating `rk module disable` resumes the
   operation: a module that is already off schedules nothing new.
 
 ## Consequences

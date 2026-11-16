@@ -1,8 +1,8 @@
-# Echoes of Azeroth
+# RealmKeeper
 
 > Your own World of Warcraft server, installed in a few clicks.
 
-Echoes of Azeroth is an open-source desktop launcher that installs, runs and
+RealmKeeper is an open-source desktop launcher that installs, runs and
 updates World of Warcraft server emulators and their modules, then launches
 **your own** game client. No compiler, no database setup, no config files to edit.
 
@@ -30,7 +30,7 @@ npm install
 npm run dev                   # launcher in development mode
 npm run check                 # UI type-check + catalog schema validation
 cargo test --workspace        # Rust tests (including the real catalog)
-cargo run -p eoa-cli -- catalog validate
+cargo run -p rk-cli -- catalog validate
 ```
 
 `npm install` also enables the repository git hooks. See
@@ -40,7 +40,7 @@ and [`docs/decisions/`](docs/decisions/) for the design.
 
 ## License
 
-Echoes of Azeroth is free software under the
+RealmKeeper is free software under the
 [GNU General Public License v3.0 or later](LICENSE).
 Security issues: see [`SECURITY.md`](SECURITY.md).
 

@@ -1,4 +1,4 @@
-# Contributing to Echoes of Azeroth
+# Contributing to RealmKeeper
 
 Thanks for helping! This guide covers setup, workflow and the rules every
 contribution must follow. Architecture lives in [`docs/architecture.md`](docs/architecture.md).
@@ -13,8 +13,8 @@ contribution must follow. Architecture lives in [`docs/architecture.md`](docs/ar
 | WebView2 | any | preinstalled on Windows 11 |
 
 ```sh
-git clone https://github.com/FayneDre/echoes-of-azeroth.git
-cd echoes-of-azeroth
+git clone https://github.com/FayneDre/realmkeeper.git
+cd realmkeeper
 npm install            # also activates the git hooks (core.hooksPath = .githooks)
 npm run dev            # launcher in development mode
 ```
@@ -28,7 +28,7 @@ npm run check                                        # svelte-check + catalog sc
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo run -p eoa-cli -- catalog validate             # cross-manifest references
+cargo run -p rk-cli -- catalog validate             # cross-manifest references
 ```
 
 ## 3. Git hooks
@@ -66,7 +66,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 ## 5. Project rules
 
 - **Catalog**: follow [`catalog/README.md`](catalog/README.md). Pin full commits,
-  verify facts upstream, change the JSON Schema and `crates/eoa-core/src/manifest.rs` together.
+  verify facts upstream, change the JSON Schema and `crates/rk-core/src/manifest.rs` together.
 - **UI text**: every string goes through `t()` and exists in both
   `app/src/lib/i18n/locales/en.json` and `fr.json`.
 - **Architecture changes** need an ADR in [`docs/decisions/`](docs/decisions/).

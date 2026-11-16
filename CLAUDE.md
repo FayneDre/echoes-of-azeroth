@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-Guidance for Claude Code (and humans) working on **Echoes of Azeroth**.
+Guidance for Claude Code (and humans) working on **RealmKeeper**.
 Read this first; deeper material lives in `docs/`.
 
 ## 1. Project in one paragraph
 
-Echoes of Azeroth is an **open-source, public-facing Windows desktop launcher**
+RealmKeeper is an **open-source, public-facing Windows desktop launcher**
 that installs, runs and updates World of Warcraft server emulators and their
 modules, then launches the player's **own** game client. First target:
 AzerothCore (WotLK 3.3.5a) on the Playerbot fork, with Playerbots (mandatory),
@@ -40,8 +40,9 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
    backup before any migration; rollback on failure.
 5. **Player data is sacred.** Databases with `playerData: true` are never
    regenerated or dropped, only migrated and backed up.
-6. **No admin rights, no Windows service.** Everything under
-   `%LOCALAPPDATA%\EchoesOfAzeroth`. Elevation only for the optional LAN firewall rule.
+6. **No admin rights, no Windows service.** Everything under one data root:
+   `%LOCALAPPDATA%\RealmKeeperData` by default, or a folder picked before the first
+   install (ADR 0017). Elevation only for the optional LAN firewall rule.
 7. **Never distribute the game client** or Blizzard assets.
 8. **Public audience.** Every failure must produce an actionable, translated
    message; never a raw stack trace in the UI.
@@ -76,6 +77,11 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | WebView2 in Tauri ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (Tauri sets its own args): to drive the app over CDP, build with a `--config` override setting the window's `additionalBrowserArgs` to include `--remote-debugging-port`. | local test (2026-11-15) |
 | `mysql --one-database <db>` replays only that database's statements from a multi-database `mysqldump --databases` dump (follows its `USE` lines); database-level grants survive `DROP DATABASE`. Player-data restore on `pubtest`: dump 72 MB in 11 s, restore + dbimport 38 s. | local test (2026-11-15), ADR 0016 |
 | Playerbots config keys use the `Playerbots.` prefix at the pinned commit (`Playerbots.MinRandomBots`, `RandomBotAutologin`, `MaxAddedBots`, ...). | `conf/playerbots.conf.dist` @ 405f811 (2026-11-15) |
+| Realm settings keys exist in the fork's `worldserver.conf.dist` (`Rate.XP.*`, `Rate.Drop.*`, `Rate.Reputation.Gain`, `Rate.Honor`, `GameType` 0/1/4/6/8/16, `AllowTwoSide.Interaction.*`, `Instance.Ignore*`, `MaxPlayerLevel`, `Start*`, `AllFlightPaths`, `AlwaysMaxSkillForLevel`, `SkipCinematics`). The client's realm type comes from `realmlist.icon`, which worldserver never updates: the driver copies `GameType` there before each start. | fork `worldserver.conf.dist`, `db_auth/realmlist.sql` @ 32fd347 (2026-11-15) |
+| One installed realm takes ~9 GB: MySQL 8.4.13 unpacked 1 263 141 970 B, server data v20.0 unpacked 3 230 904 757 B, one AzerothCore realm (bin, sql, db) 2 856 909 827 B, plus the downloads kept in the store. | local install (2026-11-15), ADR 0018 |
+| `netstat -ano -p TCP` on a French Windows translates the state column (`État`) but not `LISTENING`; a listening socket has a `:0` remote end. `tasklist /FI "PID eq n" /FO CSV /NH` gives the program name first. | local test (2026-11-15) |
+| worldserver console output is in the Windows OEM code page, not UTF-8 (banners became `�`); decoded as code page 850 when not valid UTF-8. | local start on `pubtest` (2026-11-15) |
+| A cold copy of a stopped realm (database without `auto.cnf`, `#innodb_temp/`, spare redo files; `bin`/`sql` hard-linked) starts under another DB port: copy 32 s (1.3 GB), worldserver ready in 79 s. Player-data export: 72 MB SQL → 21 MB deflated, 30 s; import from the signed index + restore: 90 s, accounts and characters back. | local test `pubtest` → `pubcopy`, `pubimport` (2026-11-16) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -101,14 +107,14 @@ Update this table when a fact is (re)verified; date it.
 - **0010** Signed index: one envelope file (`payload` text + ed25519 signature
   over a domain prefix + payload), trusted keys compiled in, `serial`
   anti-rollback, builds selected by catalog pins; published as a GitHub
-  release asset by CI from `main` (`EOA_INDEX_SIGNING_KEY` secret).
+  release asset by CI from `main` (`RK_INDEX_SIGNING_KEY` secret).
 - **0011** Runtime supervisor: each manifest process declares `stop`
   (`close-stdin`: clean exit at EOF, also when the launcher dies; `terminate`:
   stateless, kill-on-close Job Object); MySQL never killed, adopted on next
-  start; `EmulatorDriver` trait in `eoa-runtime`; AzerothCore accounts written
+  start; `EmulatorDriver` trait in `rk-runtime`; AzerothCore accounts written
   directly (SRP6 like upstream), realm 1 address set before each start.
 - **0012** World regeneration on module removal: `regenerate` in the
-  instance record; tables moved to `<db>_eoa_previous` (one `RENAME TABLE`),
+  instance record; tables moved to `<db>_rk_previous` (one `RENAME TABLE`),
   dbimport rebuilds from base SQL + remaining modules (~2 min); finalize drops
   the copy, rollback moves it back. Player databases never rebuilt.
 - **0013** Client integration: option values in `instance.json`; module
@@ -116,9 +122,9 @@ Update this table when a fact is (re)verified; date it.
   re-hosted, unpacked into `assets/<sha>/`; server overrides via the
   instance overlay `instances/<id>/data` (junctions + hard-linked `dbc/`);
   client files tracked by sha256 in `clients/<client>.json` (player's own
-  file moved to `.eoa-backup`, edited tracked files never deleted);
-  `eoa play` prepares, starts, launches, stops the servers when the game exits.
-- **0014** `eoa-launcher`: player actions shared by the app and the CLI
+  file moved to `.rk-backup`, edited tracked files never deleted);
+  `rk play` prepares, starts, launches, stops the servers when the game exits.
+- **0014** `rk-launcher`: player actions shared by the app and the CLI
   (install, update, repair, resume, modules, options, client, accounts);
   errors as `UiError{code, params, detail}` (`error.<code>` in the locales);
   progress and session events; `pending.json` makes an interrupted
@@ -126,14 +132,52 @@ Update this table when a fact is (re)verified; date it.
   current build with a unique backup label.
 - **0015** Distribution: per-user NSIS only (no MSI), `release-app.yml`
   (manual, draft by default), SignPath when its secrets exist, updater feed
-  `latest.json` in the `app-latest` release (only when `EOA_UPDATER_PUBKEY`
+  `latest.json` in the `app-latest` release (only when `RK_UPDATER_PUBKEY`
   + private key are set), opt-in crash reports (local, redacted, GitHub
   issue opened by the player), release artifacts = ZIP with zstd entries.
 - **0016** Backups: manual = player databases only (`manual-<secs>.sql`,
   kept); automatic `before-*` dumps pruned to the newest 5; restore =
   resumable `instance-<id>` op (full dump first, drop + replay only the
   player databases the dump holds with `mysql --one-database`, dbimport);
-  `eoa join <address>` / Home panel points the client at a LAN host.
+  `rk join <address>` / Home panel points the client at a LAN host.
+- **0017** Realm settings = emulator manifest `settings` (sections of
+  options, new `number` type), values under `realm` in `instance.json`,
+  `User` layer of core files; driver copies `GameType` to `realmlist.icon`.
+  `rk uninstall` (optional last backup, shared downloads removed with the
+  last realm). Data root choosable before the first install
+  (`location.json` in `%LOCALAPPDATA%\RealmKeeperData`; the picked folder itself since 0019).
+- **0018** Beta readiness: free space checked before downloads, unpacking and
+  a new install (catalog `unpackedSize`, emulator `instance.diskSize`);
+  `disk.full`/`disk.fullNow`, `port.inUseBy` (netstat + tasklist);
+  `rk diagnostic` / footer copy (redacted); `rk client find` (bounded
+  scan); `EmulatorDriver::population` polled every 20 s; `daily-*` backups
+  (keep 7) after a clean stop; `preferences.json` in the app dir
+  (`dailyBackup`, `hideWhilePlaying`); tray icon; window state plugin +
+  fit to the screen; release notes shown after a launcher update.
+- **0019** The picked folder is the data root (new/empty or already a data
+  root: marker `.realmkeeper`, `location.notEmpty`); a missing root is
+  never recreated (`missing`, UI: locate it or use the default); another data
+  root can be chosen at any time; a realm whose configs name another folder is
+  `moved`: start refused (`instance.moved`), resume re-runs `modules-<id>`.
+- **0020** Data safety: clean stop on Windows shutdown/log-off (shutdown
+  block reason), power request while an operation works, data roots in
+  synchronised or non-NTFS folders refused (`location.synced`/`unsupported`),
+  quarantined binaries found from `.rk-binaries` (`server.filesMissing`).
+  GM panel from manifest `consoleActions` (values checked by
+  `rk_core::console`), start progress from process `startup` markers +
+  "ready" notification when hidden, client add-ons as assets from a pinned
+  repository archive (`addons` → `Interface/AddOns`, MultiBot). Several realms:
+  `name` in the record, duplicate (cold copy, `bin`/`sql` hard-linked, new DB
+  port), export `.rkrealm` (`realm.json`, `bindings.json`, player-data dump),
+  import (install + restore + bindings, `import.json` resumable).
+- **0021** Project name **RealmKeeper** (0.2.0): crates `rk-*`, CLI `rk`, env
+  `RK_*`, identifier `io.github.realmkeeper.launcher`, launcher folder
+  `%LOCALAPPDATA%\RealmKeeperData` (not `RealmKeeper`: the per-user installer
+  puts the program there), marker `.realmkeeper`, exports `.rkrealm`, MySQL
+  account `rk`. Logo = keep with a keyhole gate in a hexagon (`Logo.svelte`,
+  `icons/logo.svg`); wordmark Cinzel + Cinzel Decorative R/K. No migration of
+  0.1.x installs (start fresh). New index signing key (`RK_INDEX_SIGNING_KEY`):
+  after a rotation CI keeps only the previous serial.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -147,16 +191,16 @@ reduced in-game settings) unless the user asks.
 ├─ package.json              npm workspace root (app) + catalog validation
 ├─ catalog/                  manifests + JSON Schemas (see catalog/README.md)
 ├─ crates/
-│  ├─ eoa-core/              domain model, Catalog, resolver (pure, no I/O)
-│  ├─ eoa-catalog/           load catalog from disk + cross-manifest validation
-│  ├─ eoa-conf/              lossless .conf parser + layered renderer (pure, no I/O)
-│  ├─ eoa-db/                portable MySQL instance: init, start/stop, accounts, backup/restore
-│  ├─ eoa-store/             content-addressed store, parallel resumable sha256-verified downloads
-│  ├─ eoa-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
-│  ├─ eoa-runtime/           supervisor: start order, readiness, console, logs, clean stop; driver trait
-│  ├─ eoa-client/            player's client: detection, realmlist, managed patch files, launch
-│  ├─ eoa-launcher/          player actions for app + CLI: errors, progress, sessions, crash reports
-│  └─ eoa-cli/               `eoa` binary (CI, support, power users)
+│  ├─ rk-core/              domain model, Catalog, resolver (pure, no I/O)
+│  ├─ rk-catalog/           load catalog from disk + cross-manifest validation
+│  ├─ rk-conf/              lossless .conf parser + layered renderer (pure, no I/O)
+│  ├─ rk-db/                portable MySQL instance: init, start/stop, accounts, backup/restore
+│  ├─ rk-store/             content-addressed store, parallel resumable sha256-verified downloads
+│  ├─ rk-engine/            transactional step executor: journal, resume, rollback, atomic dir swap
+│  ├─ rk-runtime/           supervisor: start order, readiness, console, logs, clean stop; driver trait
+│  ├─ rk-client/            player's client: detection, realmlist, managed patch files, launch
+│  ├─ rk-launcher/          player actions for app + CLI: errors, progress, sessions, crash reports
+│  └─ rk-cli/               `rk` binary (CI, support, power users)
 ├─ drivers/
 │  └─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
 ├─ app/
@@ -166,6 +210,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ validate-catalog.mjs   JSON Schema + layout validation of the catalog
 │  ├─ check-i18n.mjs         FR/EN key and placeholder parity
 │  ├─ test-guard.mjs         regression cases for the shell guard hook (npm run test:hooks)
+│  ├─ ci/cdp.mjs, ci/ui-smoke.mjs   DevTools driver + UI smoke test (npm run test:ui)
 │  └─ git-hooks/             pre-commit / commit-msg logic (Node, cross-platform)
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
 ├─ .github/workflows/
@@ -175,7 +220,8 @@ reduced in-game settings) unless the user asks.
 │                            changes; reuses the artifact when the build key is unchanged)
 ├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs, index.mjs,
 │                            zip-zstd.mjs (release archives), app-release.mjs (launcher release)
-├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs)
+├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs), faq.md + faq.fr.md
+│                            (player help, anchors linked from the UI errors)
 ├─ .claude/
 │  ├─ settings.json          shared permissions + hooks, co-author attribution off
 │  ├─ hooks/                 guard-shell.mjs (PreToolUse), after-edit.mjs (PostToolUse)
@@ -205,7 +251,7 @@ When a hook blocks you, fix the cause; never work around it.
 | `new-adr` | record an architecture decision |
 
 
-`eoa-db` integration tests need a real MySQL: set `EOA_MYSQL_BASEDIR` to an
+`rk-db` integration tests need a real MySQL: set `RK_MYSQL_BASEDIR` to an
 unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
 
 ## 7. Commands
@@ -216,27 +262,31 @@ npm run dev                                   # Tauri dev mode (needs Rust)
 npm run check                                 # svelte-check + catalog schema + i18n parity
 npm run validate:catalog                      # catalog JSON Schema + layout only
 npm run check:i18n                            # FR/EN locale parity only
+npm run test:ui                               # UI smoke test (debug app built with the ui-smoke.mjs config)
 cargo test --workspace                        # Rust tests, incl. the real catalog
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
-cargo run -p eoa-cli -- catalog validate
-cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
-cargo run -p eoa-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
-cargo run -p eoa-cli -- component install mysql-8-4   # engine: download + atomic extract into .local/eoa
-cargo run -p eoa-cli -- install solo [--index <file|url>]   # from the signed index (default: published one)
-cargo run -p eoa-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # local files
-cargo run -p eoa-cli -- index show [<file|url>]   # verify and print the index
-cargo run -p eoa-cli -- start <id>            # foreground: console on stdin, Ctrl+C / .stop = clean stop
-cargo run -p eoa-cli -- account create <id> <name> [--password <p>] [--gm 3]
-cargo run -p eoa-cli -- module enable|disable <id> <module>...   # servers stopped
-cargo run -p eoa-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
-cargo run -p eoa-cli -- repair <id>           # reinstall server files + configs of the current release
-cargo run -p eoa-cli -- resume <id>           # finish an interrupted install/update/repair/module change
-cargo run -p eoa-cli -- option set|show <id> [<module> <option>=<value>...]   # servers stopped
-cargo run -p eoa-cli -- client set <game folder> [--locale frFR] | show | prepare <id>
-cargo run -p eoa-cli -- play <id> [--keep-running]   # prepare client, start servers, launch the game
-cargo run -p eoa-cli -- backup list|create <id> | restore|delete <id> <name>   # player-data backups (ADR 0016)
-cargo run -p eoa-cli -- join <address>        # point the client at a LAN host and launch the game
+cargo run -p rk-cli -- catalog validate
+cargo run -p rk-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
+cargo run -p rk-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
+cargo run -p rk-cli -- component install mysql-8-4   # engine: download + atomic extract into .local/rk
+cargo run -p rk-cli -- install solo [--index <file|url>]   # from the signed index (default: published one)
+cargo run -p rk-cli -- install solo --server <artifact.zip> [--db-snapshot <snapshot.zip>]   # local files
+cargo run -p rk-cli -- index show [<file|url>]   # verify and print the index
+cargo run -p rk-cli -- start <id>            # foreground: console on stdin, Ctrl+C / .stop = clean stop
+cargo run -p rk-cli -- account create <id> <name> [--password <p>] [--gm 3]
+cargo run -p rk-cli -- module enable|disable <id> <module>...   # servers stopped
+cargo run -p rk-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
+cargo run -p rk-cli -- repair <id>           # reinstall server files + configs of the current release
+cargo run -p rk-cli -- uninstall <id> [--no-backup]   # remove a realm (ADR 0017)
+cargo run -p rk-cli -- resume <id>           # finish an interrupted install/update/repair/module change, or fix a moved realm's paths
+cargo run -p rk-cli -- option set|show <id> [<module>|realm <option>=<value>...]   # servers stopped
+cargo run -p rk-cli -- client set <game folder> [--locale frFR] | show | find | prepare <id>
+cargo run -p rk-cli -- play <id> [--keep-running]   # prepare client, start servers, launch the game
+cargo run -p rk-cli -- backup list|create <id> | restore|delete <id> <name>   # player-data backups (ADR 0016)
+cargo run -p rk-cli -- join <address>        # point the client at a LAN host and launch the game
+cargo run -p rk-cli -- diagnostic            # support report (redacted), ADR 0018
+cargo run -p rk-cli -- realm duplicate <source> <id> [--name <n>] | export <id> <file> | import <file> <id> [--name <n>] | rename <id> [<name>]   # ADR 0020
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 node tools/ci/zip-zstd.mjs <dir> <out.zip> [--level 19]   # release archive (ADR 0015)
 ```
@@ -249,7 +299,7 @@ prepend `%USERPROFILE%\.cargo\bin` to `PATH`. Build Tools reinstalled
 PowerShell: in Git Bash, `/usr/bin/link` shadows MSVC's `link.exe`.
 
 Release builds: `npm run build` (per-user NSIS; signed releases only from
-`release-app.yml`). The app uses `EOA_ROOT` when set (e.g. `.local/eoa` to
+`release-app.yml`). The app uses `RK_ROOT` when set (e.g. `.local/rk` to
 see the dev instances). Quick local check without
 installers: `cd app && npx tauri build --debug --no-bundle`.
 
@@ -259,18 +309,20 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 - File name == `id` (kebab-case); flavors/modules live under their emulator dir.
 - Pin full 40-char commits; `ref` is informational.
 - `deny_unknown_fields` everywhere: **change `catalog/schema/*.json` and
-  `crates/eoa-core/src/manifest.rs` together**, then run both validators.
+  `crates/rk-core/src/manifest.rs` together**, then run both validators.
 - A flavor's `requiredModules` must be `removable: false`; removable modules use
   `activation.mode: "config"`.
 - Use the `add-module`, `add-emulator` and `bump-pins` skills for catalog work.
 
 ### Rust
-- `#![forbid(unsafe_code)]` in library crates. Errors: `thiserror` in libraries,
+- `#![forbid(unsafe_code)]` in library crates. The app crate denies it too,
+  except `app/src-tauri/src/os.rs` (Win32 calls, each with a SAFETY comment;
+  window calls run on the main thread). Errors: `thiserror` in libraries,
   `anyhow` only in binaries.
-- `eoa-core` stays pure (no fs/net/process). I/O goes in dedicated crates.
+- `rk-core` stays pure (no fs/net/process). I/O goes in dedicated crates.
 - Deterministic outputs (`BTreeMap`/`BTreeSet`, sorted directory reads).
 - Tauri layer is an adapter: no business logic in `app/src-tauri`.
-- Tests against the real catalog live in `crates/eoa-catalog/tests/`.
+- Tests against the real catalog live in `crates/rk-catalog/tests/`.
 
 ### UI (Svelte 5 + TS)
 - Runes (`$state`, `$derived`, `$effect`), strict TypeScript.
@@ -289,7 +341,7 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 - Tauri calls only through `app/src/lib/api.ts`, mirrored in `commands.rs`.
 
 ### Git
-- Repository: `github.com/FayneDre/echoes-of-azeroth` (public), default branch `main`.
+- Repository: `github.com/FayneDre/realmkeeper` (public), default branch `main`.
 - Use the `commit` skill. Conventional Commits, English, no trailers.
 - Commit only when the maintainer asks. **The maintainer decides every push**:
   a commit request is not a push request; never push on your own initiative
@@ -308,32 +360,32 @@ See `docs/roadmap.md` (2026-11-14). Phase 0 done. Phase 1 exit reached: the
 server build workflow compiles the Playerbot fork with every catalog module,
 reuses artifacts by build key, and the smoke test makes a database snapshot
 (ADR 0009) and is green on its restore (modules off/on); a publish job releases
-the build and signs the index (ADR 0010) once `EOA_INDEX_SIGNING_KEY` is set;
+the build and signs the index (ADR 0010) once `RK_INDEX_SIGNING_KEY` is set;
 remaining: zstd.
-Phase 2 started: `eoa-store`, `eoa-conf`, `eoa-db` and the `eoa-engine`
-executor are done, with the install steps and `eoa install` (ADR 0007/0008),
+Phase 2 started: `rk-store`, `rk-conf`, `rk-db` and the `rk-engine`
+executor are done, with the install steps and `rk install` (ADR 0007/0008),
 verified end to end locally (servers start), and `--db-snapshot` restore
 (ADR 0009) and `--index` (signed index, ADR 0010).
-Phase 3 started (2026-11-15): `eoa-runtime` supervisor and the AzerothCore
-driver (`drivers/azerothcore`): `eoa start <id>` (console, clean stop) and
-`eoa account create` verified locally; the maintainer logged in and played
-(phase exit). Module lifecycle: `eoa module enable|disable` with post-install
+Phase 3 started (2026-11-15): `rk-runtime` supervisor and the AzerothCore
+driver (`drivers/azerothcore`): `rk start <id>` (console, clean stop) and
+`rk account create` verified locally; the maintainer logged in and played
+(phase exit). Module lifecycle: `rk module enable|disable` with post-install
 steps (AHBot account + character, `bindings.json`) and world regeneration on
 removal of a world-changing module (`RENAME TABLE` aside + dbimport), and
-`eoa update` (new build: full dump, swap, dbimport; rollback restores the
+`rk update` (new build: full dump, swap, dbimport; rollback restores the
 dump), verified. Instance lock shared by start / module / update. Phase 3
 done.
-Phase 4 (2026-11-15): `eoa-client` (detection by version resource,
+Phase 4 (2026-11-15): `rk-client` (detection by version resource,
 realmlist + `Config.wtf`, cache, managed patch files), module options
-(`eoa option set`) selecting upstream assets (Individual Progression
-patch-V/S, J/U, classic DBCs) with the server data overlay, `eoa client
-set|show|prepare` and `eoa play` (ADR 0013). Next: phase 5 (public app). UI: left
+(`rk option set`) selecting upstream assets (Individual Progression
+patch-V/S, J/U, classic DBCs) with the server data overlay, `rk client
+set|show|prepare` and `rk play` (ADR 0013). Next: phase 5 (public app). UI: left
 rail of realms, Home (real "not installed" states) and Server settings
 (modules) tabs; Account, Bots and Backups are placeholders until their phases.
-Phase 5 (2026-11-15): `eoa-launcher` (ADR 0014) shared by the CLI and the
+Phase 5 (2026-11-15): `rk-launcher` (ADR 0014) shared by the CLI and the
 app; UI wired to real states (install wizard, Play/start/stop, consoles,
 modules, options, accounts, resume, update, Repair; verified by driving the
-app over CDP on `pubtest`); `eoa repair|resume`; per-user NSIS, release
+app over CDP on `pubtest`); `rk repair|resume`; per-user NSIS, release
 workflow with SignPath + signed update feed, opt-in crash reports, zstd
 release archives (ADR 0015). Updater key pair set (2026-11-15, private key
 kept by the maintainer outside the repo); first `release-app.yml` run
@@ -341,6 +393,16 @@ published the draft `app-v0.1.0`. Remaining: SignPath project (maintainer),
 closed beta.
 After phase 5 (2026-11-15): Bots tab (Playerbots options, verified keys;
 options of mandatory modules now listed and settable), Backups tab and
-`eoa backup` (ADR 0016, restore verified on `pubtest`), `eoa join` / LAN
+`rk backup` (ADR 0016, restore verified on `pubtest`), `rk join` / LAN
 join panel, stop timeout counted from the last output line, `AlreadyExited`
-stop outcome.
+stop outcome. Beta readiness and player comfort (ADR 0018, 2026-11-15):
+free-space checks, port owners, diagnostic report, client auto-detection,
+live players/bots, daily backups, tray icon, window state.
+Install location used as picked; renamed or moved data roots and realms
+recovered (ADR 0019, `pubtest` renamed and relocated by `rk resume`).
+ADR 0020 (2026-11-16): data safety, GM panel, start progress, MultiBot
+add-on, several realms per game version (name, duplicate, export, import;
+verified on `pubtest` → `pubcopy` and `pubimport`).
+ADR 0021 (2026-11-16): renamed to RealmKeeper 0.2.0 (logo, wordmark, `rk`
+names, repository renamed, new index signing key and `RK_*` secrets). The
+index is republished by the next `build-server` publish (new key).

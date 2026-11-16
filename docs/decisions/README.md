@@ -18,9 +18,14 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0011](0011-runtime-supervisor.md) | Runtime supervisor: stop methods declared per process, Job Object for stateless ones, accounts written by the driver (SRP6) | Accepted |
 | [0012](0012-world-regeneration.md) | World regeneration on module removal: tables moved aside with one RENAME TABLE, rebuilt by dbimport | Accepted |
 | [0013](0013-client-integration.md) | Client integration: managed client files, module assets downloaded from upstream, per-instance server data overlay | Accepted |
-| [0014](0014-launcher-services.md) | Launcher services shared by the app and the CLI: `eoa-launcher`, error codes, progress and session events, pending changes, repair | Accepted |
+| [0014](0014-launcher-services.md) | Launcher services shared by the app and the CLI: `rk-launcher`, error codes, progress and session events, pending changes, repair | Accepted |
 | [0015](0015-launcher-distribution.md) | Launcher distribution: per-user NSIS installer, SignPath, signed auto-update feed, opt-in crash reports, zstd artifacts | Accepted |
 | [0016](0016-backups-and-lan-join.md) | Player-data backups, retention, restore of the player databases, joining a LAN realm | Accepted |
+| [0017](0017-realm-settings-uninstall-location.md) | Realm settings (rates, realm type) as emulator data, uninstall, choosable install location | Accepted |
+| [0018](0018-beta-readiness-player-comfort.md) | Free-space checks, named port owners, diagnostic report, client auto-detection, live realm state, daily backups, tray icon, window state | Accepted |
+| [0019](0019-data-root-as-picked-renamed-or-moved.md) | The picked folder is the data root (marker file); missing, renamed or moved data roots | Accepted |
+| [0020](0020-data-safety-gm-panel-several-realms.md) | Clean stop at shutdown, location and quarantine checks, GM panel, start progress, client add-ons, duplicate / export / import a realm, FAQ, accessibility, UI smoke test | Accepted |
+| [0021](0021-rename-to-realmkeeper.md) | Project name RealmKeeper: names (crates `rk-*`, CLI `rk`, `RealmKeeperData`), logo and wordmark, new index signing key | Accepted |
 
 Template:
 

@@ -1,12 +1,12 @@
 # Security policy
 
-Echoes of Azeroth downloads and runs server software on players' machines, so
+RealmKeeper downloads and runs server software on players' machines, so
 we take integrity seriously.
 
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Use GitHub's private
-[security advisory form](https://github.com/FayneDre/echoes-of-azeroth/security/advisories/new).
+[security advisory form](https://github.com/FayneDre/realmkeeper/security/advisories/new).
 We aim to acknowledge reports within 7 days.
 
 ## Scope

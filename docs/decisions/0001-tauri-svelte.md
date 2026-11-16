@@ -19,5 +19,5 @@ database, processes) must be testable and reusable in CI and a CLI.
 ## Consequences
 
 - Rust toolchain (MSVC) required for contributors.
-- Same crates power the `eoa` CLI used by CI and support.
+- Same crates power the `rk` CLI used by CI and support.
 - Cross-platform later mostly means OS-specific bits behind traits (Job Objects, paths).

@@ -7,7 +7,7 @@
 
 The launcher installs a server from two CI artifacts: the server build and
 its database snapshot (ADR 0009). Today they are passed by hand
-(`eoa install --server --db-snapshot`). ADR 0005 calls for an ed25519-signed
+(`rk install --server --db-snapshot`). ADR 0005 calls for an ed25519-signed
 index that lists every artifact with mirrors and hashes, so the launcher can
 find them by itself and trust nothing it has not verified.
 
@@ -29,14 +29,14 @@ Constraints:
 - **Envelope.** One file, `index.json`:
   `{"format": 1, "keyId": "<16 hex>", "signature": "<128 hex>", "payload": "<JSON text>"}`.
   The signature is Ed25519 (RFC 8032, verified strictly) over
-  `"echoes-of-azeroth/index/v1\n"` followed by the UTF-8 bytes of `payload`.
+  `"realmkeeper/index/v1\n"` followed by the UTF-8 bytes of `payload`.
   These are the exact bytes that were signed, so no canonical JSON is
   needed. Because a single file carries both, replacing it is atomic.
 - **Keys.** `keyId` is the first 16 hex digits of the SHA-256 of the raw
   32-byte public key. The trusted public keys are compiled into the launcher
-  (`eoa-catalog`). Several can be trusted at once (rotation), and a launcher
+  (`rk-catalog`). Several can be trusted at once (rotation), and a launcher
   release revokes a key by removing it. The private key exists only as a
-  GitHub Actions secret (`EOA_INDEX_SIGNING_KEY`, PKCS#8 PEM). It is never
+  GitHub Actions secret (`RK_INDEX_SIGNING_KEY`, PKCS#8 PEM). It is never
   written to the repository or the runner disk.
 - **Payload.** `{"format": 1, "serial": <u64>, "published": "<RFC 3339>", "builds": [...]}`.
   Each build entry carries `emulator`, `flavor`, `platform` and `buildKey`,
@@ -53,7 +53,7 @@ Constraints:
   listed wins (newest recipe). No match means the catalog is ahead of
   published builds, which produces an explicit error.
 - **Trust chain.** Envelope signature → payload → each artifact's size and
-  sha256, verified by `eoa-store` before any file is used.
+  sha256, verified by `rk-store` before any file is used.
   `snapshot.json` and `build-info.json` are still checked by the install
   (ADR 0009).
 - **Publication.** CI creates one GitHub release per build, with the tag

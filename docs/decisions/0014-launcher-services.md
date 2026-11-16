@@ -5,7 +5,7 @@
 
 ## Context
 
-Phases 2 to 4 grew the player actions in the `eoa` CLI:
+Phases 2 to 4 grew the player actions in the `rk` CLI:
 - install, update, modules, options;
 - client preparation, play, accounts.
 
@@ -28,9 +28,9 @@ adapter" rule (ADR 0001) and doubled every fix. Two facts shaped the design:
 
 ## Decision
 
-1. **New crate `eoa-launcher`.** It is the only layer above the engine,
+1. **New crate `rk-launcher`.** It is the only layer above the engine,
    runtime, client and drivers. `Launcher` holds the catalog, the data root
-   (`%LOCALAPPDATA%\EchoesOfAzeroth`, `EOA_ROOT` overrides it) and the store.
+   (`%LOCALAPPDATA%\RealmKeeperData`, `RK_ROOT` overrides it) and the store.
    It offers:
    - `install`, `update`, `repair` and `resume`;
    - `set_modules`, `rebuilds_for`, `set_options` and `options`;
@@ -80,7 +80,7 @@ adapter" rule (ADR 0001) and doubled every fix. Two facts shaped the design:
 
 ## Consequences
 
-- New player actions go into `eoa-launcher` first. The UI and the CLI get
+- New player actions go into `rk-launcher` first. The UI and the CLI get
   them by adding a command, never by adding logic.
 - `update_operation` takes the backup label. Two updates or repairs to the
   same build are distinct operations, but a resumed one is the same.

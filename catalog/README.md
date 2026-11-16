@@ -22,12 +22,12 @@ catalog/
 - Config values follow upstream `.conf` conventions (booleans are `0`/`1`).
 - A module listed in a flavor's `requiredModules` must be `"removable": false`.
 - A removable module must use `activation.mode = "config"` and be inert when disabled.
-- Schema changes must be mirrored in `crates/eoa-core/src/manifest.rs` (and vice versa).
+- Schema changes must be mirrored in `crates/rk-core/src/manifest.rs` (and vice versa).
 
 ## Validate
 
 ```sh
 npm run validate:catalog                      # JSON Schema + layout
-cargo run -p eoa-cli -- catalog validate      # cross-manifest references
-cargo run -p eoa-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
+cargo run -p rk-cli -- catalog validate      # cross-manifest references
+cargo run -p rk-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 ```
