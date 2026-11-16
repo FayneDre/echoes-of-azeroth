@@ -64,12 +64,8 @@ fn synced_by_in(path: &Path, folders: &[(PathBuf, &'static str)]) -> Option<&'st
             return Some(client);
         }
     }
-    path.components()
-        .filter_map(|c| match c {
-            std::path::Component::Normal(name) => Some(name.to_string_lossy().to_lowercase()),
-            _ => None,
-        })
-        .any(|name| GOOGLE_DRIVE_NAMES.contains(&name.as_str()))
+    here.split('\\')
+        .any(|name| GOOGLE_DRIVE_NAMES.contains(&name))
         .then_some("Google Drive")
 }
 

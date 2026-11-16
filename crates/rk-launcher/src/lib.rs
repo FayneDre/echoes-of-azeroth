@@ -1734,6 +1734,8 @@ mod tests {
         assert!(configs_point_elsewhere(&paths));
     }
 
+    // The catalog only ships windows-x64 components.
+    #[cfg(windows)]
     #[test]
     fn a_first_install_counts_downloads_unpacked_files_and_the_realm() {
         let root = tempfile::tempdir().unwrap();
