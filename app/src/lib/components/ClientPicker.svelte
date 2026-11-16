@@ -54,34 +54,57 @@
     }
   }
 
+  /** The folder's own name, shown first; its parent path below it. */
+  function split(path: string): { name: string; parent: string } {
+    const trimmed = path.replace(/[\\/]+$/, "");
+    const cut = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+    return cut < 0 ? { name: trimmed, parent: "" } : { name: trimmed.slice(cut + 1), parent: trimmed.slice(0, cut + 1) };
+  }
+
   async function choose() {
     const path = await pickFolder(t("client.pickTitle", { version: client.version }));
     if (path) await register(path, null);
   }
 </script>
 
+{#snippet folder(path: string, meta: string, ok: boolean | null)}
+  {@const parts = split(path)}
+  <div class="folder" title={path}>
+    <span class="dot" class:ok={ok === true} class:bad={ok === false} aria-hidden="true"></span>
+    <div class="what">
+      <strong>{parts.name}</strong>
+      {#if parts.parent}<small class="path">{parts.parent}</small>{/if}
+      <small class="muted">{meta}</small>
+    </div>
+  </div>
+{/snippet}
+
 <div class="client">
   {#if registered}
-    <div class="row">
-      <span class="dot" class:ok={!registered.problem} class:bad={!!registered.problem} aria-hidden="true"></span>
-      <div class="what">
-        <code title={registered.path}>{registered.path}</code>
-        <small class="muted">{t("client.registered", { locale: registered.locale, build: client.build })}</small>
-      </div>
+    <div class="card">
+      {@render folder(
+        registered.path,
+        t("client.registered", { locale: registered.locale, build: client.build }),
+        !registered.problem,
+      )}
       <button class="btn" disabled={busy} onclick={choose}>{t("client.change")}</button>
     </div>
     {#if registered.problem}
       <ErrorBox error={registered.problem} />
     {/if}
   {:else}
-    <p class="muted">{t("client.explain", { version: client.version, build: client.build })}</p>
+    <p class="muted explain">{t("client.explain", { version: client.version, build: client.build })}</p>
     {#if found === null}
       <p class="muted searching">{t("client.searching")}</p>
     {:else if found.length > 0}
       <ul class="found">
         {#each found as candidate (candidate.path)}
-          <li>
-            <code title={candidate.path}>{candidate.path}</code>
+          <li class="card">
+            {@render folder(
+              candidate.path,
+              t("client.foundMeta", { build: client.build, locales: candidate.locales.join(", ") || "?" }),
+              true,
+            )}
             <button
               class="btn"
               disabled={busy}
@@ -92,8 +115,10 @@
           </li>
         {/each}
       </ul>
+    {:else}
+      <p class="muted searching">{t("client.notFound")}</p>
     {/if}
-    <button class="btn" disabled={busy} onclick={choose}>
+    <button class="btn other" class:link={!!found && found.length > 0} disabled={busy} onclick={choose}>
       {found && found.length > 0 ? t("client.chooseOther") : t("client.choose")}
     </button>
   {/if}
@@ -101,9 +126,11 @@
   {#if pending}
     <div class="locales">
       <p>{t("client.whichLocale")}</p>
-      {#each pending.locales as locale (locale)}
-        <button class="btn" disabled={busy} onclick={() => pending && register(pending.path, locale)}>{locale}</button>
-      {/each}
+      <div class="locale-buttons">
+        {#each pending.locales as locale (locale)}
+          <button class="btn" disabled={busy} onclick={() => pending && register(pending.path, locale)}>{locale}</button>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -117,18 +144,49 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    align-items: flex-start;
   }
 
-  .client > p {
+  .explain {
     margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
   }
 
-  .row {
+  .searching {
+    margin: 0;
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+
+  .found {
+    list-style: none;
+    margin: 0;
+    padding: 0;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  /* One game folder: its name, where it is, what it holds, and its action. */
+  .card {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3);
-    width: 100%;
+    padding: var(--space-3);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--frame-light);
+  }
+
+  .card .btn {
+    align-self: stretch;
+  }
+
+  .folder {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-width: 0;
   }
 
   .what {
@@ -136,18 +194,31 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: 2px;
   }
 
-  code {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  .what strong {
+    color: var(--title);
+    font-family: var(--font-display);
+    overflow-wrap: anywhere;
+  }
+
+  .path {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .what small.muted {
+    font-size: 0.8rem;
   }
 
   .dot {
     flex: none;
     width: 9px;
     height: 9px;
+    margin-top: 0.45em;
     border-radius: 50%;
     background: var(--frame);
   }
@@ -160,40 +231,35 @@
     background: var(--danger);
   }
 
-  .searching {
-    font-size: 0.85rem;
-    font-style: italic;
+  .other {
+    align-self: stretch;
   }
 
-  .found {
-    list-style: none;
-    margin: 0;
+  /* Secondary when a folder was found: the found one is the obvious choice. */
+  .other.link {
+    align-self: center;
     padding: 0;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+    border: none;
+    background: none;
+    box-shadow: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 0.88rem;
+    letter-spacing: normal;
+    text-transform: none;
   }
 
-  .found li {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .found code {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .locales {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
+  .other.link:hover:not(:disabled) {
+    text-decoration: underline;
   }
 
   .locales p {
-    margin: 0;
+    margin: 0 0 var(--space-2);
+  }
+
+  .locale-buttons {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 </style>

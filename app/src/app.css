@@ -129,17 +129,12 @@ body {
   height: 100%;
 }
 
-/* Text size preference (lib/textSize.svelte.ts): rem and body text follow it. */
-html {
-  font-size: calc(16px * var(--text-scale, 1));
-}
-
 body {
   background: var(--bg-texture);
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: calc(15px * var(--text-scale, 1));
+  font-size: 15px;
   line-height: 1.45;
 }
 

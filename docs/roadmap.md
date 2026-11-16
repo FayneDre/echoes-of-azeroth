@@ -116,7 +116,7 @@ Durations assume one full-time developer and are rough.
   progress bar and "realm ready" notification, MultiBot client add-on (ADR 0020)
 - [x] Several realms per game version: name, duplicate, export to a file, import on
   another computer (ADR 0020; verified on `pubtest`: copy 32 s, export 30 s)
-- [x] FAQ and troubleshooting (EN/FR) linked from every error, text size preference,
+- [x] FAQ and troubleshooting (EN/FR) linked from every error,
   reduced motion, keyboard-friendly dialogs, UI smoke test in CI (ADR 0020)
 - [x] Project named RealmKeeper 0.2.0: logo, wordmark, `rk` names, new index signing key (ADR 0021)
 - [ ] LAN hosting firewall rule (optional elevation, principle 6)

@@ -1,9 +1,10 @@
 <script lang="ts">
   // A failure as the player sees it: the translated, actionable message,
-  // with the technical chain folded for bug reports (principle 8).
-  import { openExternal, type CommandError } from "../api";
+  // with the technical chain in a dialog for bug reports (principle 8).
+  import { copyText, openExternal, type CommandError } from "../api";
   import { hasMessage, i18n, t } from "../i18n/i18n.svelte";
   import { processLabel } from "../labels";
+  import Modal from "./Modal.svelte";
 
   let { error, onretry }: { error: CommandError; onretry?: () => void } = $props();
 
@@ -13,6 +14,20 @@
     error.params?.process ? { ...error.params, process: processLabel(error.params.process) } : error.params,
   );
   const message = $derived(hasMessage(key) ? t(key, params) : t("error.unknown"));
+
+  let showDetails = $state(false);
+  let copied = $state<"copied" | "failed" | null>(null);
+  const details = $derived(`${error.code}: ${error.detail}`);
+
+  async function copyDetails() {
+    try {
+      await copyText(details);
+      copied = "copied";
+    } catch {
+      copied = "failed";
+    }
+    setTimeout(() => (copied = null), 2500);
+  }
 
   /** FAQ section for an error code (docs/faq.md anchors). */
   const FAQ_SECTIONS: [RegExp, string][] = [
@@ -41,12 +56,23 @@
       <button class="btn" onclick={onretry}>{t("common.retry")}</button>
     {/if}
     <button class="help" onclick={() => void openExternal(helpUrl)}>{t("error.help")} ›</button>
-    <details>
-      <summary class="muted">{t("error.details")}</summary>
-      <pre>{error.code}: {error.detail}</pre>
-    </details>
+    <button class="help muted" onclick={() => (showDetails = true)}>{t("error.details")} ›</button>
   </div>
 </div>
+
+{#if showDetails}
+  <Modal title={t("error.detailsTitle")} width="760px" onclose={() => (showDetails = false)}>
+    <p class="intro">{message}</p>
+    <pre>{details}</pre>
+    {#snippet actions()}
+      {#if copied}
+        <small class="copied" class:failed={copied === "failed"}>{t(copied === "copied" ? "error.copyDone" : "error.copyFailed")}</small>
+      {/if}
+      <button type="button" class="btn" onclick={copyDetails}>{t("error.copy")}</button>
+      <button type="button" class="btn" onclick={() => (showDetails = false)}>{t("common.close")}</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .error-box {
@@ -67,11 +93,6 @@
     gap: var(--space-3);
   }
 
-  details {
-    flex: 1;
-    min-width: 0;
-  }
-
   .help {
     padding: 0;
     border: none;
@@ -87,17 +108,33 @@
     text-decoration: underline;
   }
 
-  summary {
-    cursor: pointer;
-    font-size: 0.85rem;
+  .help.muted {
+    color: var(--text-muted);
+  }
+
+  .intro {
+    color: var(--danger);
   }
 
   pre {
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    background: var(--shade-soft);
     white-space: pre-wrap;
     word-break: break-word;
     font-size: 0.78rem;
     color: var(--text-muted);
-    max-height: 12rem;
-    overflow-y: auto;
+    user-select: text;
+  }
+
+  .copied {
+    align-self: center;
+    color: var(--ok);
+    font-size: 0.8rem;
+  }
+
+  .copied.failed {
+    color: var(--danger);
   }
 </style>

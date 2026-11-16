@@ -147,11 +147,13 @@ Facts checked locally (2026-11-16, `pubtest`, build b8a8e89ebf07aeb9):
     section per kind of problem, with stable anchors. `ErrorBox` maps the
     error code to its section and opens it in the player's language.
 13. **Accessibility.**
-    - A text size preference (normal, large, larger) scales the root font
-      and is remembered on the computer. Window chrome keeps its size, and
-      pages scroll when the text no longer fits.
+    - ~~A text size preference (normal, large, larger) scales the root
+      font.~~ Removed on 2026-11-16 at the maintainer's request.
     - `prefers-reduced-motion` turns transitions off.
-    - Dialogs close with Escape and focus their first field.
+    - Dialogs close with Escape and focus their first field. Since
+      2026-11-16 every dialog is `Modal.svelte`, and anything the player
+      unfolds to read (technical details, crash report, LAN join) opens in
+      one instead of growing the page.
 14. **UI smoke test in CI.** `tools/ci/ui-smoke.mjs` builds a debug app
     whose WebView2 debugging port is open (a `--config` override), then
     drives it through `tools/ci/cdp.mjs` (Node's built-in WebSocket, no

@@ -30,7 +30,6 @@
   import { loadPreferences } from "./lib/preferences.svelte";
   import { i18n, LOCALES, t, type MessageKey } from "./lib/i18n/i18n.svelte";
   import { processLabel } from "./lib/labels";
-  import { TEXT_SIZES, textSize } from "./lib/textSize.svelte";
 
   type CatalogState =
     | { status: "loading" }
@@ -257,20 +256,6 @@
 
       <footer>
         <small class="notice" title={t("footer.disclaimer")}>{t("footer.short")}</small>
-        <div class="text-size" role="group" aria-label={t("textSize.label")}>
-          {#each TEXT_SIZES as size, index (size)}
-            <button
-              class:active={textSize.value === size}
-              aria-pressed={textSize.value === size}
-              aria-label={t(`textSize.${size}`)}
-              title={t(`textSize.${size}`)}
-              style:font-size={`${0.75 + index * 0.12}rem`}
-              onclick={() => (textSize.value = size)}
-            >
-              A
-            </button>
-          {/each}
-        </div>
         {#if inDesktopApp()}
           <button
             class="footer-link"
@@ -309,9 +294,6 @@
   }
 
   .titlebar {
-    /* Window chrome: keeps its size whatever the text size preference, so
-       the window buttons always fit. */
-    zoom: calc(1 / var(--text-scale, 1));
     display: flex;
     align-items: center;
     gap: var(--space-4);
@@ -549,27 +531,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .text-size {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
-  }
-
-  .text-size button {
-    padding: 0 var(--space-1);
-    border: 1px solid transparent;
-    border-radius: 3px;
-    background: none;
-    color: var(--text-muted);
-    line-height: 1.2;
-    cursor: pointer;
-  }
-
-  .text-size button.active {
-    border-color: var(--accent);
-    color: var(--accent);
   }
 
   footer a,

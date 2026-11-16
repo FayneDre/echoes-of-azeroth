@@ -103,6 +103,15 @@ async function run() {
       `[...document.querySelectorAll("button")].filter((b) => !b.textContent.trim() && !b.getAttribute("aria-label") && !b.title).length`,
     );
     check(unnamed === 0, `every button has a name (${unnamed} without)`);
+    // Optional modules are chosen in a dialog, which Escape closes.
+    await page.evaluate(`document.querySelector("main .modules > .btn")?.click()`);
+    await page.waitFor(`document.querySelector('[role="dialog"]')`, { what: "the module dialog" });
+    fs.writeFileSync(path.join(shots, "modules-dialog.png"), await page.screenshot());
+    await page.evaluate(
+      `document.querySelector('[role="dialog"]').dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`,
+    );
+    await page.waitFor(`!document.querySelector('[role="dialog"]')`, { what: "the module dialog to close" });
+    check(true, "module dialog opens and closes with Escape");
     check(errors.length === 0, `no script error${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   } catch (error) {
     check(false, String(error?.message ?? error));

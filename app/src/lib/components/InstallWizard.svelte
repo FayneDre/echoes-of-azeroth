@@ -17,6 +17,7 @@
   import ClientPicker from "./ClientPicker.svelte";
   import ErrorBox from "./ErrorBox.svelte";
   import JoinLan from "./JoinLan.svelte";
+  import ModulePicker from "./ModulePicker.svelte";
 
   let { realm, client, instanceId }: { realm: EmulatorOverview; client: ClientView | null; instanceId: string } =
     $props();
@@ -25,6 +26,9 @@
   const mandatory = $derived(realm.modules.filter((m) => m.mandatory));
 
   let chosen = $state<string[]>([]);
+  let picking = $state(false);
+  /** Chosen optional modules, in catalog order. */
+  const chosenModules = $derived(optional.filter((m) => chosen.includes(m.id)));
   let lan = $state(false);
   let error = $state<CommandError | null>(null);
   let location = $state<DataLocation | null>(null);
@@ -58,9 +62,8 @@
     }
   }
 
-
-  function toggle(id: string, on: boolean) {
-    chosen = on ? [...chosen, id] : chosen.filter((m) => m !== id);
+  function remove(id: string) {
+    chosen = chosen.filter((m) => m !== id);
   }
 
   async function install() {
@@ -96,10 +99,10 @@
       <h3 class="panel-title"><span class="n display">1</span>{t("wizard.client")}</h3>
       <div class="pick">
         <ClientPicker client={realm.client} registered={client} />
-        {#if !client}
-          <p class="hint muted">{t("wizard.clientLater")}</p>
-        {/if}
       </div>
+      {#if !client}
+        <p class="hint muted later">{t("wizard.clientLater")}</p>
+      {/if}
       <div class="foot">
         <JoinLan {realm} {client} />
       </div>
@@ -108,30 +111,49 @@
 
   <section class="panel step">
     <h3 class="panel-title"><span class="n display">2</span>{t("wizard.modules")}</h3>
-    <ul class="choices">
-      {#each mandatory as module (module.id)}
-        <li title={localized(module.description)}>
-          <label>
-            <input type="checkbox" checked disabled />
-            <span><strong>{localized(module.name)}</strong> <small class="tag">{t("modules.mandatory")}</small></span>
-          </label>
-          <p class="muted">{localized(module.description)}</p>
-        </li>
-      {/each}
-      {#each optional as module (module.id)}
-        <li title={localized(module.description)}>
-          <label>
-            <input
-              type="checkbox"
-              checked={chosen.includes(module.id)}
-              onchange={(e) => toggle(module.id, e.currentTarget.checked)}
-            />
-            <span><strong>{localized(module.name)}</strong></span>
-          </label>
-          <p class="muted">{localized(module.description)}</p>
-        </li>
-      {/each}
-    </ul>
+    <div class="modules">
+      <p class="group">{t("modules.included")}</p>
+      <ul class="choices">
+        {#each mandatory as module (module.id)}
+          <li class="included" title={localized(module.description)}>
+            <span class="check" aria-hidden="true">✓</span>
+            <span class="what">
+              <strong>{localized(module.name)}</strong>
+              <small class="muted">{localized(module.description)}</small>
+            </span>
+          </li>
+        {/each}
+      </ul>
+
+      <p class="group">{t("modules.optionalGroup")}</p>
+      {#if chosenModules.length > 0}
+        <ul class="choices chosen">
+          {#each chosenModules as module (module.id)}
+            <li title={localized(module.description)}>
+              <span class="what">
+                <strong>{localized(module.name)}</strong>
+                <small class="tag">{t(`category.${module.category}`)}</small>
+              </span>
+              <button
+                class="remove"
+                aria-label={t("modules.remove", { name: localized(module.name) })}
+                title={t("modules.remove", { name: localized(module.name) })}
+                onclick={() => remove(module.id)}
+              >
+                ×
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="none muted">{t("modules.noneChosen", { count: optional.length })}</p>
+      {/if}
+      {#if optional.length > 0}
+        <button class="btn" onclick={() => (picking = true)}>
+          {t("modules.choose")}
+        </button>
+      {/if}
+    </div>
     <p class="hint muted">{t("modules.optionalHint")}</p>
   </section>
 
@@ -190,6 +212,18 @@
 
 {#if error}
   <ErrorBox {error} onretry={install} />
+{/if}
+
+{#if picking}
+  <ModulePicker
+    modules={optional}
+    {chosen}
+    onapply={(list) => {
+      chosen = list;
+      picking = false;
+    }}
+    onclose={() => (picking = false)}
+  />
 {/if}
 
 <style>
@@ -255,21 +289,16 @@
     letter-spacing: 0.08em;
   }
 
-  /* Step 1: the folder choice is a framed zone filling the column. */
+  /* Step 1: the game folder, from the top of the column. */
   .pick {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--space-2);
+    min-height: 0;
+    overflow-y: auto;
     margin-bottom: var(--space-3);
-    padding: var(--space-4);
-    border: 1px dashed var(--frame-light);
-    background: var(--surface-muted);
   }
 
-  .pick .hint {
-    margin: 0;
+  .later {
+    margin-bottom: var(--space-3);
   }
 
   .n {
@@ -283,11 +312,33 @@
     font-size: 0.75rem;
   }
 
-  /* Step 2: one card per module, sharing the column's height. */
-  .choices {
+  /* Step 2: what is included and what was chosen; the full list (any
+     size) is in the module dialog. */
+  .modules {
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+
+  .group {
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .group:not(:first-child) {
+    margin-top: var(--space-2);
+  }
+
+  .choices {
     list-style: none;
-    margin: 0 0 var(--space-3);
+    margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
@@ -295,31 +346,32 @@
   }
 
   .choices li {
-    flex: 1;
     display: flex;
-    flex-direction: column;
-    justify-content: center;
+    align-items: center;
+    gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
     background: var(--surface-muted);
     border: 1px solid var(--border);
     border-left: 3px solid var(--frame-light);
   }
 
-  .choices label {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-    cursor: pointer;
+  .choices li.included {
+    align-items: flex-start;
   }
 
-  /* Two lines at most; the whole text is the item's tooltip. */
-  .choices p {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    overflow: hidden;
-    margin: 2px 0 0 calc(13px + var(--space-2) + 4px);
+  .check {
+    color: var(--ok);
+    line-height: 1.5;
+  }
+
+  .what {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .what small.muted {
     font-size: 0.82rem;
     line-height: 1.35;
   }
@@ -333,7 +385,36 @@
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--ok);
+    color: var(--text-muted);
+  }
+
+  .remove {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .remove:hover {
+    color: var(--danger);
+    border-color: var(--border);
+  }
+
+  .none {
+    margin: 0;
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+
+  .modules > .btn {
+    align-self: stretch;
+    margin-top: var(--space-1);
   }
 
   /* Step 3: the two choices share the column above the button. */

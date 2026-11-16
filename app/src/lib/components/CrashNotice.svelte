@@ -4,6 +4,7 @@
   // the player reads and submits themselves.
   import { api, openExternal, type CrashReport } from "../api";
   import { t } from "../i18n/i18n.svelte";
+  import Modal from "./Modal.svelte";
 
   const NEW_ISSUE = "https://github.com/FayneDre/realmkeeper/issues/new";
   /** Keeps the URL under browser limits. */
@@ -41,12 +42,19 @@
 {#if report}
   <div class="crash" role="alert">
     <p>{t("crash.notice")}</p>
-    <button class="btn" onclick={() => (open = !open)}>{open ? t("crash.hide") : t("crash.show")}</button>
+    <button class="btn" onclick={() => (open = true)}>{t("crash.show")}</button>
     <button class="btn" onclick={send}>{t("crash.report")}</button>
     <button class="btn" onclick={dismiss}>{t("crash.ignore")}</button>
   </div>
   {#if open}
-    <pre class="report">{report.text}</pre>
+    <Modal title={t("crash.title")} width="760px" onclose={() => (open = false)}>
+      <p>{t("crash.notice")}</p>
+      <pre class="report">{report.text}</pre>
+      {#snippet actions()}
+        <button type="button" class="btn" onclick={() => (open = false)}>{t("common.close")}</button>
+        <button type="button" class="btn btn-play" onclick={send}>{t("crash.report")}</button>
+      {/snippet}
+    </Modal>
   {/if}
 {/if}
 
@@ -77,8 +85,7 @@
 
   .report {
     margin: 0;
-    background: var(--bg-elevated);
-    max-height: 14rem;
+    background: var(--shade-soft);
     overflow: auto;
     padding: var(--space-3);
     border: 1px solid var(--border);

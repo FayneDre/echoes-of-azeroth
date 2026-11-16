@@ -16,6 +16,7 @@
   import { localized, t } from "../i18n/i18n.svelte";
   import { chooseRealm, launcher, realmLabel, refresh, runOperation } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import Modal from "./Modal.svelte";
 
   let { realm, instance }: { realm: EmulatorOverview; instance: InstanceView | null } = $props();
 
@@ -218,32 +219,23 @@
 {/if}
 
 {#if dialog}
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="realm-dialog-title"
-    tabindex="-1"
-    onkeydown={(e) => {
-      if (e.key === "Escape") dialog = null;
-    }}
+  <Modal
+    title={dialog.kind === "uninstall"
+      ? t("uninstall.title")
+      : dialog.kind === "rename"
+        ? t("realms.renameTitle")
+        : dialog.kind === "duplicate"
+          ? t("realms.duplicateTitle")
+          : t("realms.importConfirmTitle")}
+    onclose={() => (dialog = null)}
   >
     <form
-      class="panel"
+      id="realm-dialog"
       onsubmit={(e) => {
         e.preventDefault();
         confirm();
       }}
     >
-      <h3 class="panel-title" id="realm-dialog-title">
-        {dialog.kind === "uninstall"
-          ? t("uninstall.title")
-          : dialog.kind === "rename"
-          ? t("realms.renameTitle")
-          : dialog.kind === "duplicate"
-            ? t("realms.duplicateTitle")
-            : t("realms.importConfirmTitle")}
-      </h3>
       {#if dialog.kind === "uninstall"}
         <p>{t("uninstall.body")}</p>
         <label class="check">
@@ -284,20 +276,20 @@
           />
         </label>
       {/if}
-      <div class="modal-actions">
-        <button type="button" class="btn" onclick={() => (dialog = null)}>{t("common.cancel")}</button>
-        <button type="submit" class={dialog.kind === "uninstall" ? "btn danger" : "btn btn-play"}>
-          {dialog.kind === "uninstall"
-            ? t("uninstall.confirm")
-            : dialog.kind === "rename"
+    </form>
+    {#snippet actions()}
+      <button type="button" class="btn" onclick={() => (dialog = null)}>{t("common.cancel")}</button>
+      <button type="submit" form="realm-dialog" class={dialog?.kind === "uninstall" ? "btn danger" : "btn btn-play"}>
+        {dialog?.kind === "uninstall"
+          ? t("uninstall.confirm")
+          : dialog?.kind === "rename"
             ? t("realms.renameConfirm")
-            : dialog.kind === "duplicate"
+            : dialog?.kind === "duplicate"
               ? t("realms.duplicateConfirm")
               : t("realms.importConfirm")}
-        </button>
-      </div>
-    </form>
-  </div>
+      </button>
+    {/snippet}
+  </Modal>
 {/if}
 
 <style>
@@ -371,26 +363,6 @@
     margin: 0 0 var(--space-3);
   }
 
-  .modal {
-    position: fixed;
-    inset: 0;
-    z-index: 8;
-    display: grid;
-    place-items: center;
-    padding: var(--space-6);
-    background: var(--shade-deep);
-    backdrop-filter: blur(2px);
-  }
-
-  .modal .panel {
-    width: min(520px, 100%);
-    background: var(--bg-elevated);
-  }
-
-  .modal p {
-    margin: 0 0 var(--space-3);
-  }
-
   .summary {
     display: grid;
     gap: var(--space-2);
@@ -415,11 +387,5 @@
     display: grid;
     gap: var(--space-1);
     margin-bottom: var(--space-4);
-  }
-
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
   }
 </style>

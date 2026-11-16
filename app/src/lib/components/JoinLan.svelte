@@ -5,6 +5,7 @@
   import { api, asCommandError, type ClientView, type CommandError, type EmulatorOverview } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import Modal from "./Modal.svelte";
 
   let { realm, client }: { realm: EmulatorOverview; client: ClientView | null } = $props();
 
@@ -16,6 +17,12 @@
 
   const ready = $derived(!!client && !client.problem);
   const valid = $derived(/^[A-Za-z0-9.-]{1,253}$/.test(address.trim()));
+
+  function close() {
+    open = false;
+    error = null;
+    launched = false;
+  }
 
   async function join(event: SubmitEvent) {
     event.preventDefault();
@@ -35,32 +42,38 @@
 </script>
 
 <div class="join">
-  {#if !open}
-    <button class="link" disabled={!ready} title={ready ? t("lan.body") : t("lan.needClient")} onclick={() => (open = true)}>
-      {t("lan.title")} ›
-    </button>
-  {:else}
-    <p class="muted" title={t("lan.patches")}>{t("lan.body")}</p>
-    <form onsubmit={join}>
+  <button class="link" disabled={!ready} title={ready ? t("lan.body") : t("lan.needClient")} onclick={() => (open = true)}>
+    {t("lan.title")} ›
+  </button>
+</div>
+
+{#if open}
+  <Modal title={t("lan.title")} onclose={close}>
+    <p class="muted">{t("lan.body")}</p>
+    <p class="muted small">{t("lan.patches")}</p>
+    <form id="join-lan" onsubmit={join}>
+      <label for="join-lan-address">{t("lan.address")}</label>
       <input
+        id="join-lan-address"
         type="text"
         spellcheck="false"
         autocomplete="off"
         placeholder="192.168.1.20"
-        aria-label={t("lan.address")}
         bind:value={address}
       />
-      <button class="btn" type="submit" disabled={!valid || busy}>{t("lan.join")}</button>
-      <button class="btn" type="button" onclick={() => (open = false)}>{t("common.close")}</button>
     </form>
     {#if launched}
-      <small>{t("lan.launched", { address: address.trim() })}</small>
+      <p class="ok">{t("lan.launched", { address: address.trim() })}</p>
     {/if}
-  {/if}
-  {#if error}
-    <ErrorBox {error} />
-  {/if}
-</div>
+    {#if error}
+      <ErrorBox {error} />
+    {/if}
+    {#snippet actions()}
+      <button type="button" class="btn" onclick={close}>{t("common.close")}</button>
+      <button type="submit" form="join-lan" class="btn btn-play" disabled={!valid || busy}>{t("lan.join")}</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .join {
@@ -69,11 +82,6 @@
     gap: var(--space-2);
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
-  }
-
-  .join p {
-    margin: 0;
-    font-size: 0.85rem;
   }
 
   .link {
@@ -98,11 +106,16 @@
 
   form {
     display: flex;
-    gap: var(--space-2);
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
-  input {
-    flex: 1;
-    min-width: 0;
+  .small {
+    font-size: 0.82rem;
+  }
+
+  .ok {
+    margin: var(--space-3) 0 0;
+    color: var(--ok);
   }
 </style>
