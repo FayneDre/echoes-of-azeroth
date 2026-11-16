@@ -8,10 +8,12 @@ import {
   events,
   inDesktopApp,
   type CommandError,
+  type InstanceView,
   type LauncherOverview,
   type OperationEvent,
   type SessionEvent,
 } from "./api";
+import { t, type LocalizedText, type MessageKey } from "./i18n/i18n.svelte";
 
 /** Log lines kept per process (older ones are dropped; the log files keep all). */
 const LOG_LIMIT = 1500;
@@ -25,8 +27,15 @@ export interface OperationProgress {
   /** Bytes (downloads) or items done in the current step. */
   done: number | null;
   size: number | null;
+  /** Download speed in bytes per second (smoothed), once measured. */
+  rate: number | null;
   rollingBack: boolean;
+  /** Title of the progress panel, when the change is not an install or update. */
+  title: MessageKey | null;
 }
+
+/** When the last progress of the current step arrived (performance.now()). */
+let lastProgressAt = 0;
 
 export type ProcessState = "starting" | "ready" | "stopping" | "stopped" | "exited";
 
@@ -43,10 +52,18 @@ export interface SessionState {
   address: string | null;
   authPort: number | null;
   game: "none" | "running" | "exited";
+  /** The servers stay up when the running game exits. */
+  keepRunning: boolean;
   warnings: string[];
   error: CommandError | null;
   /** Unexpected end (crash, failed start). */
   failed: boolean;
+  /** Characters in the world (players, bots), when the emulator tells. */
+  population: { players: number; bots: number } | null;
+  /** When every server became ready (ms since the epoch). */
+  readyAt: number | null;
+  /** How far the start went (manifest milestones), until ready. */
+  startup: { process: string; progress: number; label: LocalizedText } | null;
 }
 
 function newSession(): SessionState {
@@ -57,9 +74,13 @@ function newSession(): SessionState {
     address: null,
     authPort: null,
     game: "none",
+    keepRunning: true,
     warnings: [],
     error: null,
     failed: false,
+    population: null,
+    readyAt: null,
+    startup: null,
   };
 }
 
@@ -92,8 +113,13 @@ function applySession(instance: string, list: SessionEvent[]) {
       case "processReady":
         session.processes[event.process] = "ready";
         break;
+      case "startup":
+        if (session.phase === "starting") session.startup = { process: event.process, progress: event.progress, label: event.label };
+        break;
       case "ready":
         session.phase = "ready";
+        session.startup = null;
+        session.readyAt = Date.now();
         session.address = event.address;
         session.authPort = event.authPort;
         break;
@@ -118,9 +144,13 @@ function applySession(instance: string, list: SessionEvent[]) {
         break;
       case "gameStarted":
         session.game = "running";
+        session.keepRunning = event.keepRunning;
         break;
       case "gameExited":
         session.game = "exited";
+        break;
+      case "population":
+        session.population = { players: event.players, bots: event.bots };
         break;
       case "processExited":
         session.processes[event.process] = "exited";
@@ -132,6 +162,7 @@ function applySession(instance: string, list: SessionEvent[]) {
         break;
       case "ended":
         session.phase = "ended";
+        session.population = null;
         if (!event.clean) session.failed = true;
         void refresh();
         break;
@@ -150,7 +181,9 @@ function applyOperation(instance: string, event: OperationEvent) {
         stepKind: event.stepKind,
         done: null,
         size: null,
+        rate: null,
         rollingBack: progress?.instance === instance ? progress.rollingBack : false,
+        title: progress?.instance === instance ? progress.title : null,
       };
       break;
     case "stepSkipped":
@@ -160,10 +193,19 @@ function applyOperation(instance: string, event: OperationEvent) {
         progress.total = event.total;
         progress.done = null;
         progress.size = null;
+        progress.rate = null;
       }
       break;
     case "stepProgress":
       if (progress?.instance === instance) {
+        const now = performance.now();
+        // Speed from the second sample of a download on (the first one may
+        // include what an interrupted download had already fetched).
+        if (progress.stepKind === "download" && progress.done !== null && now > lastProgressAt) {
+          const instant = ((event.done - progress.done) * 1000) / (now - lastProgressAt);
+          if (instant >= 0) progress.rate = progress.rate === null ? instant : progress.rate * 0.8 + instant * 0.2;
+        }
+        lastProgressAt = now;
         progress.done = event.done;
         progress.size = event.total;
       }
@@ -202,7 +244,11 @@ export function connect(): void {
  * Runs a change (install, modules, options, update) with its progress shown;
  * refreshes the overview afterwards, whatever the result.
  */
-export async function runOperation<T>(instance: string, run: () => Promise<T>): Promise<T> {
+export async function runOperation<T>(
+  instance: string,
+  run: () => Promise<T>,
+  title: MessageKey | null = null,
+): Promise<T> {
   progress = {
     instance,
     index: 0,
@@ -211,7 +257,9 @@ export async function runOperation<T>(instance: string, run: () => Promise<T>): 
     stepKind: "",
     done: null,
     size: null,
+    rate: null,
     rollingBack: false,
+    title,
   };
   try {
     return await run();
@@ -236,7 +284,48 @@ export async function startSession(id: string, play: boolean, keepRunning: boole
   }
 }
 
+/** Realm shown for each game version (emulator id -> instance id), ADR 0020. */
+let chosen = $state<Record<string, string>>(loadChosen());
+
+function loadChosen(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem("rk.chosenRealm");
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Shows the realm `id` for its game version (after a copy or an import too). */
+export function chooseRealm(emulator: string, id: string): void {
+  chosen[emulator] = id;
+  try {
+    localStorage.setItem("rk.chosenRealm", JSON.stringify(chosen));
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+}
+
+/** A realm's display name: the one the player gave; the first realm of a
+ * game version (its id is the emulator's) is "My realm"; else its id. */
+export function realmLabel(instance: InstanceView): string {
+  if (instance.record.name) return instance.record.name;
+  return instance.record.id === instance.record.emulator ? t("realms.defaultName") : instance.record.id;
+}
+
 export const launcher = {
+  /** The realms of one game version, oldest first. */
+  realmsOf(emulator: string): InstanceView[] {
+    return (overview?.instances ?? [])
+      .filter((i) => i.record.emulator === emulator)
+      .sort((a, b) => a.record.created - b.record.created);
+  },
+  /** The realm shown for a game version: the chosen one, else the oldest. */
+  instanceFor(emulator: string | null | undefined): InstanceView | null {
+    if (!emulator) return null;
+    const realms = this.realmsOf(emulator);
+    return realms.find((i) => i.record.id === chosen[emulator]) ?? realms[0] ?? null;
+  },
   get overview() {
     return overview;
   },

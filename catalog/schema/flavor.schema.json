@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/flavor.schema.json",
+  "$id": "https://realmkeeper.github.io/schema/v1/flavor.schema.json",
   "title": "Core flavor manifest",
   "description": "A concrete core source tree of an emulator (official repository or a fork). Lives at catalog/emulators/<emulator>/flavors/<id>.json.",
   "type": "object",

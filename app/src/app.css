@@ -44,6 +44,7 @@
   --rail-width: 92px;
   --font: "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-display: "Cinzel Variable", "Cinzel", Georgia, serif;
+  --wordmark-cap: #8a5310;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -59,6 +60,7 @@
     --text: #eadcc0;
     --text-muted: #a89272;
     --title: #ffd25a;
+    --wordmark-cap: #ffe08a;
     --border: #3d2d1b;
     --frame: #5b4224;
     --frame-light: #c9a24f;
@@ -93,6 +95,7 @@
   --text: #eadcc0;
   --text-muted: #a89272;
   --title: #ffd25a;
+  --wordmark-cap: #ffe08a;
   --border: #3d2d1b;
   --frame: #5b4224;
   --frame-light: #c9a24f;
@@ -126,12 +129,17 @@ body {
   height: 100%;
 }
 
+/* Text size preference (lib/textSize.svelte.ts): rem and body text follow it. */
+html {
+  font-size: calc(16px * var(--text-scale, 1));
+}
+
 body {
   background: var(--bg-texture);
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale, 1));
   line-height: 1.45;
 }
 
@@ -143,6 +151,18 @@ button {
 :focus-visible {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
+}
+
+/* Players who ask their system for less motion get none. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .display {
@@ -163,7 +183,7 @@ button {
     inset 0 0 0 3px color-mix(in srgb, var(--frame-light) 55%, transparent),
     inset 0 0 28px rgb(0 0 0 / 0.35),
     var(--panel-shadow);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-5);
 }
 
 .panel::before,
@@ -192,7 +212,7 @@ button {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
   font-family: var(--font-display);
   font-size: 1rem;
   font-weight: 700;

@@ -1,14 +1,19 @@
 <script lang="ts">
-  // "Account" tab: create a game account on the realm (works with the
-  // servers stopped: the database is started for it).
-  import { api, asCommandError, type CommandError, type EmulatorOverview } from "../api";
+  // "Account" tab, in two parts: creating game accounts (works with the
+  // servers stopped: the database is started for it) and the game master
+  // panel (servers running).
+  import { api, asCommandError, type AccountView, type CommandError, type EmulatorOverview } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import GameMaster from "./GameMaster.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
-  const instance = $derived(launcher.overview?.instances.find((i) => i.record.emulator === realm.id) ?? null);
+  const instance = $derived(launcher.instanceFor(realm.id));
+
+  type Part = "create" | "gm";
+  let part = $state<Part>("create");
 
   let username = $state("");
   let password = $state("");
@@ -17,6 +22,43 @@
   let busy = $state(false);
   let error = $state<CommandError | null>(null);
   let created = $state<string | null>(null);
+
+  /** GM levels offered (AzerothCore: 0 player ... 3 administrator). */
+  const GM_LEVELS = [0, 1, 2, 3] as const;
+  const busyElsewhere = $derived(launcher.progress !== null);
+
+  let accounts = $state<AccountView[] | null>(null);
+  let listError = $state<CommandError | null>(null);
+  let saving = $state<string | null>(null);
+
+  async function loadAccounts() {
+    if (!instance) return;
+    listError = null;
+    try {
+      accounts = await api.listAccounts(instance.record.id);
+    } catch (raw) {
+      listError = asCommandError(raw);
+    }
+  }
+
+  // Listed once per realm (the database starts for it when stopped).
+  $effect(() => {
+    if (instance?.installed && !busyElsewhere) void loadAccounts();
+  });
+
+  async function setLevel(account: AccountView, level: number) {
+    if (!instance) return;
+    saving = account.username;
+    listError = null;
+    try {
+      await api.setGmLevel(instance.record.id, account.username, level);
+      account.gmLevel = level;
+    } catch (raw) {
+      listError = asCommandError(raw);
+    } finally {
+      saving = null;
+    }
+  }
 
   const mismatch = $derived(confirm.length > 0 && password !== confirm);
   const valid = $derived(username.trim().length > 0 && password.length > 0 && password === confirm);
@@ -33,6 +75,7 @@
       created = name.toUpperCase();
       username = password = confirm = "";
       admin = false;
+      void loadAccounts();
     } catch (raw) {
       error = asCommandError(raw);
     } finally {
@@ -41,6 +84,18 @@
   }
 </script>
 
+<div class="segmented parts" role="tablist" aria-label={t("nav.account")}>
+  <button role="tab" class:active={part === "create"} aria-selected={part === "create"} onclick={() => (part = "create")}>
+    {t("account.partCreate")}
+  </button>
+  <button role="tab" class:active={part === "gm"} aria-selected={part === "gm"} onclick={() => (part = "gm")}>
+    {t("nav.gm")}
+  </button>
+</div>
+
+{#if part === "gm"}
+  <GameMaster {realm} />
+{:else}
 <section class="panel">
   <h3 class="panel-title">{t("account.title")}</h3>
   {#if !instance}
@@ -80,7 +135,55 @@
   {/if}
 </section>
 
+{#if instance}
+  <section class="panel">
+    <h3 class="panel-title">{t("account.list")}</h3>
+    <p class="muted">{t("account.listBody")}</p>
+    {#if accounts === null && !listError}
+      <p class="muted">{t("gm.loading")}</p>
+    {:else if accounts && accounts.length === 0}
+      <p class="muted">{t("account.none")}</p>
+    {:else if accounts}
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{t("account.username")}</th>
+            <th scope="col">{t("account.gmLevel")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each accounts as account (account.id)}
+            <tr>
+              <td>{account.username}</td>
+              <td>
+                <select
+                  aria-label={t("account.gmLevelOf", { name: account.username })}
+                  value={account.gmLevel}
+                  disabled={saving !== null || busyElsewhere}
+                  onchange={(e) => setLevel(account, Number(e.currentTarget.value))}
+                >
+                  {#each GM_LEVELS as level (level)}
+                    <option value={level}>{t(`account.gm.${level}`)}</option>
+                  {/each}
+                </select>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+    {#if listError}
+      <ErrorBox error={listError} onretry={loadAccounts} />
+    {/if}
+  </section>
+{/if}
+{/if}
+
 <style>
+  .parts {
+    align-self: flex-start;
+  }
+
   form {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -110,6 +213,23 @@
 
   .ok {
     color: var(--ok);
+  }
+
+  section + section {
+    margin-top: var(--space-4);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: var(--space-3);
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--border);
   }
 
   .bad {

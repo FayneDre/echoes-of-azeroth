@@ -3,26 +3,26 @@ resolver = "2"
 members = ["crates/*", "drivers/*", "app/src-tauri"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.90" # tauri-plugin-opener 2.7
-authors = ["Echoes of Azeroth contributors"]
+authors = ["RealmKeeper contributors"]
 publish = false
 license = "GPL-3.0-or-later"
-repository = "https://github.com/FayneDre/echoes-of-azeroth"
+repository = "https://github.com/FayneDre/realmkeeper"
 
 [workspace.dependencies]
 # Internal crates
-eoa-core = { path = "crates/eoa-core" }
-eoa-catalog = { path = "crates/eoa-catalog" }
-eoa-store = { path = "crates/eoa-store" }
-eoa-engine = { path = "crates/eoa-engine" }
-eoa-conf = { path = "crates/eoa-conf" }
-eoa-db = { path = "crates/eoa-db" }
-eoa-runtime = { path = "crates/eoa-runtime" }
-eoa-client = { path = "crates/eoa-client" }
-eoa-launcher = { path = "crates/eoa-launcher" }
-eoa-driver-azerothcore = { path = "drivers/azerothcore" }
+rk-core = { path = "crates/rk-core" }
+rk-catalog = { path = "crates/rk-catalog" }
+rk-store = { path = "crates/rk-store" }
+rk-engine = { path = "crates/rk-engine" }
+rk-conf = { path = "crates/rk-conf" }
+rk-db = { path = "crates/rk-db" }
+rk-runtime = { path = "crates/rk-runtime" }
+rk-client = { path = "crates/rk-client" }
+rk-launcher = { path = "crates/rk-launcher" }
+rk-driver-azerothcore = { path = "drivers/azerothcore" }
 
 # External crates
 anyhow = "1"
@@ -35,6 +35,8 @@ num-bigint = "0.5"
 regex = "1"
 sha1 = "0.11"
 futures-util = "0.3"
+# Free disk space before downloads and unpacking (pure Rust, no libc).
+fs4 = "1.1"
 hex = "0.4"
 reqwest = { version = "0.13", features = ["stream"] }
 serde = { version = "1", features = ["derive"] }
@@ -46,8 +48,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 tauri-plugin-dialog = "2.8"
+tauri-plugin-notification = "2.8"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2.14"
+tauri-plugin-window-state = "2.5"
+windows-sys = "0.61"
 # Directory links without privileges (server data overlay, ADR 0013).
 junction = "2"
 # Module assets shipped as .7z archives (pure Rust, decoding only).

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Signed artifact index (ADR 0010): the CI side. The launcher side is
-// crates/eoa-catalog/src/index.rs; both read crates/eoa-catalog/trusted-keys.json.
+// crates/rk-catalog/src/index.rs; both read crates/rk-catalog/trusted-keys.json.
 //
 //   node tools/ci/index.mjs keygen --private-out <file.pem>
 //       New Ed25519 key pair: the private key (PKCS#8 PEM) goes to the file,
@@ -11,7 +11,9 @@
 //       One build entry: pins from build-info.json, sizes and sha256 of the files.
 //   node tools/ci/index.mjs update [--previous <index.json>] --entry <entry.json> --out <index.json>
 //       Verifies the previous index, adds (or replaces, same build key) the entry,
-//       increments the serial and signs with $EOA_INDEX_SIGNING_KEY (PEM text).
+//       increments the serial and signs with $RK_INDEX_SIGNING_KEY (PEM text).
+//       A previous index signed with a key no longer trusted (rotation) only
+//       gives its serial, so serials keep increasing; its builds are dropped.
 //   node tools/ci/index.mjs verify <index.json>
 //       Verifies against the trusted keys and prints the payload.
 
@@ -20,9 +22,9 @@ import { createReadStream, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const DOMAIN = "echoes-of-azeroth/index/v1\n";
+export const DOMAIN = "realmkeeper/index/v1\n";
 const here = dirname(fileURLToPath(import.meta.url));
-const trustedKeysFile = join(here, "..", "..", "crates", "eoa-catalog", "trusted-keys.json");
+const trustedKeysFile = join(here, "..", "..", "crates", "rk-catalog", "trusted-keys.json");
 
 const die = (message) => {
   console.error(`index.mjs: ${message}`);
@@ -106,14 +108,14 @@ async function entry(opts) {
 
 function update(opts) {
   required(opts, "entry", "out");
-  const pem = process.env.EOA_INDEX_SIGNING_KEY;
-  if (!pem) die("EOA_INDEX_SIGNING_KEY is not set");
+  const pem = process.env.RK_INDEX_SIGNING_KEY;
+  if (!pem) die("RK_INDEX_SIGNING_KEY is not set");
   const privateKey = createPrivateKey(pem);
   const trusted = readJson(trustedKeysFile).keys;
   if (!trusted.some((k) => k.publicKey === rawPublicKey(privateKey))) {
     die(`the signing key ${keyId(rawPublicKey(privateKey))} is not in trusted-keys.json: launchers would reject the index`);
   }
-  const previous = opts.previous ? open(readJson(opts.previous), trusted) : { format: 1, serial: 0, builds: [] };
+  const previous = opts.previous ? previousIndex(readJson(opts.previous), trusted) : { format: 1, serial: 0, builds: [] };
   const build = readJson(opts.entry);
   const same = (b) => b.emulator === build.emulator && b.flavor === build.flavor && b.platform === build.platform && b.buildKey === build.buildKey;
   // Replaced entries move to the end: the last listed match is the newest.
@@ -121,6 +123,19 @@ function update(opts) {
   const index = { format: 1, serial: previous.serial + 1, published: new Date().toISOString(), builds };
   writeFileSync(opts.out, JSON.stringify(seal(JSON.stringify(index, null, 2), privateKey), null, 2) + "\n");
   console.log(`index serial ${index.serial}: ${builds.length} build(s), signed with ${keyId(rawPublicKey(privateKey))}`);
+}
+
+/** The previous index, verified; after a key rotation, only its serial. */
+function previousIndex(envelope, trusted) {
+  try {
+    return open(envelope, trusted);
+  } catch (error) {
+    if (!String(error.message).startsWith("index signed with an unknown key")) throw error;
+    const serial = Number(JSON.parse(envelope.payload).serial);
+    if (!Number.isSafeInteger(serial) || serial < 0) throw error;
+    console.warn(`previous index signed with ${envelope.keyId}, no longer trusted: keeping only its serial ${serial}`);
+    return { format: 1, serial, builds: [] };
+  }
 }
 
 function keygen(opts) {

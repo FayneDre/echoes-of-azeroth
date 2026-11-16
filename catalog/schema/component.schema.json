@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/component.schema.json",
+  "$id": "https://realmkeeper.github.io/schema/v1/component.schema.json",
   "title": "Component manifest",
   "description": "A shared third-party runtime (database server, redistributable...). Lives at catalog/components/<id>.json.",
   "type": "object",
@@ -31,6 +31,11 @@
           },
           "size": {
             "description": "Exact size of the upstream download in bytes.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "unpackedSize": {
+            "description": "Approximate size in bytes once unpacked, measured on a real install (free-space check before an install).",
             "type": "integer",
             "minimum": 1
           },

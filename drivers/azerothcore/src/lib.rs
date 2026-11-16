@@ -12,6 +12,9 @@
 //!   the highest guid at startup). mod-ah-bot never loads the character, it
 //!   only uses the guid as auction owner (`AuctionHouseBot.cpp` builds an
 //!   in-memory `Player` with `Initialize(guid)`).
+//! - **Population:** characters flagged `online` in the characters
+//!   database; those of `RNDBOT` accounts (Playerbots'
+//!   `RandomBotAccountPrefix`, upper-cased like every account name) are bots.
 
 #![forbid(unsafe_code)]
 
@@ -19,7 +22,10 @@ pub mod srp6;
 
 use std::fmt::Write as _;
 
-use eoa_runtime::{DriverContext, DriverFuture, EmulatorDriver, NewAccount, NewCharacter};
+use rk_runtime::{
+    AccountInfo, DriverContext, DriverFuture, EmulatorDriver, NewAccount, NewCharacter,
+    OnlineCharacter, Population,
+};
 use thiserror::Error;
 
 /// `MAX_ACCOUNT_STR` / `MAX_PASS_STR` in `AccountMgr.h`.
@@ -31,6 +37,9 @@ pub const MAX_GM_LEVEL: u8 = 3;
 const EXPANSION: u8 = 2;
 /// `RealmID` in `worldserver.conf.dist`, which the launcher does not change.
 const REALM_ID: u32 = 1;
+/// `Playerbots.RandomBotAccountPrefix` default (`rndbot`), upper-cased by
+/// `AccountMgr`; the launcher does not change it.
+const BOT_ACCOUNT_PREFIX: &str = "RNDBOT";
 
 #[derive(Debug, Error)]
 pub enum AccountError {
@@ -42,6 +51,8 @@ pub enum AccountError {
     InvalidGmLevel,
     #[error("the account '{0}' already exists")]
     Exists(String),
+    #[error("no such account")]
+    UnknownAccount,
     #[error("character names are 2 to 12 letters, the first one upper-case")]
     InvalidCharacterName,
     #[error("unknown race or class '{0}'")]
@@ -55,7 +66,7 @@ pub enum AccountError {
     #[error("unexpected answer from the database: {0:?}")]
     Unexpected(String),
     #[error(transparent)]
-    Db(#[from] eoa_db::DbError),
+    Db(#[from] rk_db::DbError),
 }
 
 pub struct AzerothCore;
@@ -71,8 +82,9 @@ impl EmulatorDriver for AzerothCore {
                 .database("auth")
                 .ok_or(AccountError::MissingDatabase("auth"))?;
             let port = cx.port("world").ok_or("no 'world' port in the instance")?;
+            let icon = realm_icon(&cx.configs.join("worldserver.conf"));
             cx.db
-                .execute(&realm_sql(auth, cx.realm_address, port))
+                .execute(&realm_sql(auth, cx.realm_address, port, icon))
                 .await?;
             Ok(())
         })
@@ -202,6 +214,199 @@ impl EmulatorDriver for AzerothCore {
             }
         })
     }
+
+    fn accounts<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+    ) -> DriverFuture<'a, Option<Vec<AccountInfo>>> {
+        Box::pin(async move {
+            let (auth, _) = Self::names(cx)?;
+            let out = cx.db.execute(&accounts_sql(auth)).await?;
+            Ok(Some(parse_accounts(&out)?))
+        })
+    }
+
+    fn set_gm_level<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+        username: &'a str,
+        gm_level: u8,
+    ) -> DriverFuture<'a, ()> {
+        Box::pin(async move {
+            if gm_level > MAX_GM_LEVEL {
+                return Err(AccountError::InvalidGmLevel.into());
+            }
+            let id = self
+                .find_account(cx, username)
+                .await?
+                .ok_or(AccountError::UnknownAccount)?;
+            let (auth, _) = Self::names(cx)?;
+            cx.db.execute(&gm_level_sql(auth, id, gm_level)).await?;
+            Ok(())
+        })
+    }
+
+    fn online_characters<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+        limit: u32,
+    ) -> DriverFuture<'a, Option<Vec<OnlineCharacter>>> {
+        Box::pin(async move {
+            let (auth, chars) = Self::names(cx)?;
+            let out = cx.db.execute(&online_sql(auth, chars, limit)).await?;
+            Ok(Some(parse_online(&out)?))
+        })
+    }
+
+    fn teleport_locations<'a>(
+        &'a self,
+        cx: &'a DriverContext<'a>,
+    ) -> DriverFuture<'a, Vec<String>> {
+        Box::pin(async move {
+            let world = cx
+                .database("world")
+                .ok_or(AccountError::MissingDatabase("world"))?;
+            let out = cx
+                .db
+                .execute(&format!(
+                    "SELECT name FROM `{world}`.game_tele ORDER BY name;"
+                ))
+                .await?;
+            // Only names the console accepts as one argument: a place
+            // added with a space in its name could not be used.
+            Ok(out
+                .lines()
+                .map(str::trim)
+                .filter(|name| rk_core::console::valid_location(name))
+                .map(str::to_owned)
+                .collect())
+        })
+    }
+
+    fn population<'a>(&'a self, cx: &'a DriverContext<'a>) -> DriverFuture<'a, Option<Population>> {
+        Box::pin(async move {
+            let auth = cx
+                .database("auth")
+                .ok_or(AccountError::MissingDatabase("auth"))?;
+            let chars = cx
+                .database("characters")
+                .ok_or(AccountError::MissingDatabase("characters"))?;
+            let out = cx.db.execute(&population_sql(auth, chars)).await?;
+            Ok(Some(parse_population(&out)?))
+        })
+    }
+}
+
+impl AzerothCore {
+    fn names<'a>(cx: &'a DriverContext<'a>) -> Result<(&'a str, &'a str), AccountError> {
+        let auth = cx
+            .database("auth")
+            .ok_or(AccountError::MissingDatabase("auth"))?;
+        let chars = cx
+            .database("characters")
+            .ok_or(AccountError::MissingDatabase("characters"))?;
+        Ok((auth, chars))
+    }
+}
+
+/// Player accounts with their highest GM level on any realm.
+fn accounts_sql(auth: &str) -> String {
+    format!(
+        "SELECT a.id, a.username, COALESCE(MAX(x.gmlevel), 0) FROM `{auth}`.account a \
+         LEFT JOIN `{auth}`.account_access x ON x.id = a.id \
+         WHERE a.username NOT LIKE '{BOT_ACCOUNT_PREFIX}%' GROUP BY a.id, a.username ORDER BY a.username;"
+    )
+}
+
+fn parse_accounts(out: &str) -> Result<Vec<AccountInfo>, AccountError> {
+    out.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|line| {
+            let mut fields = line.split('\t');
+            match (fields.next(), fields.next(), fields.next()) {
+                (Some(id), Some(name), Some(level)) => Ok(AccountInfo {
+                    id: id
+                        .parse()
+                        .map_err(|_| AccountError::Unexpected(line.into()))?,
+                    username: name.to_owned(),
+                    gm_level: level
+                        .parse()
+                        .map_err(|_| AccountError::Unexpected(line.into()))?,
+                }),
+                _ => Err(AccountError::Unexpected(line.to_owned())),
+            }
+        })
+        .collect()
+}
+
+/// Replaces the account's GM level on every realm (`-1`), like
+/// `account set gmlevel <name> <level> -1`.
+fn gm_level_sql(auth: &str, id: u32, gm_level: u8) -> String {
+    let mut sql =
+        format!("USE `{auth}`;\nSTART TRANSACTION;\nDELETE FROM account_access WHERE id = {id};\n");
+    if gm_level > 0 {
+        let _ = writeln!(
+            sql,
+            "INSERT INTO account_access (id, gmlevel, RealmID) VALUES ({id}, {gm_level}, -1);"
+        );
+    }
+    sql.push_str("COMMIT;\n");
+    sql
+}
+
+/// Characters in the world, players first.
+fn online_sql(auth: &str, chars: &str, limit: u32) -> String {
+    format!(
+        "SELECT c.name, c.level, c.race, c.class, a.username LIKE '{BOT_ACCOUNT_PREFIX}%' AS bot \
+         FROM `{chars}`.characters c JOIN `{auth}`.account a ON a.id = c.account \
+         WHERE c.online <> 0 ORDER BY bot, c.name LIMIT {limit};"
+    )
+}
+
+fn parse_online(out: &str) -> Result<Vec<OnlineCharacter>, AccountError> {
+    let name_of = |table: &[(&str, u8)], id: &str| {
+        id.parse::<u8>()
+            .ok()
+            .and_then(|id| table.iter().find(|(_, v)| *v == id))
+            .map_or_else(|| id.to_owned(), |(n, _)| (*n).to_owned())
+    };
+    out.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|line| {
+            let f: Vec<&str> = line.split('\t').collect();
+            let [name, level, race, class, bot] = f[..] else {
+                return Err(AccountError::Unexpected(line.to_owned()));
+            };
+            Ok(OnlineCharacter {
+                name: name.to_owned(),
+                level: level
+                    .parse()
+                    .map_err(|_| AccountError::Unexpected(line.into()))?,
+                race: name_of(RACES, race),
+                class: name_of(CLASSES, class),
+                bot: bot.trim() == "1",
+            })
+        })
+        .collect()
+}
+
+/// Online characters split between player and bot accounts.
+fn population_sql(auth: &str, chars: &str) -> String {
+    format!(
+        "SELECT COALESCE(SUM(a.username NOT LIKE '{BOT_ACCOUNT_PREFIX}%'), 0), \
+         COALESCE(SUM(a.username LIKE '{BOT_ACCOUNT_PREFIX}%'), 0) \
+         FROM `{chars}`.characters c JOIN `{auth}`.account a ON a.id = c.account \
+         WHERE c.online <> 0;"
+    )
+}
+
+fn parse_population(out: &str) -> Result<Population, AccountError> {
+    let line = out.trim();
+    let mut fields = line.split('\t').map(str::parse::<u32>);
+    match (fields.next(), fields.next()) {
+        (Some(Ok(players)), Some(Ok(bots))) => Ok(Population { players, bots }),
+        _ => Err(AccountError::Unexpected(line.to_owned())),
+    }
 }
 
 /// `ChrRaces.dbc` / `ChrClasses.dbc` ids of 3.3.5a.
@@ -269,7 +474,7 @@ fn character_sql(chars: &str, c: &NewCharacter, race: u8, class: u8) -> String {
     sql
 }
 
-fn parse_optional(out: &str) -> Result<Option<u32>, eoa_runtime::DriverError> {
+fn parse_optional(out: &str) -> Result<Option<u32>, rk_runtime::DriverError> {
     let line = out.trim();
     if line.is_empty() {
         return Ok(None);
@@ -329,13 +534,29 @@ fn account_sql(auth: &str, username: &str, salt: &[u8], verifier: &[u8], gm_leve
     sql
 }
 
-/// Points realm 1 at the address players connect to.
-fn realm_sql(auth: &str, address: std::net::Ipv4Addr, port: u16) -> String {
+/// Realm type shown in the client's realm list: worldserver's `GameType`
+/// (0 normal, 1 PvP, 4 normal, 6 RP, 8 RP-PvP, 16 FFA PvP). The authserver
+/// sends `realmlist.icon`, which worldserver does not update, so it is
+/// copied before each start. Unknown or unreadable: 0.
+fn realm_icon(worldserver_conf: &std::path::Path) -> u8 {
+    std::fs::read_to_string(worldserver_conf)
+        .ok()
+        .and_then(|text| {
+            rk_conf::ConfFile::parse(&text)
+                .get("GameType")
+                .and_then(|v| v.trim().trim_matches('"').parse().ok())
+        })
+        .filter(|icon| matches!(icon, 0 | 1 | 4 | 6 | 8 | 16))
+        .unwrap_or(0)
+}
+
+/// Points realm 1 at the address players connect to, with its type.
+fn realm_sql(auth: &str, address: std::net::Ipv4Addr, port: u16, icon: u8) -> String {
     format!(
-        "INSERT INTO `{auth}`.realmlist (id, name, address, localAddress, port) \
-         VALUES ({REALM_ID}, 'AzerothCore', '{address}', '{address}', {port}) AS new \
+        "INSERT INTO `{auth}`.realmlist (id, name, address, localAddress, port, icon) \
+         VALUES ({REALM_ID}, 'AzerothCore', '{address}', '{address}', {port}, {icon}) AS new \
          ON DUPLICATE KEY UPDATE address = new.address, localAddress = new.localAddress, \
-         port = new.port;\n"
+         port = new.port, icon = new.icon;\n"
     )
 }
 
@@ -349,6 +570,47 @@ mod tests {
             password: password.into(),
             gm_level,
         }
+    }
+
+    #[test]
+    fn population_counts_players_and_bots() {
+        let sql = population_sql("acore_auth", "acore_characters");
+        assert!(sql.contains("`acore_characters`.characters c JOIN `acore_auth`.account a"));
+        assert!(sql.contains("LIKE 'RNDBOT%'"));
+        assert_eq!(
+            parse_population("1\t487\n").unwrap(),
+            Population {
+                players: 1,
+                bots: 487
+            }
+        );
+        assert!(parse_population("NULL\tNULL").is_err());
+    }
+
+    #[test]
+    fn realm_icon_follows_game_type() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("worldserver.conf");
+        assert_eq!(realm_icon(&conf), 0, "missing file");
+        std::fs::write(
+            &conf,
+            "# realm
+GameType = 8
+",
+        )
+        .unwrap();
+        assert_eq!(realm_icon(&conf), 8);
+        std::fs::write(
+            &conf,
+            "GameType = 3
+",
+        )
+        .unwrap();
+        assert_eq!(realm_icon(&conf), 0, "not a realm type");
+        assert!(
+            realm_sql("acore_auth", std::net::Ipv4Addr::LOCALHOST, 8085, 1)
+                .contains("icon = new.icon")
+        );
     }
 
     #[test]

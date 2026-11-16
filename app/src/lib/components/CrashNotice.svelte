@@ -5,7 +5,7 @@
   import { api, openExternal, type CrashReport } from "../api";
   import { t } from "../i18n/i18n.svelte";
 
-  const NEW_ISSUE = "https://github.com/FayneDre/echoes-of-azeroth/issues/new";
+  const NEW_ISSUE = "https://github.com/FayneDre/realmkeeper/issues/new";
   /** Keeps the URL under browser limits. */
   const BODY_LIMIT = 6000;
 
@@ -51,27 +51,37 @@
 {/if}
 
 <style>
+  /* A floating card (bottom right), never in the page flow. */
   .crash {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--danger);
-    background: var(--shade-soft);
+    background: var(--bg-elevated);
+    box-shadow: var(--panel-shadow);
   }
 
   .crash p {
-    flex: 1;
-    margin: 0;
+    flex-basis: 100%;
+    margin: 0 0 var(--space-1);
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .crash .btn {
+    padding: 2px var(--space-3);
+    font-size: 0.78rem;
   }
 
   .report {
     margin: 0;
+    background: var(--bg-elevated);
     max-height: 14rem;
     overflow: auto;
     padding: var(--space-3);
     border: 1px solid var(--border);
-    background: var(--shade-deep);
     font-size: 0.78rem;
     white-space: pre-wrap;
   }

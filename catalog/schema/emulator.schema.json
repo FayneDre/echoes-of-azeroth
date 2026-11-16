@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/emulator.schema.json",
+  "$id": "https://realmkeeper.github.io/schema/v1/emulator.schema.json",
   "title": "Emulator manifest",
   "description": "Describes an emulator family (e.g. AzerothCore): its driver, client, shared components, databases, processes and ports. Lives at catalog/emulators/<id>/emulator.json.",
   "type": "object",
@@ -105,6 +105,11 @@
         "dbImport"
       ],
       "properties": {
+        "diskSize": {
+          "description": "Approximate disk use in bytes of one installed instance (server files, SQL tree, databases), measured on a real install: free-space check before an install, on top of the downloads.",
+          "type": "integer",
+          "minimum": 1
+        },
         "connection": {
           "description": "Template of the value written to every database connection key.",
           "type": "string",
@@ -138,6 +143,41 @@
         }
       },
       "additionalProperties": false
+    },
+    "settings": {
+      "description": "Realm settings shown in the launcher (rates, realm type...), by section. Values are stored under the reserved key 'realm' of the instance options.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "options"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "label": {
+            "$ref": "common.schema.json#/$defs/localizedText"
+          },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "module.schema.json#/$defs/option"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "consoleActions": {
+      "description": "Ready-made console commands of the GM panel (ADR 0020).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/consoleAction"
+      }
     }
   },
   "additionalProperties": false,
@@ -262,6 +302,34 @@
               "additionalProperties": false
             }
           ]
+        },
+        "startup": {
+          "description": "Output lines marking how far the start went (start progress bar, ADR 0020), in order.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "match",
+              "progress",
+              "label"
+            ],
+            "properties": {
+              "match": {
+                "description": "Text an output line contains.",
+                "type": "string",
+                "minLength": 1
+              },
+              "progress": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "label": {
+                "$ref": "common.schema.json#/$defs/localizedText"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -270,6 +338,128 @@
         "configFile",
         "readiness",
         "stop"
+      ],
+      "additionalProperties": false
+    },
+    "consoleAction": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "command"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "label": {
+          "$ref": "common.schema.json#/$defs/localizedText"
+        },
+        "description": {
+          "$ref": "common.schema.json#/$defs/localizedText"
+        },
+        "command": {
+          "description": "The console command, with {param} placeholders.",
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/consoleParam"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "consoleParam": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "label": {
+          "$ref": "common.schema.json#/$defs/localizedText"
+        },
+        "type": {
+          "enum": [
+            "character",
+            "text",
+            "number",
+            "location",
+            "choice"
+          ]
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        },
+        "default": {
+          "type": "integer"
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "label"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "$ref": "common.schema.json#/$defs/localizedText"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "min",
+              "max"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "choices"
+            ]
+          }
+        }
       ],
       "additionalProperties": false
     }

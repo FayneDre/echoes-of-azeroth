@@ -12,12 +12,15 @@
     title,
     locked,
     onerror,
+    columns = 1,
   }: {
     instanceId: string;
     module: ModuleOptions;
     title: string;
     locked: boolean;
     onerror: (error: CommandError | null) => void;
+    /** Options side by side (long lists). */
+    columns?: number;
   } = $props();
 
   function asText(value: OptionValue): string {
@@ -61,14 +64,14 @@
 
 <section class="panel">
   <h3 class="panel-title">{title}</h3>
-  <ul class="options">
+  <ul class="options" style:--columns={columns}>
     {#each module.options as { option } (option.id)}
       {@const value = draft[option.id] ?? ""}
-      <li>
-        <div class="label">
-          <span>{localized(option.label)}</span>
-          {#if help(option)}<small class="muted">{help(option)}</small>{/if}
-        </div>
+      <li title={help(option) ?? undefined}>
+        <span class="label">
+          {localized(option.label)}
+          {#if help(option)}<span class="help" aria-hidden="true">?</span>{/if}
+        </span>
         {#if option.type === "boolean"}
           <input
             type="checkbox"
@@ -76,12 +79,13 @@
             checked={value === "true"}
             onchange={(e) => set(option.id, String(e.currentTarget.checked))}
           />
-        {:else if option.type === "integer"}
+        {:else if option.type === "integer" || option.type === "number"}
           <input
             type="number"
             disabled={locked}
             min={option.min ?? undefined}
             max={option.max ?? undefined}
+            step={option.type === "number" ? "0.1" : "1"}
             {value}
             onchange={(e) => set(option.id, e.currentTarget.value)}
           />
@@ -105,40 +109,86 @@
 </section>
 
 <style>
+  /* Fills its column; the buttons stay at the bottom. */
+  section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
   .options {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+    column-gap: var(--space-6);
   }
 
   .options li {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-2) 0;
+    gap: var(--space-3);
+    min-height: 38px;
+    padding: var(--space-1) 0;
     border-bottom: 1px solid var(--border);
-  }
-
-  .options li:last-child {
-    border-bottom: none;
   }
 
   .label {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    min-width: 0;
+    font-size: 0.92rem;
+    line-height: 1.3;
   }
 
+  /* The help text is the row's tooltip. */
+  .help {
+    display: inline-grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    margin-left: var(--space-1);
+    border: 1px solid var(--frame-light);
+    border-radius: 50%;
+    font-size: 0.65rem;
+    color: var(--accent);
+    vertical-align: 1px;
+    cursor: help;
+  }
+
+  input[type="number"] {
+    width: 6rem;
+  }
+
+  select {
+    max-width: 55%;
+  }
+
+  /* Hint on its own line, buttons under it on the right: never squeezed. */
   .apply {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
+    gap: var(--space-2) var(--space-3);
+    margin-top: auto;
+    padding-top: var(--space-3);
   }
 
   .apply p {
-    flex: 1;
+    flex: 1 1 100%;
     margin: 0;
+    font-size: 0.82rem;
+  }
+
+  .apply .btn {
+    padding: var(--space-1) var(--space-3);
     font-size: 0.85rem;
+  }
+
+  .apply .btn-play {
+    min-width: 8rem;
+    font-size: 0.95rem;
   }
 </style>

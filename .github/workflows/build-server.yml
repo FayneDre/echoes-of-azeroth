@@ -197,7 +197,7 @@ jobs:
             $v = $env:BOOST_VERSION; $u = $v -replace '\.', '_'
             $exe = Join-Path $env:RUNNER_TEMP 'boost.exe'
             # SourceForge serves the HTML page to browser user agents.
-            Get-Download "https://downloads.sourceforge.net/project/boost/boost-binaries/$v/boost_$u-msvc-14.3-64.exe" $exe 'eoa-ci' 50
+            Get-Download "https://downloads.sourceforge.net/project/boost/boost-binaries/$v/boost_$u-msvc-14.3-64.exe" $exe 'rk-ci' 50
             $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:BOOST_ROOT" -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Boost installer exit code $($p.ExitCode)" }
           }
@@ -406,11 +406,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       BUILD_KEY: ${{ needs.plan.outputs.build-key }}
       TAG: build-${{ inputs.emulator || 'azerothcore' }}-${{ inputs.flavor || 'playerbot' }}-${{ needs.plan.outputs.build-key }}
-      HAS_KEY: ${{ secrets.EOA_INDEX_SIGNING_KEY != '' }}
+      HAS_KEY: ${{ secrets.RK_INDEX_SIGNING_KEY != '' }}
     steps:
       - name: Check the signing key
         if: env.HAS_KEY != 'true'
-        run: echo "::warning::EOA_INDEX_SIGNING_KEY is not set, nothing is published."
+        run: echo "::warning::RK_INDEX_SIGNING_KEY is not set, nothing is published."
 
       - uses: actions/checkout@v7
         if: env.HAS_KEY == 'true'
@@ -472,7 +472,7 @@ jobs:
       - name: Update and sign the index
         if: env.HAS_KEY == 'true'
         env:
-          EOA_INDEX_SIGNING_KEY: ${{ secrets.EOA_INDEX_SIGNING_KEY }}
+          RK_INDEX_SIGNING_KEY: ${{ secrets.RK_INDEX_SIGNING_KEY }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/out"

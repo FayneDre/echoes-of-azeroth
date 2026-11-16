@@ -14,7 +14,7 @@ export const LOCALES: { id: Locale; label: string }[] = [
 ];
 
 const dictionaries: Record<Locale, Partial<Record<MessageKey, string>>> = { en, fr };
-const STORAGE_KEY = "eoa.locale";
+const STORAGE_KEY = "rk.locale";
 
 function initialLocale(): Locale {
   try {
@@ -59,4 +59,9 @@ export function localized(text: LocalizedText): string {
 /** Whether a message exists (error codes come from the backend). */
 export function hasMessage(key: string): key is MessageKey {
   return key in en;
+}
+
+/** Bytes as gigabytes with one decimal, in the current locale's format. */
+export function gigabytes(bytes: number): string {
+  return new Intl.NumberFormat(current, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1e9);
 }

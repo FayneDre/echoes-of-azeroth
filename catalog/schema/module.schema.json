@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/module.schema.json",
+  "$id": "https://realmkeeper.github.io/schema/v1/module.schema.json",
   "title": "Module manifest",
   "description": "A server module. All catalog modules are compiled into the 'full build' of a flavor; the launcher installs/removes them by toggling configuration and applying their SQL. Lives at catalog/emulators/<emulator>/modules/<id>.json.",
   "type": "object",
@@ -348,6 +348,44 @@
           "additionalProperties": false
         },
         {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "label",
+            "target",
+            "default"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "type": {
+              "const": "number"
+            },
+            "label": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "help": {
+              "$ref": "common.schema.json#/$defs/localizedText"
+            },
+            "target": {
+              "$ref": "#/$defs/configTarget"
+            },
+            "default": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Decimal value (rates: 1 = upstream speed)."
+        },
+        {
           "description": "Mutually exclusive choice. Each choice may install assets and set config values.",
           "type": "object",
           "required": [
@@ -423,10 +461,9 @@
           "$ref": "common.schema.json#/$defs/id"
         },
         "source": {
-          "description": "An archive (.zip or .7z) of the module repository at its pinned commit.",
+          "description": "An archive (.zip or .7z): a file of the module repository at its pinned commit ('path'), or GitHub's archive of another repository at a pinned commit ('repository' + 'commit').",
           "type": "object",
           "required": [
-            "path",
             "size",
             "sha256"
           ],
@@ -443,6 +480,16 @@
                 }
               ]
             },
+            "repository": {
+              "description": "Another GitHub repository (https://github.com/<owner>/<repo>); its archive at 'commit' is downloaded.",
+              "type": "string",
+              "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            },
+            "commit": {
+              "description": "Full commit of 'repository'.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
             "size": {
               "type": "integer",
               "minimum": 1
@@ -452,7 +499,39 @@
               "pattern": "^[0-9a-f]{64}$"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "path"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "repository"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "commit"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "required": [
+                "repository",
+                "commit"
+              ],
+              "not": {
+                "required": [
+                  "path"
+                ]
+              }
+            }
+          ]
         },
         "client": {
           "description": "Archive members copied into the client patch directory (tracked and removable).",
@@ -463,6 +542,13 @@
         },
         "server": {
           "description": "Archive members overlaid on the instance server data directory (e.g. 'dbc/Spell.dbc').",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assetFile"
+          }
+        },
+        "addons": {
+          "description": "Archive folders installed as client add-ons ('from' = folder of the archive, 'to' = the add-on folder name), tracked and removable (ADR 0020).",
           "type": "array",
           "items": {
             "$ref": "#/$defs/assetFile"

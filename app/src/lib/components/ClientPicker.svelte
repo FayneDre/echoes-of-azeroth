@@ -1,7 +1,16 @@
 <script lang="ts">
-  // The player's own game folder (never distributed, principle 7): picked
-  // with the system dialog, checked by the backend (build, language).
-  import { api, asCommandError, pickFolder, type ClientSummary, type ClientView, type CommandError } from "../api";
+  // The player's own game folder (never distributed, principle 7): found in
+  // the usual places or picked with the system dialog, checked by the
+  // backend (build, language).
+  import {
+    api,
+    asCommandError,
+    pickFolder,
+    type ClientSummary,
+    type ClientView,
+    type CommandError,
+    type FoundClient,
+  } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import { refresh } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
@@ -12,6 +21,19 @@
   let busy = $state(false);
   /** Folder waiting for a language choice (several installed). */
   let pending = $state<{ path: string; locales: string[] } | null>(null);
+  /** Clients found on this computer; `null` while looking. */
+  let found = $state<FoundClient[] | null>(null);
+  let searched = false;
+
+  // Looked for once, while no folder is chosen.
+  $effect(() => {
+    if (registered || searched) return;
+    searched = true;
+    api
+      .findClients(client.id)
+      .then((list) => (found = list))
+      .catch(() => (found = []));
+  });
 
   async function register(path: string, locale: string | null) {
     busy = true;
@@ -53,7 +75,27 @@
     {/if}
   {:else}
     <p class="muted">{t("client.explain", { version: client.version, build: client.build })}</p>
-    <button class="btn" disabled={busy} onclick={choose}>{t("client.choose")}</button>
+    {#if found === null}
+      <p class="muted searching">{t("client.searching")}</p>
+    {:else if found.length > 0}
+      <ul class="found">
+        {#each found as candidate (candidate.path)}
+          <li>
+            <code title={candidate.path}>{candidate.path}</code>
+            <button
+              class="btn"
+              disabled={busy}
+              onclick={() => register(candidate.path, candidate.locales.length === 1 ? (candidate.locales[0] ?? null) : null)}
+            >
+              {t("client.useFound")}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    <button class="btn" disabled={busy} onclick={choose}>
+      {found && found.length > 0 ? t("client.chooseOther") : t("client.choose")}
+    </button>
   {/if}
 
   {#if pending}
@@ -116,6 +158,32 @@
 
   .dot.bad {
     background: var(--danger);
+  }
+
+  .searching {
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+
+  .found {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .found li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .found code {
+    flex: 1;
+    min-width: 0;
   }
 
   .locales {

@@ -1,6 +1,16 @@
 <script lang="ts">
   import "@fontsource-variable/cinzel";
-  import { api, asCommandError, inDesktopApp, openExternal, type CommandError, type EmulatorOverview } from "./lib/api";
+  // Only the two ornate capitals of the wordmark use it.
+  import "@fontsource/cinzel-decorative/latin-700.css";
+  import {
+    api,
+    asCommandError,
+    copyText,
+    inDesktopApp,
+    openExternal,
+    type CommandError,
+    type EmulatorOverview,
+  } from "./lib/api";
   import Bots from "./lib/components/Bots.svelte";
   import Backups from "./lib/components/Backups.svelte";
   import Account from "./lib/components/Account.svelte";
@@ -8,14 +18,19 @@
   import CrashNotice from "./lib/components/CrashNotice.svelte";
   import AppUpdateNotice from "./lib/components/AppUpdateNotice.svelte";
   import ErrorBox from "./lib/components/ErrorBox.svelte";
+  import ProgressPanel from "./lib/components/ProgressPanel.svelte";
   import { connect, launcher } from "./lib/launcher.svelte";
-  import Emblem from "./lib/emblems/Emblem.svelte";
+  import Logo from "./lib/Logo.svelte";
   import Home from "./lib/components/Home.svelte";
   import Rail from "./lib/components/Rail.svelte";
   import ServerSettings from "./lib/components/ServerSettings.svelte";
   import WindowControls from "./lib/components/WindowControls.svelte";
+  import WhatsNew from "./lib/components/WhatsNew.svelte";
+  import MissingLocation from "./lib/components/MissingLocation.svelte";
+  import { loadPreferences } from "./lib/preferences.svelte";
   import { i18n, LOCALES, t, type MessageKey } from "./lib/i18n/i18n.svelte";
   import { processLabel } from "./lib/labels";
+  import { TEXT_SIZES, textSize } from "./lib/textSize.svelte";
 
   type CatalogState =
     | { status: "loading" }
@@ -23,16 +38,17 @@
     | { status: "error"; error: CommandError }
     | { status: "ready"; realms: EmulatorOverview[] };
 
-  const ISSUES_URL = "https://github.com/FayneDre/echoes-of-azeroth/issues";
+  const ISSUES_URL = "https://github.com/FayneDre/realmkeeper/issues";
 
   type TabId = "home" | "account" | "settings" | "bots" | "backups";
 
-  const TABS: { id: TabId; label: MessageKey; ready: boolean }[] = [
-    { id: "home", label: "nav.home", ready: true },
-    { id: "account", label: "nav.account", ready: true },
-    { id: "settings", label: "nav.settings", ready: true },
-    { id: "bots", label: "nav.bots", ready: true },
-    { id: "backups", label: "nav.backups", ready: true },
+  /** Every tab but Home acts on an installed server. */
+  const TABS: { id: TabId; label: MessageKey; needsServer: boolean }[] = [
+    { id: "home", label: "nav.home", needsServer: false },
+    { id: "account", label: "nav.account", needsServer: true },
+    { id: "settings", label: "nav.settings", needsServer: true },
+    { id: "bots", label: "nav.bots", needsServer: true },
+    { id: "backups", label: "nav.backups", needsServer: true },
   ];
 
   let catalog = $state<CatalogState>({ status: "loading" });
@@ -43,14 +59,49 @@
 
   const realms = $derived(catalog.status === "ready" ? catalog.realms : []);
   const realm = $derived(realms.find((r) => r.id === selectedId) ?? realms[0] ?? null);
-  const instanceId = $derived(
-    launcher.overview?.instances.find((i) => i.record.emulator === realm?.id)?.record.id ?? null,
-  );
+  const instance = $derived(launcher.instanceFor(realm?.id));
+  const instanceId = $derived(instance?.record.id ?? null);
+  const serverInstalled = $derived(instance?.installed ?? false);
+  const tabEnabled = (item: (typeof TABS)[number]) => !item.needsServer || serverInstalled;
+
+  // A realm without a server (another realm picked, or one just uninstalled) only has Home.
+  $effect(() => {
+    const current = TABS.find((item) => item.id === tab);
+    if (current && !tabEnabled(current)) tab = "home";
+  });
   const session = $derived(instanceId ? launcher.session(instanceId) : null);
 
   $effect(() => {
     document.documentElement.lang = i18n.locale;
   });
+
+  // The notification area menu speaks the player's language.
+  $effect(() => {
+    if (!inDesktopApp()) return;
+    void api
+      .setTrayTexts({
+        show: t("tray.show"),
+        stop: t("tray.stop"),
+        quit: t("tray.quit"),
+        shutdown: t("os.shutdownReason"),
+        awake: t("os.awakeReason"),
+        ready: t("os.realmReady"),
+      })
+      .catch(() => {});
+  });
+
+  /** Diagnostic report copy: "copied" or "failed" shortly after a click. */
+  let diagnostic = $state<"idle" | "working" | "copied" | "failed">("idle");
+  async function copyDiagnostic() {
+    diagnostic = "working";
+    try {
+      await copyText(await api.diagnosticReport());
+      diagnostic = "copied";
+    } catch {
+      diagnostic = "failed";
+    }
+    setTimeout(() => (diagnostic = "idle"), 4000);
+  }
 
   $effect(() => {
     if (!inDesktopApp()) {
@@ -58,6 +109,7 @@
       return;
     }
     connect();
+    loadPreferences();
     api
       .catalogOverview()
       .then((list) => (catalog = { status: "ready", realms: list }))
@@ -75,9 +127,12 @@
   <!-- Own title bar (native decorations are off): drag anywhere that is not a control. -->
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
-      <span class="logo"><Emblem emblem="generic" accent="var(--accent)" label="" size={40} /></span>
+      <span class="logo"><Logo size={42} /></span>
       <div class="brand-text">
-        <h1 class="display">{t("app.title")}</h1>
+        <!-- The wordmark (ADR 0021): ornate R and K, the rest in Cinzel. -->
+        <h1 class="display wordmark" aria-label={t("app.title")}>
+          <span class="cap">R</span>ealm<span class="cap">K</span>eeper
+        </h1>
         <p class="muted">{t("app.tagline")}</p>
       </div>
     </div>
@@ -86,8 +141,8 @@
       {#each TABS as item (item.id)}
         <button
           class:active={tab === item.id}
-          disabled={!item.ready}
-          title={item.ready ? undefined : t("common.soon")}
+          disabled={!tabEnabled(item)}
+          title={tabEnabled(item) ? undefined : t("nav.needsServer")}
           aria-current={tab === item.id ? "page" : undefined}
           onclick={() => (tab = item.id)}
         >
@@ -116,11 +171,8 @@
     <Rail {realms} selected={realm?.id ?? null} onselect={(id) => (selectedId = id)} />
 
     <div class="main">
+      <div class="stage">
       <main>
-        {#if inDesktopApp()}
-          <CrashNotice />
-          <AppUpdateNotice />
-        {/if}
         {#if catalog.status === "loading"}
           <p class="muted">{t("modules.loading")}</p>
         {:else if catalog.status === "unavailable"}
@@ -142,9 +194,53 @@
         {/if}
       </main>
 
+      <!-- Over the page, never in its flow: the pages are laid out to fit the
+           window without a scrollbar, whatever is in progress. -->
+      {#if launcher.progress}
+        <div class="overlay">
+          <ProgressPanel
+            progress={launcher.progress}
+            title={launcher.progress.title
+              ? t(launcher.progress.title)
+              : launcher.overview?.instances.find((i) => i.record.id === launcher.progress?.instance)?.installed
+                ? t("progress.title")
+                : t("wizard.installing")}
+          />
+        </div>
+      {/if}
+      <!-- The console drawer opens over the page (bottom), never moving it. -->
+      {#if realm && terminal && instanceId && session}
+        <div class="drawer">
+          <Console
+            instance={instanceId}
+            process={terminal}
+            console={realm.console === terminal}
+            onclose={() => (terminal = null)}
+          />
+        </div>
+      {/if}
+      {#if inDesktopApp()}
+        <div class="notices">
+          <MissingLocation />
+          <CrashNotice />
+          <AppUpdateNotice />
+          <WhatsNew />
+        </div>
+      {/if}
+      </div>
+
       {#if realm}
         <div class="terminals">
-          <span class="display terminals-title">▸ {t("terminals.title")}</span>
+          <button
+            class="display terminals-title"
+            disabled={!session}
+            aria-expanded={terminal !== null}
+            title={session ? undefined : t("terminals.notStarted")}
+            onclick={() => (terminal = terminal ? null : (realm.console ?? realm.processes[0] ?? null))}
+          >
+            <span class="caret" class:open={terminal !== null} aria-hidden="true">▸</span>
+            {t("terminals.title")}
+          </button>
           {#each realm.processes as id (id)}
             <button
               class="btn"
@@ -157,18 +253,38 @@
             </button>
           {/each}
         </div>
-        {#if terminal && instanceId && session}
-          <Console
-            instance={instanceId}
-            process={terminal}
-            console={realm.console === terminal}
-            onclose={() => (terminal = null)}
-          />
-        {/if}
       {/if}
 
       <footer>
         <small class="notice" title={t("footer.disclaimer")}>{t("footer.short")}</small>
+        <div class="text-size" role="group" aria-label={t("textSize.label")}>
+          {#each TEXT_SIZES as size, index (size)}
+            <button
+              class:active={textSize.value === size}
+              aria-pressed={textSize.value === size}
+              aria-label={t(`textSize.${size}`)}
+              title={t(`textSize.${size}`)}
+              style:font-size={`${0.75 + index * 0.12}rem`}
+              onclick={() => (textSize.value = size)}
+            >
+              A
+            </button>
+          {/each}
+        </div>
+        {#if inDesktopApp()}
+          <button
+            class="footer-link"
+            disabled={diagnostic === "working"}
+            title={t("diagnostic.hint")}
+            onclick={copyDiagnostic}
+          >
+            {diagnostic === "copied"
+              ? t("diagnostic.copied")
+              : diagnostic === "failed"
+                ? t("diagnostic.failed")
+                : t("diagnostic.copy")}
+          </button>
+        {/if}
         <a
           href={ISSUES_URL}
           onclick={(event) => {
@@ -193,6 +309,9 @@
   }
 
   .titlebar {
+    /* Window chrome: keeps its size whatever the text size preference, so
+       the window buttons always fit. */
+    zoom: calc(1 / var(--text-scale, 1));
     display: flex;
     align-items: center;
     gap: var(--space-4);
@@ -203,7 +322,8 @@
   }
 
   .brand {
-    flex: 0 1 auto;
+    /* The title is never squeezed: the tabs make room. */
+    flex: none;
     min-width: 0;
     display: flex;
     align-items: center;
@@ -224,7 +344,10 @@
 
   .brand h1 {
     margin: 0;
-    font-size: 1.45rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+
     line-height: 1.2;
     color: var(--title);
     text-shadow:
@@ -234,6 +357,14 @@
 
   .brand-text {
     min-width: 0;
+  }
+
+  .wordmark .cap {
+    font-family: "Cinzel Decorative", var(--font-display);
+    font-weight: 700;
+    font-size: 1.3em;
+    line-height: 1;
+    color: var(--wordmark-cap);
   }
 
   .brand p {
@@ -271,14 +402,55 @@
     flex-direction: column;
   }
 
-  main {
+  .stage {
+    position: relative;
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding: var(--space-5) var(--space-6);
+    display: flex;
+  }
+
+  /* Every page is laid out to fit the minimum window (1024 x 760) without a
+     scrollbar; `auto` stays only as a safety net. */
+  main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--space-4) var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-4);
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: var(--space-6);
+    background: var(--shade-deep);
+    backdrop-filter: blur(2px);
+  }
+
+  .overlay > :global(*) {
+    width: min(640px, 100%);
+  }
+
+  .notices {
+    position: absolute;
+    right: var(--space-5);
+    bottom: var(--space-4);
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: min(360px, calc(100% - 2 * var(--space-5)));
+    pointer-events: none;
+  }
+
+  .notices > :global(*) {
+    pointer-events: auto;
   }
 
   .closing {
@@ -298,6 +470,11 @@
     color: var(--title);
   }
 
+  .terminals .btn {
+    padding: 2px var(--space-3);
+    font-size: 0.85rem;
+  }
+
   .terminals .btn.active {
     border-color: var(--frame-light);
     box-shadow: 0 0 8px var(--glow);
@@ -307,16 +484,54 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-6);
+    padding: var(--space-1) var(--space-5);
     border-top: 2px solid var(--frame);
     background: linear-gradient(0deg, var(--shade), transparent);
   }
 
   .terminals-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
     margin-right: var(--space-3);
+    padding: 0;
+    border: none;
+    background: none;
     color: var(--title);
     font-size: 0.85rem;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .terminals-title:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  .caret {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+
+  .caret.open {
+    transform: rotate(90deg);
+  }
+
+  .drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    height: min(55%, 420px);
+    display: flex;
+    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.45);
+  }
+
+  .drawer > :global(*) {
+    flex: 1;
+    min-width: 0;
   }
 
   footer {
@@ -336,9 +551,45 @@
     text-overflow: ellipsis;
   }
 
-  footer a {
+  .text-size {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+  }
+
+  .text-size button {
+    padding: 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--text-muted);
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .text-size button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  footer a,
+  .footer-link {
     flex: none;
     color: var(--accent);
     font-size: 0.82rem;
+  }
+
+  .footer-link {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .footer-link:disabled {
+    cursor: progress;
+    opacity: 0.6;
   }
 </style>

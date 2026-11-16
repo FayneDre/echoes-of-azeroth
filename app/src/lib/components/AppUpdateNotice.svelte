@@ -5,6 +5,7 @@
   import { api, asCommandError, type AppUpdate, type CommandError } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
+  import { saveWhatsNew } from "../whatsNew";
   import ErrorBox from "./ErrorBox.svelte";
 
   let update = $state<AppUpdate | null>(null);
@@ -25,6 +26,8 @@
   async function install() {
     installing = true;
     error = null;
+    // Shown after the restart, once this version runs.
+    if (update) saveWhatsNew({ version: update.version, notes: update.notes });
     try {
       await api.installAppUpdate();
     } catch (raw) {
@@ -56,8 +59,10 @@
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--frame-light);
-    background: var(--shade-soft);
-    box-shadow: 0 0 8px var(--glow);
+    background: var(--bg-elevated);
+    box-shadow:
+      0 0 8px var(--glow),
+      var(--panel-shadow);
   }
 
   .update p {

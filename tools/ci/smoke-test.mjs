@@ -220,7 +220,7 @@ const toggle = (enabled) => {
 };
 
 // ------------------------------------------------------------------ mysql
-// Same server options as the launcher's my.ini (crates/eoa-db/src/settings.rs)
+// Same server options as the launcher's my.ini (crates/rk-db/src/settings.rs)
 // where they matter for the data directory.
 const mysqlPort = 3306;
 const databases = ["acore_auth", "acore_characters", "acore_world", "acore_playerbots"];

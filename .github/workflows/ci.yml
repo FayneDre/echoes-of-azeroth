@@ -47,7 +47,7 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: MySQL version (for the eoa-db integration tests)
+      - name: MySQL version (for the rk-db integration tests)
         id: mysql
         shell: bash
         run: echo "key=$(node -p 'const c=require("./catalog/components/mysql-8-4.json"); c.version + "-" + c.platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
@@ -64,11 +64,31 @@ jobs:
 
       - name: tests (incl. real MySQL lifecycle)
         env:
-          EOA_MYSQL_BASEDIR: C:\tools\mysql\current
+          RK_MYSQL_BASEDIR: C:\tools\mysql\current
         run: cargo test --workspace --locked
 
       - name: Catalog cross-reference validation
-        run: cargo run --locked -p eoa-cli -- catalog validate
+        run: cargo run --locked -p rk-cli -- catalog validate
+
+      # The debug app with its WebView2 debugging port open, driven over the
+      # DevTools protocol on an empty data root (nothing is installed).
+      - name: Build the debug app for the UI smoke test
+        working-directory: app
+        run: |
+          node ../tools/ci/ui-smoke.mjs config ../target/ui-smoke.tauri.json
+          npx tauri build --debug --no-bundle --config ../target/ui-smoke.tauri.json
+
+      - name: UI smoke test
+        run: node tools/ci/ui-smoke.mjs run --exe target/debug/realmkeeper.exe --shots target/ui-smoke-shots
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-smoke-shots
+          path: target/ui-smoke-shots
+          if-no-files-found: ignore
+          retention-days: 7
 
   linux-core:
     name: Linux (portable crates)
@@ -79,4 +99,4 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: tests (core crates only, keeps them portable)
-        run: cargo test --locked -p eoa-core -p eoa-catalog -p eoa-conf -p eoa-db -p eoa-engine -p eoa-store -p eoa-launcher -p eoa-cli
+        run: cargo test --locked -p rk-core -p rk-catalog -p rk-conf -p rk-db -p rk-engine -p rk-store -p rk-launcher -p rk-cli

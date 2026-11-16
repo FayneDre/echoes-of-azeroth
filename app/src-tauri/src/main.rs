@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    echoes_of_azeroth_lib::run()
+    realmkeeper_lib::run()
 }

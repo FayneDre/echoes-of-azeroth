@@ -7,14 +7,12 @@
   import { launcher } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
   import OptionsPanel from "./OptionsPanel.svelte";
-  import ProgressPanel from "./ProgressPanel.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
-  const instance = $derived(launcher.overview?.instances.find((i) => i.record.emulator === realm.id) ?? null);
+  const instance = $derived(launcher.instanceFor(realm.id));
   const id = $derived(instance?.record.id ?? null);
   const running = $derived(id !== null && launcher.isRunning(id));
-  const progress = $derived(id !== null && launcher.progress?.instance === id ? launcher.progress : null);
   const locked = $derived(
     running || launcher.progress !== null || !!instance?.unfinished || !instance?.installed,
   );
@@ -49,9 +47,6 @@
   }
 </script>
 
-{#if progress}
-  <ProgressPanel {progress} title={t("progress.title")} />
-{/if}
 {#if error}
   <ErrorBox {error} />
 {/if}
@@ -74,6 +69,7 @@
         instanceId={id}
         {module}
         title={name(module.module)}
+        columns={2}
         {locked}
         onerror={(e) => (error = e)}
       />

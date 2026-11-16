@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/client.schema.json",
+  "$id": "https://realmkeeper.github.io/schema/v1/client.schema.json",
   "title": "Game client manifest",
   "description": "Describes a game client version the launcher can detect, configure and start. The client itself is always provided by the user and never distributed. Lives at catalog/clients/<id>.json.",
   "type": "object",
@@ -132,6 +132,19 @@
       },
       "additionalProperties": false
     },
+    "addons": {
+      "type": "object",
+      "required": [
+        "directory"
+      ],
+      "properties": {
+        "directory": {
+          "description": "Directory receiving add-ons, relative to the client root.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "cache": {
       "type": "object",
       "required": [
@@ -166,6 +179,11 @@
         },
         "size": {
           "description": "Size in bytes of the download.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "unpackedSize": {
+          "description": "Approximate size in bytes once unpacked, measured on a real install (free-space check before an install).",
           "type": "integer",
           "minimum": 1
         },

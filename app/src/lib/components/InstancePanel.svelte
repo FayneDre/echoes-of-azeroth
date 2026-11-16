@@ -12,10 +12,11 @@
   import Emblem from "../emblems/Emblem.svelte";
   import { localized, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation, startSession, type ProcessState } from "../launcher.svelte";
+  import { preferences } from "../preferences.svelte";
   import { processLabel } from "../labels";
   import ClientPicker from "./ClientPicker.svelte";
   import ErrorBox from "./ErrorBox.svelte";
-  import ProgressPanel from "./ProgressPanel.svelte";
+  import JoinLan from "./JoinLan.svelte";
 
   let { realm, instance, client }: { realm: EmulatorOverview; instance: InstanceView; client: ClientView | null } =
     $props();
@@ -29,6 +30,8 @@
   const clientReady = $derived(client !== null && client.problem === null);
   /** Interrupted change, or an installation that never completed. */
   const incomplete = $derived(!!instance.unfinished || !instance.installed);
+  /** The realm's folder was renamed or moved: its paths are written again. */
+  const moved = $derived(instance.moved && !incomplete);
 
   let keepRunning = $state(false);
   let error = $state<CommandError | null>(null);
@@ -59,6 +62,12 @@
   const play = () => act(() => startSession(id, true, keepRunning));
   const startOnly = () => act(() => startSession(id, false, true));
   const stop = () => act(() => api.stop(id));
+  /** Servers already up: launches only the game (they keep running after). */
+  let launching = $state(false);
+  function launchGame() {
+    launching = true;
+    void act(() => api.launchGame(id)).finally(() => setTimeout(() => (launching = false), 3000));
+  }
 
   /** Finishes the interrupted change with the plan it started with. */
   const resume = () => act(() => runOperation(id, () => api.resume(id)));
@@ -83,6 +92,23 @@
     });
   }
 
+  /** Ticks every 30 s while online, for the uptime. */
+  let now = $state(Date.now());
+  $effect(() => {
+    if (status !== "online") return;
+    now = Date.now();
+    const timer = setInterval(() => (now = Date.now()), 30_000);
+    return () => clearInterval(timer);
+  });
+
+  const uptime = $derived.by(() => {
+    if (!session?.readyAt) return null;
+    const minutes = Math.floor(Math.max(0, now - session.readyAt) / 60_000);
+    if (minutes < 1) return t("live.justNow");
+    if (minutes < 60) return t("progress.minutes", { count: minutes });
+    return t("progress.hours", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+  });
+
   const STATUS_KEYS: Record<Status, MessageKey> = {
     stopped: "status.stopped",
     starting: "status.starting",
@@ -103,7 +129,7 @@
 <section class="panel hero">
   <div class="hero-head">
     {#if realm.client}
-      <Emblem emblem={realm.client.emblem} accent={realm.client.accent} label={localized(realm.client.shortName)} size={68} />
+      <Emblem emblem={realm.client.emblem} accent={realm.client.accent} label={localized(realm.client.shortName)} size={56} />
     {/if}
     <div class="hero-title">
       {#if realm.client}
@@ -114,7 +140,7 @@
       </h2>
       <p class="muted">
         {#if status === "online" && session?.game === "running"}
-          {t("home.gameRunning")}
+          {session.keepRunning ? t("home.gameRunningKeep") : t("home.gameRunning")}
         {:else if status === "online" && instance.record.network === "lan" && session?.address}
           {t("home.lanAddress", { address: session.address })}
         {:else if status === "online"}
@@ -127,24 +153,46 @@
       </p>
     </div>
     <div class="actions">
-      {#if running}
-        <button class="btn" disabled={status === "stopping"} onclick={stop}>{t("home.action.stop")}</button>
-      {:else}
-        <button class="btn" disabled={busy || incomplete} onclick={startOnly}>
-          {t("home.action.startServers")}
-        </button>
-        <button class="btn btn-play" disabled={busy || !clientReady || incomplete} onclick={play}>
-          {t("home.action.play")}
-        </button>
+      <div class="buttons">
+        {#if running}
+          <button class="btn" disabled={status === "stopping"} onclick={stop}>{t("home.action.stop")}</button>
+          {#if session?.game !== "running"}
+            <button
+              class="btn btn-play"
+              disabled={status !== "online" || !clientReady || launching}
+              title={status === "online" ? undefined : t("home.playWhenOnline")}
+              onclick={launchGame}
+            >
+              {t("home.action.play")}
+            </button>
+          {/if}
+        {:else}
+          <button class="btn" disabled={busy || incomplete} onclick={startOnly}>
+            {t("home.action.startServers")}
+          </button>
+          <button class="btn btn-play" disabled={busy || !clientReady || incomplete} onclick={play}>
+            {t("home.action.play")}
+          </button>
+        {/if}
+      </div>
+      {#if !running}
+        <label class="keep">
+          <input type="checkbox" bind:checked={keepRunning} />
+          <small>{t("home.keepRunning")}</small>
+        </label>
+      {/if}
+      {#if preferences.value}
+        <label class="keep" title={t("home.hideWhilePlayingHint")}>
+          <input
+            type="checkbox"
+            checked={preferences.value.hideWhilePlaying}
+            onchange={(e) => void preferences.set({ hideWhilePlaying: e.currentTarget.checked })}
+          />
+          <small>{t("home.hideWhilePlaying")}</small>
+        </label>
       {/if}
     </div>
   </div>
-  {#if !running}
-    <label class="keep">
-      <input type="checkbox" bind:checked={keepRunning} />
-      <small>{t("home.keepRunning")}</small>
-    </label>
-  {/if}
 
   <dl class="stats">
     <div>
@@ -171,10 +219,11 @@
     <p>{t("home.unfinished")}</p>
     <button class="btn" disabled={busy || running} onclick={resume}>{t("home.action.resume")}</button>
   </div>
-{/if}
-
-{#if progress}
-  <ProgressPanel {progress} title={t("progress.title")} />
+{:else if moved && !progress}
+  <div class="banner" role="status">
+    <p>{t("home.moved")}</p>
+    <button class="btn" disabled={busy || running} onclick={resume}>{t("home.action.relocate")}</button>
+  </div>
 {/if}
 
 {#if session?.error}
@@ -190,7 +239,7 @@
 {/each}
 
 <div class="columns">
-  <section class="panel">
+  <section class="panel column">
     <h3 class="panel-title">{t("servers.title")}</h3>
     <ul class="rows">
       {#each servers as process (process)}
@@ -205,45 +254,84 @@
           ></span>
           <span class="row-name">{processLabel(process)}</span>
           <span class="muted">{t(PROCESS_KEYS[state])}</span>
+          {#if state === "starting" && session?.startup?.process === process}
+            <!-- Right under the server it belongs to. -->
+            <div class="startup" role="status">
+              <div class="bar" aria-hidden="true">
+                <span style:width={`${Math.round(session.startup.progress * 100)}%`}></span>
+              </div>
+              <p class="muted">
+                {localized(session.startup.label)} · {Math.round(session.startup.progress * 100)} %
+              </p>
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>
-    {#if status === "online" && session?.authPort}
-      <p class="hint muted">
-        {t("home.realmlist", { address: session.address ?? "127.0.0.1", port: session.authPort })}
-      </p>
+    {#if status === "online" && session}
+      <h4 class="sub-title">{t("live.title")}</h4>
+      <ul class="rows live">
+        {#if uptime}
+          <li>
+            <span class="row-name muted">{t("live.uptime")}</span>
+            <span class="value">{uptime}</span>
+          </li>
+        {/if}
+        <li>
+          <span class="row-name muted">{t("live.players")}</span>
+          <span class="value">{session.population?.players ?? "…"}</span>
+        </li>
+        <li>
+          <span class="row-name muted">{t("live.bots")}</span>
+          <span class="value">{session.population?.bots ?? "…"}</span>
+        </li>
+        {#if session.authPort}
+          <li title={t("live.addressHint")}>
+            <span class="row-name muted">{t("live.address")}</span>
+            <code class="value">{session.address ?? "127.0.0.1"}:{session.authPort}</code>
+          </li>
+        {/if}
+      </ul>
     {/if}
   </section>
 
-  <section class="panel">
+  <section class="panel column">
     <h3 class="panel-title">{t("home.client")}</h3>
     {#if realm.client}
       <ClientPicker client={realm.client} registered={client} />
     {/if}
+    <div class="foot">
+      <JoinLan {realm} {client} />
+    </div>
+  </section>
+
+  <section class="panel column">
+    <h3 class="panel-title">{t("maintenance.title")}</h3>
+    <div class="task">
+      <p class="muted" title={t("update.body")}>{updateNote ?? t("update.short")}</p>
+      <button class="btn" disabled={busy || running || incomplete} onclick={update}>
+        {t("update.check")}
+      </button>
+    </div>
+    <div class="task">
+      <p class="muted" title={t("repair.body")}>{repairNote ?? t("repair.short")}</p>
+      <button class="btn" disabled={busy || running || incomplete} onclick={repair}>
+        {t("repair.action")}
+      </button>
+    </div>
   </section>
 </div>
 
-<section class="panel">
-  <h3 class="panel-title">{t("update.title")}</h3>
-  <div class="update">
-    <p class="muted">{updateNote ?? t("update.body")}</p>
-    <button class="btn" disabled={busy || running || incomplete} onclick={update}>
-      {t("update.check")}
-    </button>
-  </div>
-  <div class="update">
-    <p class="muted">{repairNote ?? t("repair.body")}</p>
-    <button class="btn" disabled={busy || running || incomplete} onclick={repair}>
-      {t("repair.action")}
-    </button>
-  </div>
-</section>
-
 <style>
+  .hero {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+
   .hero-head {
     display: flex;
     align-items: center;
-    gap: var(--space-5);
+    gap: var(--space-4);
   }
 
   .hero-title {
@@ -253,6 +341,9 @@
 
   .realm-name {
     margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: 0.8rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -261,7 +352,8 @@
 
   h2 {
     margin: 0;
-    font-size: 1.7rem;
+    font-size: 1.45rem;
+    line-height: 1.25;
     color: var(--title);
     text-shadow: var(--text-shadow);
   }
@@ -280,24 +372,29 @@
 
   .actions {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+
+  .buttons {
+    display: flex;
     gap: var(--space-3);
     align-items: center;
   }
 
   .keep {
     display: flex;
-    justify-content: flex-end;
     align-items: center;
     gap: var(--space-2);
-    margin-top: var(--space-2);
     cursor: pointer;
   }
 
   .stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    margin: var(--space-4) 0 0;
-    padding-top: var(--space-3);
+    margin: var(--space-3) 0 0;
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
 
@@ -348,10 +445,41 @@
     font-size: 0.85rem;
   }
 
+  /* Fills the rest of the page: three columns of equal height. */
   .columns {
+    flex: 1;
+    /* Grows with its content (larger text): the page scrolls instead. */
+    min-height: auto;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .column {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .foot {
+    margin-top: auto;
+  }
+
+  .task {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .task + .task {
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  .task p {
+    margin: 0;
+    font-size: 0.88rem;
   }
 
   .rows {
@@ -362,6 +490,7 @@
 
   .rows li {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-2) 0;
@@ -397,25 +526,47 @@
     background: var(--danger);
   }
 
-  .hint {
-    margin: var(--space-3) 0 0;
+  .sub-title {
+    margin: var(--space-4) 0 var(--space-1);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .live .value {
+    color: var(--title);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Full width under the starting server's row, aligned with its name. */
+  .startup {
+    flex-basis: 100%;
+    padding-left: calc(9px + var(--space-3));
+  }
+
+  .startup p {
+    margin: var(--space-1) 0 0;
     font-size: 0.85rem;
   }
 
-  .update {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
+  .bar {
+    height: 6px;
+    background: var(--border);
+    overflow: hidden;
   }
 
-  .update + .update {
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
+  .bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.6s ease;
   }
 
-  .update p {
-    flex: 1;
-    margin: 0;
+  @media (prefers-reduced-motion: reduce) {
+    .bar span {
+      transition: none;
+    }
   }
 </style>

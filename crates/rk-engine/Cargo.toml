@@ -1,0 +1,32 @@
+[package]
+name = "rk-engine"
+description = "Transactional step executor: journal, resume, rollback, atomic directory swap."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rk-catalog.workspace = true
+rk-conf.workspace = true
+rk-core.workspace = true
+rk-db.workspace = true
+rk-store.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sevenz-rust2.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+zip.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+junction.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

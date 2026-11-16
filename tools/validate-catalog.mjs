@@ -2,7 +2,7 @@
 // Validates every catalog manifest against its JSON Schema, plus the
 // file-layout rules (id == file name, emulator == parent directory).
 // Cross-manifest semantic checks (references, compatibility) live in the
-// Rust `eoa-catalog` crate and run with `cargo run -p eoa-cli -- catalog validate`.
+// Rust `rk-catalog` crate and run with `cargo run -p rk-cli -- catalog validate`.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename, dirname, relative } from "node:path";
@@ -19,7 +19,7 @@ addFormats(ajv);
 for (const file of readdirSync(schemaDir).filter((f) => f.endsWith(".schema.json"))) {
   ajv.addSchema(JSON.parse(readFileSync(join(schemaDir, file), "utf8")));
 }
-const schemaUrl = (kind) => `https://echoes-of-azeroth.github.io/schema/v1/${kind}.schema.json`;
+const schemaUrl = (kind) => `https://realmkeeper.github.io/schema/v1/${kind}.schema.json`;
 
 const jsonFiles = (dir) =>
   existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => join(dir, f)) : [];

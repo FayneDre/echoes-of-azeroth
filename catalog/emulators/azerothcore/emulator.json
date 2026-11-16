@@ -46,6 +46,7 @@
     }
   ],
   "instance": {
+    "diskSize": 2856909827,
     "connection": "127.0.0.1;${db.port};${db.user};${db.password};${db.name}",
     "config": {
       "authserver.conf": {
@@ -95,7 +96,802 @@
       "configFile": "worldserver.conf",
       "args": ["-c", "configs/worldserver.conf"],
       "readiness": { "type": "tcp", "port": "world" },
-      "stop": { "type": "close-stdin", "timeoutSeconds": 600 }
+      "stop": { "type": "close-stdin", "timeoutSeconds": 600 },
+      "startup": [
+        {
+          "match": "Loading World Information...",
+          "progress": 0.02,
+          "label": {
+            "en": "Loading the world",
+            "fr": "Chargement du monde"
+          }
+        },
+        {
+          "match": "Loading SpellInfo Store...",
+          "progress": 0.05,
+          "label": {
+            "en": "Loading spells",
+            "fr": "Chargement des sorts"
+          }
+        },
+        {
+          "match": "Loading Items...",
+          "progress": 0.08,
+          "label": {
+            "en": "Loading items",
+            "fr": "Chargement des objets"
+          }
+        },
+        {
+          "match": "Loading Creature Data...",
+          "progress": 0.11,
+          "label": {
+            "en": "Loading creatures",
+            "fr": "Chargement des créatures"
+          }
+        },
+        {
+          "match": "Loading Quests...",
+          "progress": 0.14,
+          "label": {
+            "en": "Loading quests",
+            "fr": "Chargement des quêtes"
+          }
+        },
+        {
+          "match": "Starting Map System",
+          "progress": 0.17,
+          "label": {
+            "en": "Starting the maps",
+            "fr": "Démarrage des cartes"
+          }
+        },
+        {
+          "match": "Loading Transports...",
+          "progress": 0.19,
+          "label": {
+            "en": "Loading boats and zeppelins",
+            "fr": "Chargement des bateaux et zeppelins"
+          }
+        },
+        {
+          "match": "Load Playerbots Config...",
+          "progress": 0.24,
+          "label": {
+            "en": "Preparing the bots",
+            "fr": "Préparation des bots"
+          }
+        },
+        {
+          "match": "Building equipment cache",
+          "progress": 0.8,
+          "label": {
+            "en": "Equipping the bots",
+            "fr": "Équipement des bots"
+          }
+        },
+        {
+          "match": "mod-playerbots initialized",
+          "progress": 0.95,
+          "label": {
+            "en": "Bots ready",
+            "fr": "Bots prêts"
+          }
+        },
+        {
+          "match": "World Initialized In",
+          "progress": 0.98,
+          "label": {
+            "en": "Opening the realm",
+            "fr": "Ouverture du royaume"
+          }
+        }
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "id": "rates",
+      "label": {
+        "en": "Rates",
+        "fr": "Taux"
+      },
+      "options": [
+        {
+          "id": "xp-kill",
+          "type": "number",
+          "label": {
+            "en": "Experience from kills",
+            "fr": "Expérience des monstres tués"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.XP.Kill"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50,
+          "help": {
+            "en": "1 = normal speed, 2 = twice as fast. 0 turns it off.",
+            "fr": "1 = vitesse normale, 2 = deux fois plus vite. 0 la désactive."
+          }
+        },
+        {
+          "id": "xp-quest",
+          "type": "number",
+          "label": {
+            "en": "Experience from quests",
+            "fr": "Expérience des quêtes"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.XP.Quest"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "xp-explore",
+          "type": "number",
+          "label": {
+            "en": "Experience from exploration",
+            "fr": "Expérience d'exploration"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.XP.Explore"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "reputation",
+          "type": "number",
+          "label": {
+            "en": "Reputation gains",
+            "fr": "Gains de réputation"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Reputation.Gain"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "honor",
+          "type": "number",
+          "label": {
+            "en": "Honor gains",
+            "fr": "Gains d'honneur"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Honor"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "money",
+          "type": "number",
+          "label": {
+            "en": "Money looted",
+            "fr": "Argent ramassé"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Drop.Money"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "drop-uncommon",
+          "type": "number",
+          "label": {
+            "en": "Uncommon item drops (green)",
+            "fr": "Butin d'objets inhabituels (verts)"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Drop.Item.Uncommon"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "drop-rare",
+          "type": "number",
+          "label": {
+            "en": "Rare item drops (blue)",
+            "fr": "Butin d'objets rares (bleus)"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Drop.Item.Rare"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "id": "drop-epic",
+          "type": "number",
+          "label": {
+            "en": "Epic item drops (purple)",
+            "fr": "Butin d'objets épiques (violets)"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Rate.Drop.Item.Epic"
+          },
+          "default": 1,
+          "min": 0,
+          "max": 50
+        }
+      ]
+    },
+    {
+      "id": "realm",
+      "label": {
+        "en": "Realm",
+        "fr": "Royaume"
+      },
+      "options": [
+        {
+          "id": "realm-type",
+          "type": "choice",
+          "label": {
+            "en": "Realm type",
+            "fr": "Type de royaume"
+          },
+          "default": "normal",
+          "choices": [
+            {
+              "id": "normal",
+              "label": {
+                "en": "Normal (PvE)",
+                "fr": "Normal (JcE)"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "GameType": 0
+                }
+              }
+            },
+            {
+              "id": "pvp",
+              "label": {
+                "en": "PvP",
+                "fr": "JcJ"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "GameType": 1
+                }
+              }
+            },
+            {
+              "id": "rp",
+              "label": {
+                "en": "Role-play",
+                "fr": "Jeu de rôle"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "GameType": 6
+                }
+              }
+            },
+            {
+              "id": "rp-pvp",
+              "label": {
+                "en": "Role-play PvP",
+                "fr": "Jeu de rôle JcJ"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "GameType": 8
+                }
+              }
+            },
+            {
+              "id": "ffa-pvp",
+              "label": {
+                "en": "Free-for-all PvP",
+                "fr": "JcJ sauvage (tous contre tous)"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "GameType": 16
+                }
+              }
+            }
+          ],
+          "help": {
+            "en": "PvP realms flag players for combat in contested zones. Also shown in the game's realm list.",
+            "fr": "Sur un royaume JcJ, les joueurs sont attaquables dans les zones contestées. Affiché aussi dans la liste des royaumes du jeu."
+          }
+        },
+        {
+          "id": "cross-faction-group",
+          "type": "boolean",
+          "label": {
+            "en": "Groups between factions",
+            "fr": "Groupes entre factions"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AllowTwoSide.Interaction.Group"
+          },
+          "default": false
+        },
+        {
+          "id": "cross-faction-guild",
+          "type": "boolean",
+          "label": {
+            "en": "Guilds between factions",
+            "fr": "Guildes entre factions"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AllowTwoSide.Interaction.Guild"
+          },
+          "default": false
+        },
+        {
+          "id": "cross-faction-chat",
+          "type": "boolean",
+          "label": {
+            "en": "Chat between factions",
+            "fr": "Discussion entre factions"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AllowTwoSide.Interaction.Chat"
+          },
+          "default": false
+        },
+        {
+          "id": "cross-faction-auction",
+          "type": "boolean",
+          "label": {
+            "en": "Shared auction houses",
+            "fr": "Hôtels des ventes communs aux factions"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AllowTwoSide.Interaction.Auction"
+          },
+          "default": false
+        },
+        {
+          "id": "instance-ignore-level",
+          "type": "boolean",
+          "label": {
+            "en": "Enter dungeons at any level",
+            "fr": "Entrer dans les donjons à tout niveau"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Instance.IgnoreLevel"
+          },
+          "default": false
+        },
+        {
+          "id": "instance-ignore-raid",
+          "type": "boolean",
+          "label": {
+            "en": "Enter raids without a raid group",
+            "fr": "Entrer en raid sans groupe de raid"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "Instance.IgnoreRaid"
+          },
+          "default": false
+        }
+      ]
+    },
+    {
+      "id": "characters",
+      "label": {
+        "en": "Characters",
+        "fr": "Personnages"
+      },
+      "options": [
+        {
+          "id": "max-level",
+          "type": "integer",
+          "label": {
+            "en": "Maximum level",
+            "fr": "Niveau maximum"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "MaxPlayerLevel"
+          },
+          "default": 80,
+          "min": 1,
+          "max": 80
+        },
+        {
+          "id": "start-level",
+          "type": "integer",
+          "label": {
+            "en": "Starting level",
+            "fr": "Niveau de départ"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "StartPlayerLevel"
+          },
+          "default": 1,
+          "min": 1,
+          "max": 80
+        },
+        {
+          "id": "start-level-heroic",
+          "type": "integer",
+          "label": {
+            "en": "Death Knight starting level",
+            "fr": "Niveau de départ des chevaliers de la mort"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "StartHeroicPlayerLevel"
+          },
+          "default": 55,
+          "min": 55,
+          "max": 80
+        },
+        {
+          "id": "start-money",
+          "type": "integer",
+          "label": {
+            "en": "Starting money (copper)",
+            "fr": "Argent de départ (cuivre)"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "StartPlayerMoney"
+          },
+          "default": 0,
+          "min": 0,
+          "max": 2000000000,
+          "help": {
+            "en": "In copper coins: 100 = 1 silver, 10000 = 1 gold.",
+            "fr": "En pièces de cuivre : 100 = 1 argent, 10000 = 1 or."
+          }
+        },
+        {
+          "id": "all-flight-paths",
+          "type": "boolean",
+          "label": {
+            "en": "Know every flight path",
+            "fr": "Connaître tous les trajets aériens"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AllFlightPaths"
+          },
+          "default": false
+        },
+        {
+          "id": "max-skills",
+          "type": "boolean",
+          "label": {
+            "en": "Weapon and defense skills always maxed",
+            "fr": "Compétences d'armes et de défense toujours au maximum"
+          },
+          "target": {
+            "file": "worldserver.conf",
+            "key": "AlwaysMaxSkillForLevel"
+          },
+          "default": false
+        },
+        {
+          "id": "cinematics",
+          "type": "choice",
+          "label": {
+            "en": "Intro cinematic",
+            "fr": "Cinématique d'introduction"
+          },
+          "default": "always",
+          "choices": [
+            {
+              "id": "always",
+              "label": {
+                "en": "For every new character",
+                "fr": "Pour chaque nouveau personnage"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "SkipCinematics": 0
+                }
+              }
+            },
+            {
+              "id": "first",
+              "label": {
+                "en": "Once per race",
+                "fr": "Une fois par race"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "SkipCinematics": 1
+                }
+              }
+            },
+            {
+              "id": "never",
+              "label": {
+                "en": "Never",
+                "fr": "Jamais"
+              },
+              "config": {
+                "worldserver.conf": {
+                  "SkipCinematics": 2
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "consoleActions": [
+    {
+      "id": "announce",
+      "label": {
+        "en": "Announce",
+        "fr": "Annonce"
+      },
+      "description": {
+        "en": "Shows a message to every player.",
+        "fr": "Affiche un message à tous les joueurs."
+      },
+      "command": "announce {message}",
+      "params": [
+        {
+          "id": "message",
+          "label": {
+            "en": "Message",
+            "fr": "Message"
+          },
+          "type": "text",
+          "maxLength": 200
+        }
+      ]
+    },
+    {
+      "id": "teleport",
+      "label": {
+        "en": "Teleport",
+        "fr": "Téléporter"
+      },
+      "command": "teleport name {character} {location}",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        },
+        {
+          "id": "location",
+          "label": {
+            "en": "Place",
+            "fr": "Lieu"
+          },
+          "type": "location"
+        }
+      ]
+    },
+    {
+      "id": "level",
+      "label": {
+        "en": "Set the level",
+        "fr": "Changer le niveau"
+      },
+      "command": "character level {character} {level}",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        },
+        {
+          "id": "level",
+          "label": {
+            "en": "Level",
+            "fr": "Niveau"
+          },
+          "type": "number",
+          "min": 1,
+          "max": 80,
+          "default": 80
+        }
+      ]
+    },
+    {
+      "id": "revive",
+      "label": {
+        "en": "Revive",
+        "fr": "Ressusciter"
+      },
+      "command": "revive {character}",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        }
+      ]
+    },
+    {
+      "id": "unstuck",
+      "label": {
+        "en": "Unstuck",
+        "fr": "Débloquer"
+      },
+      "command": "unstuck {character} {where}",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        },
+        {
+          "id": "where",
+          "label": {
+            "en": "Send to",
+            "fr": "Envoyer à"
+          },
+          "type": "choice",
+          "choices": [
+            {
+              "value": "inn",
+              "label": {
+                "en": "Hearthstone inn",
+                "fr": "Auberge de la pierre de foyer"
+              }
+            },
+            {
+              "value": "graveyard",
+              "label": {
+                "en": "Nearest graveyard",
+                "fr": "Cimetière le plus proche"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-item",
+      "label": {
+        "en": "Send an item",
+        "fr": "Envoyer un objet"
+      },
+      "description": {
+        "en": "Sent by mail: the item id is on wowhead-style sites (e.g. 6948 = Hearthstone).",
+        "fr": "Envoyé par courrier : l'identifiant d'un objet se trouve sur les sites de base de données (ex. 6948 = Pierre de foyer)."
+      },
+      "command": "send items {character} \"{subject}\" \"{subject}\" {item}:{count}",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        },
+        {
+          "id": "item",
+          "label": {
+            "en": "Item id",
+            "fr": "Identifiant de l'objet"
+          },
+          "type": "number",
+          "min": 1,
+          "max": 999999
+        },
+        {
+          "id": "count",
+          "label": {
+            "en": "Count",
+            "fr": "Quantité"
+          },
+          "type": "number",
+          "min": 1,
+          "max": 1000,
+          "default": 1
+        },
+        {
+          "id": "subject",
+          "label": {
+            "en": "Mail subject",
+            "fr": "Objet du courrier"
+          },
+          "type": "text",
+          "maxLength": 60
+        }
+      ]
+    },
+    {
+      "id": "send-gold",
+      "label": {
+        "en": "Send gold",
+        "fr": "Envoyer de l'or"
+      },
+      "description": {
+        "en": "Sent by mail.",
+        "fr": "Envoyé par courrier."
+      },
+      "command": "send money {character} \"{subject}\" \"{subject}\" {gold}g",
+      "params": [
+        {
+          "id": "character",
+          "label": {
+            "en": "Character",
+            "fr": "Personnage"
+          },
+          "type": "character"
+        },
+        {
+          "id": "gold",
+          "label": {
+            "en": "Gold",
+            "fr": "Or"
+          },
+          "type": "number",
+          "min": 1,
+          "max": 200000,
+          "default": 100
+        },
+        {
+          "id": "subject",
+          "label": {
+            "en": "Mail subject",
+            "fr": "Objet du courrier"
+          },
+          "type": "text",
+          "maxLength": 60
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "label": {
+        "en": "Save everything",
+        "fr": "Tout sauvegarder"
+      },
+      "description": {
+        "en": "Saves every character now.",
+        "fr": "Sauvegarde tous les personnages maintenant."
+      },
+      "command": "saveall",
+      "params": []
     }
   ]
 }

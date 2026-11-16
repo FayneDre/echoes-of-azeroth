@@ -18,6 +18,18 @@
     progress.done !== null && progress.size ? Math.min(1, progress.done / progress.size) : null,
   );
   const mb = (bytes: number) => (bytes / 1e6).toFixed(1);
+  /** Seconds left at the current speed (downloads). */
+  const remaining = $derived(
+    progress.rate && progress.rate > 0 && progress.size && progress.done !== null
+      ? Math.max(0, (progress.size - progress.done) / progress.rate)
+      : null,
+  );
+  function duration(seconds: number): string {
+    if (seconds < 60) return t("progress.seconds", { count: Math.ceil(seconds) });
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 60) return t("progress.minutes", { count: minutes });
+    return t("progress.hours", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+  }
 
   async function cancel() {
     cancelling = true;
@@ -42,7 +54,12 @@
   </p>
   {#if stepFraction !== null && progress.size}
     <div class="bar thin"><span style:width="{stepFraction * 100}%"></span></div>
-    <p class="muted bytes">{t("progress.bytes", { done: mb(progress.done ?? 0), total: mb(progress.size) })}</p>
+    <p class="muted bytes">
+      {t("progress.bytes", { done: mb(progress.done ?? 0), total: mb(progress.size) })}
+      {#if progress.rate !== null && remaining !== null}
+        · {t("progress.speed", { speed: mb(progress.rate) })} · {t("progress.remaining", { time: duration(remaining) })}
+      {/if}
+    </p>
   {/if}
   <div class="actions">
     <button class="btn" disabled={cancelling || progress.rollingBack} onclick={cancel}>

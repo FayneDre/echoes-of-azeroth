@@ -42,6 +42,9 @@
   "patches": {
     "directory": "Data"
   },
+  "addons": {
+    "directory": "Interface/AddOns"
+  },
   "cache": {
     "directory": "Cache"
   },
@@ -49,6 +52,7 @@
     "url": "https://github.com/wowgaming/client-data/releases/download/v20.0/Data.zip",
     "version": "v20.0",
     "size": 1196168257,
+    "unpackedSize": 3230904757,
     "sha256": "a3d4df635ae6c2c8f08052c32a79e0f806955150ad36b014a823dd08a32a4610",
     "contents": [
       "Cameras",

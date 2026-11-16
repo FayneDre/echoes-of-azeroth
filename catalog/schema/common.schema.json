@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://echoes-of-azeroth.github.io/schema/v1/common.schema.json",
-  "title": "Echoes of Azeroth shared definitions",
+  "$id": "https://realmkeeper.github.io/schema/v1/common.schema.json",
+  "title": "RealmKeeper shared definitions",
   "$defs": {
     "id": {
       "description": "Lowercase kebab-case identifier. Must match the manifest file name (without .json).",

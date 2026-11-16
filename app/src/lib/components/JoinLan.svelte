@@ -1,17 +1,20 @@
 <script lang="ts">
   // Join a realm hosted by another computer of the local network: the game
   // is pointed at the host's address and launched; no server runs here.
+  // Rendered inside the "game client" panels (it needs the client folder).
   import { api, asCommandError, type ClientView, type CommandError, type EmulatorOverview } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import ErrorBox from "./ErrorBox.svelte";
 
   let { realm, client }: { realm: EmulatorOverview; client: ClientView | null } = $props();
 
+  let open = $state(false);
   let address = $state("");
   let busy = $state(false);
   let launched = $state(false);
   let error = $state<CommandError | null>(null);
 
+  const ready = $derived(!!client && !client.problem);
   const valid = $derived(/^[A-Za-z0-9.-]{1,253}$/.test(address.trim()));
 
   async function join(event: SubmitEvent) {
@@ -31,12 +34,13 @@
   }
 </script>
 
-<section class="panel">
-  <h3 class="panel-title">{t("lan.title")}</h3>
-  <p class="muted">{t("lan.body")}</p>
-  {#if !client || client.problem}
-    <p class="muted">{t("lan.needClient")}</p>
+<div class="join">
+  {#if !open}
+    <button class="link" disabled={!ready} title={ready ? t("lan.body") : t("lan.needClient")} onclick={() => (open = true)}>
+      {t("lan.title")} ›
+    </button>
   {:else}
+    <p class="muted" title={t("lan.patches")}>{t("lan.body")}</p>
     <form onsubmit={join}>
       <input
         type="text"
@@ -46,27 +50,59 @@
         aria-label={t("lan.address")}
         bind:value={address}
       />
-      <button class="btn btn-play" type="submit" disabled={!valid || busy}>{t("lan.join")}</button>
+      <button class="btn" type="submit" disabled={!valid || busy}>{t("lan.join")}</button>
+      <button class="btn" type="button" onclick={() => (open = false)}>{t("common.close")}</button>
     </form>
-    <small class="muted">{t("lan.patches")}</small>
-  {/if}
-  {#if launched}
-    <p>{t("lan.launched", { address: address.trim() })}</p>
+    {#if launched}
+      <small>{t("lan.launched", { address: address.trim() })}</small>
+    {/if}
   {/if}
   {#if error}
     <ErrorBox {error} />
   {/if}
-</section>
+</div>
 
 <style>
+  .join {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  .join p {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .link {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .link:disabled {
+    color: var(--text-muted);
+    cursor: default;
+  }
+
+  .link:not(:disabled):hover {
+    text-decoration: underline;
+  }
+
   form {
     display: flex;
-    gap: var(--space-3);
-    margin: var(--space-3) 0 var(--space-2);
+    gap: var(--space-2);
   }
 
   input {
     flex: 1;
-    max-width: 18rem;
+    min-width: 0;
   }
 </style>

@@ -86,7 +86,7 @@
     padding: var(--space-3) var(--space-6);
     border-top: 2px solid var(--frame);
     background: var(--bg-elevated);
-    height: 40vh;
+    min-height: 0;
   }
 
   header {

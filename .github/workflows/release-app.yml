@@ -7,7 +7,7 @@ name: Release launcher
 # Optional, each enabled by its repository settings:
 # - code signing through SignPath: secret SIGNPATH_API_TOKEN, variables
 #   SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG;
-# - auto-update: variable EOA_UPDATER_PUBKEY, secrets
+# - auto-update: variable RK_UPDATER_PUBKEY, secrets
 #   TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 # Without them the installer is published unsigned / without auto-update.
 
@@ -33,7 +33,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-  HAS_UPDATER: ${{ vars.EOA_UPDATER_PUBKEY != '' && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+  HAS_UPDATER: ${{ vars.RK_UPDATER_PUBKEY != '' && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
 jobs:
   build:
@@ -69,7 +69,7 @@ jobs:
       - name: Release config
         shell: bash
         env:
-          PUBKEY: ${{ env.HAS_UPDATER == 'true' && vars.EOA_UPDATER_PUBKEY || '' }}
+          PUBKEY: ${{ env.HAS_UPDATER == 'true' && vars.RK_UPDATER_PUBKEY || '' }}
         run: |
           node tools/ci/app-release.mjs config --out "$RUNNER_TEMP/release.conf.json" \
             --pubkey "$PUBKEY" \
@@ -84,7 +84,7 @@ jobs:
           cd app
           npx tauri build --bundles nsis --config "$RUNNER_TEMP/release.conf.json"
 
-      # Tauri names it after the product ("Echoes of Azeroth_..."): a name
+      # Tauri names it after the product ("RealmKeeper_..."): a name
       # without spaces keeps the release asset URL in the feed exact.
       - name: Collect the installer
         shell: bash
@@ -95,7 +95,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/unsigned"
           built=(target/release/bundle/nsis/*-setup.exe)
           [ "${#built[@]}" -eq 1 ] || { echo "::error::expected one installer, found ${#built[@]}"; exit 1; }
-          cp "${built[0]}" "$RUNNER_TEMP/unsigned/EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          cp "${built[0]}" "$RUNNER_TEMP/unsigned/RealmKeeper_${VERSION}_x64-setup.exe"
           ls -l "$RUNNER_TEMP/unsigned"
 
       - name: Upload the unsigned installer
@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/out"
-          installer="EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          installer="RealmKeeper_${VERSION}_x64-setup.exe"
           (cd "$GITHUB_WORKSPACE/app" && npx tauri signer sign "$RUNNER_TEMP/out/$installer")
           node "$GITHUB_WORKSPACE/tools/ci/app-release.mjs" feed --version "$VERSION" \
             --installer-url "https://github.com/$GITHUB_REPOSITORY/releases/download/app-v$VERSION/$installer" \
@@ -197,9 +197,9 @@ jobs:
             echo "::error::$tag already exists: bump the version in app/src-tauri/tauri.conf.json"
             exit 1
           fi
-          flags=(--title "Echoes of Azeroth $VERSION" --notes "${NOTES:-Echoes of Azeroth $VERSION}")
+          flags=(--title "RealmKeeper $VERSION" --notes "${NOTES:-RealmKeeper $VERSION}")
           [ "$DRAFT" = "true" ] && flags+=(--draft)
-          gh release create "$tag" --target "$GITHUB_SHA" "${flags[@]}" "EchoesOfAzeroth_${VERSION}_x64-setup.exe"
+          gh release create "$tag" --target "$GITHUB_SHA" "${flags[@]}" "RealmKeeper_${VERSION}_x64-setup.exe"
           # The feed moves only for a public release: a draft (closed beta)
           # never reaches the players' auto-update.
           if [ -f latest.json ] && [ "$DRAFT" != "true" ]; then

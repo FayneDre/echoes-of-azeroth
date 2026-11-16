@@ -1,21 +1,21 @@
 <script lang="ts">
   // "Backups" tab: the realm's database backups. Manual ones hold the
   // player data (characters, accounts, bots) and stay until deleted;
-  // automatic ones are made before each update, repair or restore, and only
-  // the newest few are kept. A restore puts the player data back as a
-  // backup holds it, after saving the current state.
+  // automatic ones are made before each update, repair or restore, and once
+  // a day when the servers stop (ADR 0018); only the newest few are kept. A
+  // restore puts the player data back as a backup holds it, after saving
+  // the current state.
   import { api, asCommandError, type Backup, type CommandError, type EmulatorOverview } from "../api";
   import { i18n, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
+  import { preferences } from "../preferences.svelte";
   import ErrorBox from "./ErrorBox.svelte";
-  import ProgressPanel from "./ProgressPanel.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
-  const instance = $derived(launcher.overview?.instances.find((i) => i.record.emulator === realm.id) ?? null);
+  const instance = $derived(launcher.instanceFor(realm.id));
   const id = $derived(instance?.record.id ?? null);
   const running = $derived(id !== null && launcher.isRunning(id));
-  const progress = $derived(id !== null && launcher.progress?.instance === id ? launcher.progress : null);
   const locked = $derived(
     running || launcher.progress !== null || !instance?.installed || !!instance?.unfinished,
   );
@@ -108,11 +108,17 @@
   }
 
   const total = $derived(list.reduce((sum, b) => sum + b.size, 0));
+
+  /** Rows per page: the list never makes the page scroll. */
+  const PAGE = 6;
+  let page = $state(0);
+  const pages = $derived(Math.max(1, Math.ceil(list.length / PAGE)));
+  const visible = $derived(list.slice(page * PAGE, page * PAGE + PAGE));
+  $effect(() => {
+    if (page >= pages) page = pages - 1;
+  });
 </script>
 
-{#if progress}
-  <ProgressPanel {progress} title={t("backups.restoring")} />
-{/if}
 {#if error}
   <ErrorBox {error} />
 {/if}
@@ -120,20 +126,27 @@
   <p class="banner">{notice}</p>
 {/if}
 
-<section class="panel">
+<section class="panel list-panel">
   <h3 class="panel-title">{t("backups.title")}</h3>
   {#if !instance}
     <p class="muted">{t("settings.installFirst")}</p>
   {:else}
-    <p class="muted">{t("backups.body")}</p>
-    {#if running}
-      <p class="muted">{t("backups.stopFirst")}</p>
-    {/if}
+    <p class="muted intro">{running ? t("backups.stopFirst") : t("backups.body")}</p>
     <div class="actions">
-      <button class="btn btn-play" disabled={locked || working} onclick={backupNow}>
+      <button class="btn" disabled={locked || working} onclick={backupNow}>
         {working ? t("backups.working") : t("backups.now")}
       </button>
       <button class="btn" onclick={openFolder}>{t("backups.openFolder")}</button>
+      {#if preferences.value}
+        <label class="daily" title={t("backups.dailyHint")}>
+          <input
+            type="checkbox"
+            checked={preferences.value.dailyBackup}
+            onchange={(e) => void preferences.set({ dailyBackup: e.currentTarget.checked })}
+          />
+          <span>{t("backups.daily")}</span>
+        </label>
+      {/if}
       {#if list.length > 0}
         <span class="muted total">{t("backups.total", { count: String(list.length), size: size(total) })}</span>
       {/if}
@@ -143,43 +156,68 @@
       <p class="hint muted">{t("backups.empty")}</p>
     {:else}
       <ul class="backups">
-        {#each list as backup (backup.name)}
+        {#each visible as backup (backup.name)}
           <li>
-            <div class="what">
-              <strong>{date(backup.created)}</strong>
-              <small class="muted">
-                {t(`backups.kind.${backup.kind}` as MessageKey)} · {size(backup.size)}
-                {#if backup.automatic}· {t("backups.automatic")}{/if}
-              </small>
-            </div>
             {#if confirmRestore?.name === backup.name}
-              <div class="confirm">
-                <p>{t("backups.confirm", { date: date(backup.created) })}</p>
-                <button class="btn" onclick={() => (confirmRestore = null)}>{t("common.cancel")}</button>
-                <button class="btn btn-play" disabled={locked} onclick={() => restore(backup)}>
-                  {t("backups.restore")}
-                </button>
-              </div>
-            {:else}
-              <button class="btn" disabled={locked} onclick={() => (confirmRestore = backup)}>
+              <p class="confirm">{t("backups.confirm", { date: date(backup.created) })}</p>
+              <button class="btn small" onclick={() => (confirmRestore = null)}>{t("common.cancel")}</button>
+              <button class="btn small danger" disabled={locked} onclick={() => restore(backup)}>
                 {t("backups.restore")}
               </button>
-              <button class="btn" disabled={locked} onclick={() => remove(backup)}>{t("backups.delete")}</button>
+            {:else}
+              <strong>{date(backup.created)}</strong>
+              <span class="muted what">
+                {t(`backups.kind.${backup.kind}` as MessageKey)} · {size(backup.size)}{#if backup.automatic}
+                  · {t("backups.automatic")}{/if}
+              </span>
+              <button class="btn small" disabled={locked} onclick={() => (confirmRestore = backup)}>
+                {t("backups.restore")}
+              </button>
+              <button class="btn small" disabled={locked} onclick={() => remove(backup)}>{t("backups.delete")}</button>
             {/if}
           </li>
         {/each}
       </ul>
+      {#if pages > 1}
+        <div class="pager">
+          <button class="btn small" disabled={page === 0} onclick={() => (page -= 1)}>‹ {t("backups.newer")}</button>
+          <span class="muted">{t("backups.page", { page: String(page + 1), pages: String(pages) })}</span>
+          <button class="btn small" disabled={page >= pages - 1} onclick={() => (page += 1)}>
+            {t("backups.older")} ›
+          </button>
+        </div>
+      {/if}
     {/if}
   {/if}
 </section>
 
 <style>
+  .list-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .intro {
+    margin: 0;
+    font-size: 0.88rem;
+  }
+
+  .daily {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+
   .actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    margin-top: var(--space-4);
+    margin-top: var(--space-3);
   }
 
   .total {
@@ -194,52 +232,64 @@
 
   .banner {
     margin: 0;
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-4);
     border: 1px solid var(--frame-light);
     background: var(--shade-soft);
   }
 
   .backups {
     list-style: none;
-    margin: var(--space-4) 0 0;
+    margin: var(--space-3) 0 0;
     padding: 0;
   }
 
   .backups li {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) 0;
+    min-height: 40px;
+    padding: var(--space-1) 0;
     border-bottom: 1px solid var(--border);
   }
 
-  .backups li:last-child {
-    border-bottom: none;
+  strong {
+    flex: none;
+    min-width: 11rem;
+    color: var(--title);
   }
 
   .what {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 12rem;
-  }
-
-  strong {
-    color: var(--title);
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.88rem;
   }
 
   .confirm {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    flex-basis: 100%;
-  }
-
-  .confirm p {
     flex: 1;
     margin: 0;
     color: var(--danger);
+    font-size: 0.85rem;
+  }
+
+  .btn.small {
+    padding: 2px var(--space-3);
+    font-size: 0.82rem;
+  }
+
+  .btn.danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    margin-top: auto;
+    padding-top: var(--space-3);
   }
 </style>

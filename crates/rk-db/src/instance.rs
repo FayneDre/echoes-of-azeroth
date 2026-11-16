@@ -1,0 +1,551 @@
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::{Duration, Instant};
+
+use tokio::process::Command;
+
+use crate::secrets::{generate_password, validate_identifier};
+use crate::{DbError, ServerSettings};
+
+/// Paths of the MySQL programs inside an unpacked distribution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Binaries {
+    pub basedir: PathBuf,
+    pub mysqld: PathBuf,
+    pub mysql: PathBuf,
+    pub mysqladmin: PathBuf,
+    pub mysqldump: PathBuf,
+}
+
+impl Binaries {
+    /// Standard layout of the official ZIP: `<basedir>/bin/<tool>[.exe]`.
+    pub fn from_basedir(basedir: impl Into<PathBuf>) -> Self {
+        let basedir = basedir.into();
+        let tool = |name: &str| {
+            basedir
+                .join("bin")
+                .join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+        };
+        Self {
+            mysqld: tool("mysqld"),
+            mysql: tool("mysql"),
+            mysqladmin: tool("mysqladmin"),
+            mysqldump: tool("mysqldump"),
+            basedir,
+        }
+    }
+
+    fn check(&self) -> Result<(), DbError> {
+        for path in [&self.mysqld, &self.mysql, &self.mysqladmin, &self.mysqldump] {
+            if !path.is_file() {
+                return Err(DbError::MissingBinary(path.clone()));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A private MySQL server rooted at a directory (see crate docs for the layout).
+#[derive(Debug, Clone)]
+pub struct Instance {
+    root: PathBuf,
+    binaries: Binaries,
+    settings: ServerSettings,
+    /// How long to wait for startup (first start after a crash runs recovery).
+    pub start_timeout: Duration,
+    pub stop_timeout: Duration,
+}
+
+impl Instance {
+    pub fn new(root: impl Into<PathBuf>, binaries: Binaries, settings: ServerSettings) -> Self {
+        Self {
+            root: root.into(),
+            binaries,
+            settings,
+            start_timeout: Duration::from_secs(180),
+            stop_timeout: Duration::from_secs(180),
+        }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+    pub fn settings(&self) -> &ServerSettings {
+        &self.settings
+    }
+    pub fn datadir(&self) -> PathBuf {
+        self.root.join("data")
+    }
+    pub fn log_file(&self) -> PathBuf {
+        self.root.join("mysqld.log")
+    }
+    fn config_file(&self) -> PathBuf {
+        self.root.join("my.ini")
+    }
+    fn client_file(&self) -> PathBuf {
+        self.root.join("client.cnf")
+    }
+    /// Present while an initialisation is in progress (or was interrupted).
+    fn init_marker(&self) -> PathBuf {
+        self.root.join("init.pending")
+    }
+
+    /// True once [`initialize`](Self::initialize) has completed.
+    pub fn is_initialized(&self) -> bool {
+        self.datadir().join("mysql.ibd").is_file()
+            && self.client_file().is_file()
+            && !self.init_marker().exists()
+    }
+
+    /// (Re)writes `my.ini` from the settings. Applied at the next start.
+    /// `client.cnf` follows the port too: a stale one would point the tools
+    /// at another instance's server (a copied realm, ADR 0020).
+    pub fn write_config(&self) -> Result<(), DbError> {
+        std::fs::create_dir_all(&self.root).map_err(DbError::io(&self.root))?;
+        let text = self
+            .settings
+            .render(&self.binaries.basedir, &self.datadir(), &self.log_file());
+        write_atomic(&self.config_file(), text.as_bytes())?;
+        if let Some(password) = self.saved_root_password() {
+            let wanted = format!("port={}", self.settings.port);
+            let current = std::fs::read_to_string(self.client_file()).unwrap_or_default();
+            if !current.lines().any(|l| l == wanted) {
+                self.write_client_file(&password)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Creates the data directory and a root account with a random password.
+    ///
+    /// `--initialize-insecure` + `--init-file` sets the password during
+    /// bootstrap, before the server ever listens. Resumable: the credentials
+    /// are saved *before* bootstrap and an `init.pending` marker brackets it,
+    /// so an interrupted attempt (crash, power loss) is detected and redone
+    /// from scratch. Such a data directory has never been started, so it
+    /// cannot hold player data.
+    pub async fn initialize(&self) -> Result<(), DbError> {
+        self.binaries.check()?;
+        let datadir = self.datadir();
+        let marker = self.init_marker();
+        if marker.exists() {
+            remove_dir_if_exists(&datadir)?;
+        } else if datadir.exists()
+            && std::fs::read_dir(&datadir)
+                .map_err(DbError::io(&datadir))?
+                .next()
+                .is_some()
+        {
+            return Err(DbError::AlreadyInitialized(datadir));
+        }
+        self.write_config()?;
+        write_atomic(&marker, b"initialisation in progress\n")?;
+
+        let password = generate_password(32)?;
+        self.write_client_file(&password)?;
+        let init_file = self.root.join("init.sql");
+        write_atomic(&init_file, root_password_sql(&password).as_bytes())?;
+        let output = command(&self.binaries.mysqld)
+            .arg(format!("--defaults-file={}", self.config_file().display()))
+            .arg("--initialize-insecure")
+            .arg(format!("--init-file={}", init_file.display()))
+            .stdin(Stdio::null())
+            .output()
+            .await
+            .map_err(DbError::io(&self.binaries.mysqld));
+        let _ = std::fs::remove_file(&init_file);
+        let output = output?;
+        if !output.status.success() {
+            let _ = std::fs::remove_dir_all(&datadir);
+            let _ = std::fs::remove_file(self.client_file());
+            let _ = std::fs::remove_file(&marker);
+            return Err(DbError::InitFailed {
+                log: self.log_tail(40),
+            });
+        }
+        std::fs::remove_file(&marker).map_err(DbError::io(&marker))
+    }
+
+    /// Starts the server and waits until it accepts connections.
+    ///
+    /// The process is not tied to the caller: it keeps running if the launcher
+    /// exits (the runtime supervisor adds a Job Object later). Stop it with
+    /// [`stop`](Self::stop).
+    pub async fn start(&self) -> Result<(), DbError> {
+        self.binaries.check()?;
+        if !self.is_initialized() {
+            return Err(DbError::NotInitialized(self.datadir()));
+        }
+        self.launch(None).await
+    }
+
+    /// Takes over a data directory restored from a snapshot (ADR 0009): the
+    /// cold copy of a cleanly stopped server, already in [`datadir`](Self::datadir).
+    ///
+    /// Writes `my.ini` and a `client.cnf` with a new random root password,
+    /// then starts the server with `--init-file`, so the password is set
+    /// before it accepts connections. The server is left running. Resumable:
+    /// an interrupted attempt (`init.pending`) reuses the saved password, and
+    /// the init file sets it again whatever the current one is.
+    pub async fn adopt(&self) -> Result<(), DbError> {
+        self.binaries.check()?;
+        if self.is_initialized() {
+            return Err(DbError::AlreadyInitialized(self.datadir()));
+        }
+        if !self.datadir().join("mysql.ibd").is_file() {
+            return Err(DbError::NotASnapshot(self.datadir()));
+        }
+        let marker = self.init_marker();
+        let saved = marker
+            .exists()
+            .then(|| self.saved_root_password())
+            .flatten();
+        self.write_config()?;
+        write_atomic(&marker, b"adoption in progress\n")?;
+        let password = match saved {
+            Some(password) => password,
+            None => generate_password(32)?,
+        };
+        // Rewritten even when reused: the port may have changed.
+        self.write_client_file(&password)?;
+        let init_file = self.root.join("init.sql");
+        write_atomic(&init_file, root_password_sql(&password).as_bytes())?;
+        let launched = self.launch(Some(&init_file)).await;
+        let _ = std::fs::remove_file(&init_file);
+        launched?;
+        std::fs::remove_file(&marker).map_err(DbError::io(&marker))
+    }
+
+    /// Root password saved in `client.cnf` by an earlier, interrupted attempt.
+    fn saved_root_password(&self) -> Option<String> {
+        let text = std::fs::read_to_string(self.client_file()).ok()?;
+        text.lines()
+            .find_map(|l| l.strip_prefix("password="))
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+    }
+
+    fn write_client_file(&self, password: &str) -> Result<(), DbError> {
+        let client = format!(
+            "# Generated by RealmKeeper: root credentials of this instance.\n\
+             [client]\nuser=root\npassword={password}\nhost=127.0.0.1\nport={}\n",
+            self.settings.port
+        );
+        write_atomic(&self.client_file(), client.as_bytes())
+    }
+
+    /// Spawns `mysqld` (with an init file when adopting) and waits until this
+    /// instance answers. Returns at once if it already does.
+    async fn launch(&self, init_file: Option<&Path>) -> Result<(), DbError> {
+        if self.ping().await {
+            return Ok(()); // already running (e.g. launcher restarted)
+        }
+        if !port_is_free(self.settings.port) {
+            return Err(DbError::PortInUse {
+                port: self.settings.port,
+            });
+        }
+        self.write_config()?;
+        let mut mysqld = command(&self.binaries.mysqld);
+        mysqld.arg(format!("--defaults-file={}", self.config_file().display()));
+        if let Some(init_file) = init_file {
+            mysqld.arg(format!("--init-file={}", init_file.display()));
+        }
+        let mut child = mysqld
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(false)
+            .spawn()
+            .map_err(DbError::io(&self.binaries.mysqld))?;
+
+        let started = Instant::now();
+        loop {
+            if self.ping().await {
+                return Ok(());
+            }
+            if let Some(status) = child
+                .try_wait()
+                .map_err(DbError::io(&self.binaries.mysqld))?
+            {
+                return Err(DbError::ExitedDuringStartup {
+                    code: status.code(),
+                    log: self.log_tail(40),
+                });
+            }
+            if started.elapsed() > self.start_timeout {
+                // Leave it running: it may still be recovering; stop() can end it.
+                return Err(DbError::StartTimeout {
+                    seconds: self.start_timeout.as_secs(),
+                    log: self.log_tail(40),
+                });
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    /// Clean shutdown (`mysqladmin shutdown`), then waits until the port is free.
+    pub async fn stop(&self) -> Result<(), DbError> {
+        if !self.ping().await {
+            return Ok(());
+        }
+        self.tool(
+            "mysqladmin",
+            &self.binaries.mysqladmin,
+            &["shutdown"],
+            Input::None,
+        )
+        .await?;
+        let started = Instant::now();
+        while self.ping().await || !port_is_free(self.settings.port) {
+            if started.elapsed() > self.stop_timeout {
+                return Err(DbError::StopTimeout {
+                    seconds: self.stop_timeout.as_secs(),
+                });
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        Ok(())
+    }
+
+    /// True when *this* instance answers: an authenticated query, so another
+    /// MySQL server on the same port (which would reject our root password)
+    /// is never mistaken for ours.
+    pub async fn ping(&self) -> bool {
+        self.client_file().is_file()
+            && self
+                .tool(
+                    "mysql",
+                    &self.binaries.mysql,
+                    &["--connect-timeout=2", "-N", "-B"],
+                    Input::Bytes(b"SELECT 1;"),
+                )
+                .await
+                .is_ok()
+    }
+
+    /// Runs SQL as root and returns the tab-separated output (no headers).
+    pub async fn execute(&self, sql: &str) -> Result<String, DbError> {
+        self.tool(
+            "mysql",
+            &self.binaries.mysql,
+            &["-N", "-B"],
+            Input::Bytes(sql.as_bytes()),
+        )
+        .await
+    }
+
+    pub async fn create_database(&self, name: &str) -> Result<(), DbError> {
+        validate_identifier(name)?;
+        self.execute(&format!(
+            "CREATE DATABASE IF NOT EXISTS `{name}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        ))
+        .await
+        .map(drop)
+    }
+
+    pub async fn database_exists(&self, name: &str) -> Result<bool, DbError> {
+        validate_identifier(name)?;
+        let out = self
+            .execute(&format!(
+                "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{name}';"
+            ))
+            .await?;
+        Ok(out.trim() == name)
+    }
+
+    /// Creates (or resets the password of) a service account with all
+    /// privileges on `databases`, for local connections only.
+    pub async fn ensure_user(
+        &self,
+        user: &str,
+        password: &str,
+        databases: &[&str],
+    ) -> Result<(), DbError> {
+        validate_identifier(user)?;
+        if password.is_empty() || !password.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(DbError::InvalidIdentifier("<password>".into()));
+        }
+        let mut sql = String::new();
+        for host in ["localhost", "127.0.0.1"] {
+            sql.push_str(&format!(
+                "CREATE USER IF NOT EXISTS '{user}'@'{host}' IDENTIFIED BY '{password}';\n\
+                 ALTER USER '{user}'@'{host}' IDENTIFIED BY '{password}';\n"
+            ));
+            for db in databases {
+                validate_identifier(db)?;
+                sql.push_str(&format!(
+                    "GRANT ALL PRIVILEGES ON `{db}`.* TO '{user}'@'{host}';\n"
+                ));
+            }
+        }
+        self.execute(&sql).await.map(drop)
+    }
+
+    /// Consistent dump of `databases` to `out` (written atomically): schema,
+    /// data, routines, triggers and events, restorable with [`restore`](Self::restore).
+    pub async fn backup(&self, databases: &[&str], out: &Path) -> Result<(), DbError> {
+        for db in databases {
+            validate_identifier(db)?;
+        }
+        let tmp = out.with_extension("sql.partial");
+        let mut args: Vec<String> = [
+            "--single-transaction",
+            "--routines",
+            "--triggers",
+            "--events",
+            "--hex-blob",
+            "--set-gtid-purged=OFF",
+            "--default-character-set=utf8mb4",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        args.push(format!("--result-file={}", tmp.display()));
+        args.push("--databases".into());
+        args.extend(databases.iter().map(|d| d.to_string()));
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        if let Err(error) = self
+            .tool("mysqldump", &self.binaries.mysqldump, &args, Input::None)
+            .await
+        {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error);
+        }
+        std::fs::rename(&tmp, out).map_err(DbError::io(out))
+    }
+
+    /// Replays a dump made by [`backup`](Self::backup) (recreates its databases).
+    /// The file is streamed to `mysql`, never loaded in memory.
+    pub async fn restore(&self, dump: &Path) -> Result<(), DbError> {
+        self.tool(
+            "mysql",
+            &self.binaries.mysql,
+            &["--default-character-set=utf8mb4"],
+            Input::File(dump),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Replays only the statements of database `name` from a dump made by
+    /// [`backup`](Self::backup) (`mysql --one-database`, which follows the
+    /// dump's `USE` lines). The database must exist; other databases of the
+    /// dump are left as they are.
+    pub async fn restore_database(&self, dump: &Path, name: &str) -> Result<(), DbError> {
+        validate_identifier(name)?;
+        self.tool(
+            "mysql",
+            &self.binaries.mysql,
+            &["--default-character-set=utf8mb4", "--one-database", name],
+            Input::File(dump),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// Runs a MySQL client tool with the root option file (credentials never
+    /// appear on a command line). `--defaults-extra-file` must come first.
+    async fn tool(
+        &self,
+        name: &'static str,
+        program: &Path,
+        args: &[&str],
+        input: Input<'_>,
+    ) -> Result<String, DbError> {
+        use tokio::io::AsyncWriteExt;
+
+        let stdin = match input {
+            Input::None => Stdio::null(),
+            Input::Bytes(_) => Stdio::piped(),
+            Input::File(path) => std::fs::File::open(path)
+                .map(Stdio::from)
+                .map_err(DbError::io(path))?,
+        };
+        let mut child = command(program)
+            .arg(format!(
+                "--defaults-extra-file={}",
+                self.client_file().display()
+            ))
+            // This instance's port, whatever `client.cnf` says (a copied
+            // realm's file names the original's).
+            .arg(format!("--port={}", self.settings.port))
+            .args(args)
+            .stdin(stdin)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(DbError::io(program))?;
+        // Feed stdin while the output is drained: writing everything first
+        // could deadlock once the child fills its stdout/stderr pipes.
+        let pipe = child.stdin.take();
+        let feed = async {
+            if let (Input::Bytes(bytes), Some(mut pipe)) = (input, pipe) {
+                // A child that exits early closes the pipe; its exit status
+                // and stderr then explain the failure better than this error.
+                let _ = pipe.write_all(bytes).await;
+            } // pipe dropped here: EOF
+        };
+        let ((), output) = tokio::join!(feed, child.wait_with_output());
+        let output = output.map_err(DbError::io(program))?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        } else {
+            Err(DbError::Tool {
+                tool: name,
+                status: output.status.to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            })
+        }
+    }
+
+    /// Last `lines` lines of the error log, for actionable error messages.
+    pub fn log_tail(&self, lines: usize) -> String {
+        let text = std::fs::read_to_string(self.log_file()).unwrap_or_default();
+        let all: Vec<&str> = text.lines().collect();
+        all[all.len().saturating_sub(lines)..].join("\n")
+    }
+}
+
+/// What a MySQL tool reads on stdin.
+#[derive(Clone, Copy)]
+enum Input<'a> {
+    None,
+    Bytes(&'a [u8]),
+    File(&'a Path),
+}
+
+/// A command for a console program that never opens a console window, even
+/// when called from the GUI (Windows would otherwise flash one per call).
+fn command(program: &Path) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
+fn root_password_sql(password: &str) -> String {
+    format!("ALTER USER 'root'@'localhost' IDENTIFIED BY '{password}';\n")
+}
+
+fn remove_dir_if_exists(dir: &Path) -> Result<(), DbError> {
+    match std::fs::remove_dir_all(dir) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(DbError::io(dir)(error)),
+        _ => Ok(()),
+    }
+}
+
+/// True when nothing listens on `127.0.0.1:port`.
+fn port_is_free(port: u16) -> bool {
+    TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)).is_ok()
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), DbError> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes).map_err(DbError::io(&tmp))?;
+    std::fs::rename(&tmp, path).map_err(DbError::io(path))
+}

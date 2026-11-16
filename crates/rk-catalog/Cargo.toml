@@ -1,0 +1,25 @@
+[package]
+name = "rk-catalog"
+description = "Loads the RealmKeeper catalog and validates cross-manifest consistency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rk-core.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rk-conf.workspace = true
+rk-engine.workspace = true
+hex.workspace = true
+tempfile.workspace = true

@@ -254,6 +254,55 @@
         "key": "Playerbots.EnableBroadcasts"
       },
       "default": true
+    },
+    {
+      "id": "multibot-addon",
+      "type": "choice",
+      "label": {
+        "en": "MultiBot add-on in the game",
+        "fr": "Add-on MultiBot dans le jeu"
+      },
+      "help": {
+        "en": "Buttons to command your bots in the game instead of typing chat commands (MultiBot by Macx-Lio, GPL-3.0). Installed in Interface/AddOns, removed when turned off.",
+        "fr": "Des boutons pour commander tes bots dans le jeu au lieu de taper des commandes dans le chat (MultiBot de Macx-Lio, GPL-3.0). Installé dans Interface/AddOns, retiré une fois désactivé."
+      },
+      "default": "off",
+      "choices": [
+        {
+          "id": "off",
+          "label": {
+            "en": "Off",
+            "fr": "Désactivé"
+          }
+        },
+        {
+          "id": "on",
+          "label": {
+            "en": "On",
+            "fr": "Activé"
+          },
+          "assets": [
+            "multibot"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "multibot",
+      "source": {
+        "repository": "https://github.com/Macx-Lio/MultiBot",
+        "commit": "ecee413dacfa93ee705ede83f308f3a0396e6ece",
+        "size": 31071059,
+        "sha256": "b022d405e663269daa523a421ed5baa61ee58fa6bb880500759c5f005a529ef6"
+      },
+      "addons": [
+        {
+          "from": "MultiBot-ecee413dacfa93ee705ede83f308f3a0396e6ece",
+          "to": "MultiBot"
+        }
+      ]
     }
   ]
 }

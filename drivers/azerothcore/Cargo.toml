@@ -1,5 +1,5 @@
 [package]
-name = "eoa-driver-azerothcore"
+name = "rk-driver-azerothcore"
 description = "AzerothCore driver: game accounts (SRP6), realm list, console conventions."
 version.workspace = true
 edition.workspace = true
@@ -10,10 +10,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-eoa-db.workspace = true
-eoa-runtime.workspace = true
+rk-conf.workspace = true
+rk-core.workspace = true
+rk-db.workspace = true
+rk-runtime.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 num-bigint.workspace = true
 sha1.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

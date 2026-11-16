@@ -7,12 +7,12 @@
   import ErrorBox from "./ErrorBox.svelte";
   import InstallWizard from "./InstallWizard.svelte";
   import InstancePanel from "./InstancePanel.svelte";
-  import JoinLan from "./JoinLan.svelte";
+  import Realms from "./Realms.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
   const overview = $derived(launcher.overview);
-  const instance = $derived(overview?.instances.find((i) => i.record.emulator === realm.id) ?? null);
+  const instance = $derived(launcher.instanceFor(realm.id));
   const client = $derived(overview?.clients.find((c) => c.id === realm.client?.id) ?? null);
 
   /** Id of a new instance: the emulator id, made unique. */
@@ -29,10 +29,9 @@
 {:else if !overview}
   <p class="muted">{t("common.loading")}</p>
 {:else if instance}
+  <Realms {realm} {instance} />
   <InstancePanel {realm} {instance} {client} />
 {:else}
+  <Realms {realm} instance={null} />
   <InstallWizard {realm} {client} instanceId={newId} />
-{/if}
-{#if overview && !launcher.error}
-  <JoinLan {realm} {client} />
 {/if}
