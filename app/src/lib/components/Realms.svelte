@@ -15,7 +15,7 @@
   } from "../api";
   import { localized, t } from "../i18n/i18n.svelte";
   import { chooseRealm, launcher, realmLabel, refresh, runOperation } from "../launcher.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import Modal from "./Modal.svelte";
 
   let { realm, instance }: { realm: EmulatorOverview; instance: InstanceView | null } = $props();
@@ -211,12 +211,8 @@
   </div>
 </section>
 
-{#if note}
-  <p class="note muted" role="status">{note}</p>
-{/if}
-{#if error}
-  <ErrorBox {error} />
-{/if}
+<Notify text={note} />
+<Notify {error} />
 
 {#if dialog}
   <Modal
@@ -359,9 +355,6 @@
     font-size: 0.88rem;
   }
 
-  .note {
-    margin: 0 0 var(--space-3);
-  }
 
   .summary {
     display: grid;

@@ -15,7 +15,7 @@
   import { gigabytes, localized, t } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
   import ClientPicker from "./ClientPicker.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import JoinLan from "./JoinLan.svelte";
   import ModulePicker from "./ModulePicker.svelte";
 
@@ -210,9 +210,7 @@
   </section>
 </div>
 
-{#if error}
-  <ErrorBox {error} onretry={install} />
-{/if}
+<Notify {error} onretry={install} />
 
 {#if picking}
   <ModulePicker

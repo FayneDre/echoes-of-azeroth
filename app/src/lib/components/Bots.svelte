@@ -5,7 +5,7 @@
   import { api, asCommandError, type CommandError, type EmulatorOverview, type ModuleOptions } from "../api";
   import { localized, t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import OptionsPanel from "./OptionsPanel.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
@@ -47,9 +47,7 @@
   }
 </script>
 
-{#if error}
-  <ErrorBox {error} />
-{/if}
+<Notify {error} />
 
 {#if !instance}
   <section class="panel">

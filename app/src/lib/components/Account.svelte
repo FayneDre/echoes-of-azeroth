@@ -5,7 +5,7 @@
   import { api, asCommandError, type AccountView, type CommandError, type EmulatorOverview } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import GameMaster from "./GameMaster.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
@@ -126,12 +126,8 @@
         <button class="btn btn-play" type="submit" disabled={!valid || busy}>{t("account.create")}</button>
       </div>
     </form>
-    {#if created}
-      <p class="ok" role="status">{t("account.created", { name: created })}</p>
-    {/if}
-    {#if error}
-      <ErrorBox {error} />
-    {/if}
+    <Notify text={created ? t("account.created", { name: created }) : null} />
+    <Notify {error} />
   {/if}
 </section>
 
@@ -172,9 +168,7 @@
         </tbody>
       </table>
     {/if}
-    {#if listError}
-      <ErrorBox error={listError} onretry={loadAccounts} />
-    {/if}
+    <Notify error={listError} onretry={loadAccounts} />
   </section>
 {/if}
 {/if}
@@ -211,9 +205,6 @@
     justify-content: flex-end;
   }
 
-  .ok {
-    color: var(--ok);
-  }
 
   section + section {
     margin-top: var(--space-4);

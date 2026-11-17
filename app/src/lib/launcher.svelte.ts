@@ -14,6 +14,7 @@ import {
   type SessionEvent,
 } from "./api";
 import { t, type LocalizedText, type MessageKey } from "./i18n/i18n.svelte";
+import { notify } from "./toasts.svelte";
 
 /** Log lines kept per process (older ones are dropped; the log files keep all). */
 const LOG_LIMIT = 1500;
@@ -136,6 +137,8 @@ function applySession(instance: string, list: SessionEvent[]) {
         break;
       case "warning":
         session.warnings.push(event.message);
+        // Shown once, when it happens (not again each time a page mounts).
+        notify(event.message, "warning");
         break;
       case "log":
         pushLog(session, event.process, event.stderr, event.text);

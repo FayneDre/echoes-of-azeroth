@@ -16,6 +16,7 @@
   import { processLabel } from "../labels";
   import ClientPicker from "./ClientPicker.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import JoinLan from "./JoinLan.svelte";
 
   let { realm, instance, client }: { realm: EmulatorOverview; instance: InstanceView; client: ClientView | null } =
@@ -37,8 +38,11 @@
   let error = $state<CommandError | null>(null);
   let updateNote = $state<string | null>(null);
 
-  type Status = "stopped" | "starting" | "online" | "stopping" | "failed";
+  type Status = "stopped" | "starting" | "online" | "stopping" | "failed" | "unfinished" | "moved";
   const status = $derived.by((): Status => {
+    // A state to fix first is the realm's status, in place (never a banner).
+    if (!running && !progress && incomplete) return "unfinished";
+    if (!running && !progress && moved) return "moved";
     if (!session) return running ? "online" : "stopped";
     if (session.phase === "ended") return session.failed ? "failed" : "stopped";
     if (session.phase === "ready") return "online";
@@ -59,8 +63,9 @@
     }
   }
 
-  const play = () => act(() => startSession(id, true, keepRunning));
-  const startOnly = () => act(() => startSession(id, false, true));
+  // A failed start is kept in the session and shown in the hero: not twice.
+  const play = () => act(() => startSession(id, true, keepRunning).catch(() => {}));
+  const startOnly = () => act(() => startSession(id, false, true).catch(() => {}));
   const stop = () => act(() => api.stop(id));
   /** Servers already up: launches only the game (they keep running after). */
   let launching = $state(false);
@@ -115,6 +120,8 @@
     online: "status.online",
     stopping: "status.stopping",
     failed: "status.failed",
+    unfinished: "status.unfinished",
+    moved: "status.moved",
   };
   const PROCESS_KEYS: Record<ProcessState | "idle", MessageKey> = {
     idle: "process.idle",
@@ -135,11 +142,25 @@
       {#if realm.client}
         <p class="realm-name">{localized(realm.client.shortName)} · {realm.client.version}</p>
       {/if}
-      <h2 class="display" class:online={status === "online"} class:failed={status === "failed"}>
+      <h2
+        class="display"
+        class:online={status === "online"}
+        class:failed={status === "failed"}
+        class:attention={status === "unfinished" || status === "moved"}
+      >
         {t(STATUS_KEYS[status])}
       </h2>
-      <p class="muted">
-        {#if status === "online" && session?.game === "running"}
+      <div class="muted subtitle" role={session?.error ? "alert" : undefined}>
+        {#if status === "unfinished"}
+          {t("home.unfinished")}
+        {:else if status === "moved"}
+          {t("home.moved")}
+        {:else if session?.error}
+          <!-- Whatever the phase (a game that cannot launch while online too). -->
+          <ErrorBox error={session.error} compact />
+        {:else if status === "failed"}
+          {t("home.crashed")}
+        {:else if status === "online" && session?.game === "running"}
           {session.keepRunning ? t("home.gameRunningKeep") : t("home.gameRunning")}
         {:else if status === "online" && instance.record.network === "lan" && session?.address}
           {t("home.lanAddress", { address: session.address })}
@@ -150,7 +171,7 @@
         {:else}
           {t("home.readyBody")}
         {/if}
-      </p>
+      </div>
     </div>
     <div class="actions">
       <div class="buttons">
@@ -166,6 +187,10 @@
               {t("home.action.play")}
             </button>
           {/if}
+        {:else if status === "unfinished" || status === "moved"}
+          <button class="btn btn-play" disabled={busy} onclick={resume}>
+            {status === "unfinished" ? t("home.action.resume") : t("home.action.relocate")}
+          </button>
         {:else}
           <button class="btn" disabled={busy || incomplete} onclick={startOnly}>
             {t("home.action.startServers")}
@@ -175,7 +200,7 @@
           </button>
         {/if}
       </div>
-      {#if !running}
+      {#if !running && status !== "unfinished" && status !== "moved"}
         <label class="keep">
           <input type="checkbox" bind:checked={keepRunning} />
           <small>{t("home.keepRunning")}</small>
@@ -214,29 +239,8 @@
   </dl>
 </section>
 
-{#if incomplete && !progress}
-  <div class="banner" role="status">
-    <p>{t("home.unfinished")}</p>
-    <button class="btn" disabled={busy || running} onclick={resume}>{t("home.action.resume")}</button>
-  </div>
-{:else if moved && !progress}
-  <div class="banner" role="status">
-    <p>{t("home.moved")}</p>
-    <button class="btn" disabled={busy || running} onclick={resume}>{t("home.action.relocate")}</button>
-  </div>
-{/if}
-
-{#if session?.error}
-  <ErrorBox error={session.error} />
-{:else if session?.phase === "ended" && session.failed}
-  <div class="banner bad" role="alert"><p>{t("home.crashed")}</p></div>
-{/if}
-{#if error}
-  <ErrorBox {error} />
-{/if}
-{#each session?.warnings ?? [] as warning, index (index)}
-  <p class="warning muted">⚠ {warning}</p>
-{/each}
+<!-- Action errors and warnings float over the page (toasts). -->
+<Notify {error} />
 
 <div class="columns">
   <section class="panel column">
@@ -310,7 +314,7 @@
     <div class="task">
       <p class="muted" title={t("update.body")}>{updateNote ?? t("update.short")}</p>
       <button class="btn" disabled={busy || running || incomplete} onclick={update}>
-        {t("update.check")}
+        {t("update.action")}
       </button>
     </div>
     <div class="task">
@@ -366,7 +370,11 @@
     color: var(--danger);
   }
 
-  .hero-title p.muted {
+  h2.attention {
+    color: var(--accent);
+  }
+
+  .subtitle {
     margin: 0;
   }
 
@@ -421,34 +429,10 @@
     text-overflow: ellipsis;
   }
 
-  .banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--frame-light);
-    background: var(--shade-soft);
-  }
-
-  .banner.bad {
-    border-color: var(--danger);
-    color: var(--danger);
-  }
-
-  .banner p {
-    flex: 1;
-    margin: 0;
-  }
-
-  .warning {
-    margin: 0;
-    font-size: 0.85rem;
-  }
-
   /* Fills the rest of the page: three columns of equal height. */
   .columns {
     flex: 1;
-    /* Grows with its content (larger text): the page scrolls instead. */
+    /* Never clipped: on a very small window the page scrolls instead. */
     min-height: auto;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

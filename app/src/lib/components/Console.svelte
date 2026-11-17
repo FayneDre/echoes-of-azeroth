@@ -6,7 +6,7 @@
   import { t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
   import { processLabel } from "../labels";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
 
   let {
     instance,
@@ -73,9 +73,7 @@
       <button class="btn" type="submit">{t("terminals.send")}</button>
     </form>
   {/if}
-  {#if error}
-    <ErrorBox {error} />
-  {/if}
+  <Notify {error} />
 </section>
 
 <style>

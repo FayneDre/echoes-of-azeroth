@@ -6,7 +6,16 @@
   import { processLabel } from "../labels";
   import Modal from "./Modal.svelte";
 
-  let { error, onretry }: { error: CommandError; onretry?: () => void } = $props();
+  let {
+    error,
+    onretry,
+    compact = false,
+  }: {
+    error: CommandError;
+    onretry?: () => void;
+    /** Without its own frame: inside a toast or a card. */
+    compact?: boolean;
+  } = $props();
 
   const key = $derived(`error.${error.code}`);
   /** Catalog ids among the parameters, shown by their translated name. */
@@ -49,7 +58,7 @@
   const helpUrl = $derived(`${FAQ_URL}${i18n.locale === "fr" ? "faq.fr.md" : "faq.md"}#${section}`);
 </script>
 
-<div class="error-box" role="alert">
+<div class="error-box" class:compact role={compact ? undefined : "alert"}>
   <p>{message}</p>
   <div class="actions">
     {#if onretry}
@@ -82,15 +91,31 @@
     background: var(--shade-soft);
   }
 
+  .error-box.compact {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+
   p {
     margin: 0 0 var(--space-2);
     color: var(--danger);
   }
 
+  .compact p {
+    margin-bottom: var(--space-1);
+  }
+
   .actions {
     display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .compact .actions .btn {
+    padding: 2px var(--space-3);
+    font-size: 0.78rem;
   }
 
   .help {

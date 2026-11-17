@@ -16,6 +16,7 @@
   import Account from "./lib/components/Account.svelte";
   import Console from "./lib/components/Console.svelte";
   import CrashNotice from "./lib/components/CrashNotice.svelte";
+  import Toasts from "./lib/components/Toasts.svelte";
   import AppUpdateNotice from "./lib/components/AppUpdateNotice.svelte";
   import ErrorBox from "./lib/components/ErrorBox.svelte";
   import ProgressPanel from "./lib/components/ProgressPanel.svelte";
@@ -218,14 +219,17 @@
           />
         </div>
       {/if}
-      {#if inDesktopApp()}
-        <div class="notices">
+      <!-- Notices and toasts float over the page (bottom right): something
+           happening never moves the layout. -->
+      <div class="notices">
+        {#if inDesktopApp()}
           <MissingLocation />
           <CrashNotice />
           <AppUpdateNotice />
           <WhatsNew />
-        </div>
-      {/if}
+        {/if}
+        <Toasts />
+      </div>
       </div>
 
       {#if realm}
@@ -423,7 +427,8 @@
     position: absolute;
     right: var(--space-5);
     bottom: var(--space-4);
-    z-index: 6;
+    /* Over the modals (z-index 9): an error raised from a dialog shows. */
+    z-index: 10;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);

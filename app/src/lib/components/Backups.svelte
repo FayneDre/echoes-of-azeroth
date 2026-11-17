@@ -9,7 +9,7 @@
   import { i18n, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
   import { preferences } from "../preferences.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
@@ -119,12 +119,8 @@
   });
 </script>
 
-{#if error}
-  <ErrorBox {error} />
-{/if}
-{#if notice}
-  <p class="banner">{notice}</p>
-{/if}
+<Notify {error} />
+<Notify text={notice} />
 
 <section class="panel list-panel">
   <h3 class="panel-title">{t("backups.title")}</h3>
@@ -230,12 +226,6 @@
     font-size: 0.85rem;
   }
 
-  .banner {
-    margin: 0;
-    padding: var(--space-2) var(--space-4);
-    border: 1px solid var(--frame-light);
-    background: var(--shade-soft);
-  }
 
   .backups {
     list-style: none;

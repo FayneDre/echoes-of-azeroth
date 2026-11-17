@@ -98,7 +98,7 @@
   "step.overlay-server-file": "Ajout des fichiers d'un module",
   "step.other": "Traitement",
   "update.body": "Installe la version du serveur de la release actuelle. Toutes les bases sont sauvegardées avant.",
-  "update.check": "Rechercher une mise à jour",
+  "update.action": "Mettre à jour le serveur",
   "update.upToDate": "Ce royaume a déjà la dernière version.",
   "update.done": "Mis à jour vers la version {build}.",
   "repair.body": "Réparer réinstalle les fichiers et la configuration des serveurs et vérifie les bases (sauvegardées avant). Les personnages et les comptes sont conservés.",
@@ -419,5 +419,8 @@
   "modules.allCategories": "Tous",
   "modules.homepage": "Page du module",
   "modules.noMatch": "Aucun module ne correspond.",
-  "modules.selected": "{count} sur {total} choisi(s)"
+  "modules.selected": "{count} sur {total} choisi(s)",
+  "status.unfinished": "Modification interrompue",
+  "status.moved": "Dossier déplacé",
+  "client.localeTitle": "Langue du jeu"
 }

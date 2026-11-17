@@ -12,7 +12,7 @@
   } from "../api";
   import { hasMessage, localized, t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
@@ -211,12 +211,8 @@
             <option value={place}></option>
           {/each}
         </datalist>
-        {#if sent}
-          <p class="ok small" role="status">{t("gm.sent")} <code>{sent}</code></p>
-        {/if}
-        {#if error}
-          <ErrorBox error={withLabels(error, action)} />
-        {/if}
+        <Notify text={sent ? `${t("gm.sent")} ${sent}` : null} />
+        <Notify error={error ? withLabels(error, action) : null} />
       {:else}
         <p class="muted">{t("gm.none")}</p>
       {/if}
@@ -299,7 +295,4 @@
     margin: 0;
   }
 
-  .ok {
-    color: var(--ok);
-  }
 </style>

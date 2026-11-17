@@ -335,6 +335,14 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
 - Dialogs and anything the player unfolds to read (details, reports, short
   forms, long lists such as the module picker) open in `Modal.svelte`, never
   as inline `<details>` or panels that grow the page.
+- The layout never moves because something happened: errors of an action,
+  confirmations and warnings are toasts (`<Notify>`, `lib/toasts.svelte.ts`,
+  bottom right, over the page and over modals); a toast outlives the
+  component that raised it and an error stays until closed; a lasting state
+  (interrupted change, moved realm, crashed server) is the realm's status in
+  the hero, with its action in place of Play; short hints swap text in a
+  line that is always there. Inside a modal, its own result or error may
+  show in the modal (it does not move the page).
 - The launcher draws its own title bar (`decorations: false`): logo + title,
   tabs and languages as one `.segmented` bar each, `WindowControls`; drag via
   `data-tauri-drag-region`. Window calls go through `appWindow` in `api.ts`.

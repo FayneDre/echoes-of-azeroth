@@ -14,6 +14,8 @@
   import { t } from "../i18n/i18n.svelte";
   import { refresh } from "../launcher.svelte";
   import ErrorBox from "./ErrorBox.svelte";
+  import Modal from "./Modal.svelte";
+  import Notify from "./Notify.svelte";
 
   let { client, registered }: { client: ClientSummary; registered: ClientView | null } = $props();
 
@@ -87,11 +89,11 @@
         t("client.registered", { locale: registered.locale, build: client.build }),
         !registered.problem,
       )}
+      {#if registered.problem}
+        <ErrorBox error={registered.problem} compact />
+      {/if}
       <button class="btn" disabled={busy} onclick={choose}>{t("client.change")}</button>
     </div>
-    {#if registered.problem}
-      <ErrorBox error={registered.problem} />
-    {/if}
   {:else}
     <p class="muted explain">{t("client.explain", { version: client.version, build: client.build })}</p>
     {#if found === null}
@@ -123,21 +125,19 @@
     </button>
   {/if}
 
-  {#if pending}
-    <div class="locales">
-      <p>{t("client.whichLocale")}</p>
-      <div class="locale-buttons">
-        {#each pending.locales as locale (locale)}
-          <button class="btn" disabled={busy} onclick={() => pending && register(pending.path, locale)}>{locale}</button>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if error}
-    <ErrorBox {error} />
-  {/if}
+  <Notify {error} />
 </div>
+
+{#if pending}
+  <Modal title={t("client.localeTitle")} onclose={() => (pending = null)}>
+    <p>{t("client.whichLocale")}</p>
+    <div class="locale-buttons">
+      {#each pending.locales as locale (locale)}
+        <button class="btn" disabled={busy} onclick={() => pending && register(pending.path, locale)}>{locale}</button>
+      {/each}
+    </div>
+  </Modal>
+{/if}
 
 <style>
   .client {
@@ -251,10 +251,6 @@
 
   .other.link:hover:not(:disabled) {
     text-decoration: underline;
-  }
-
-  .locales p {
-    margin: 0 0 var(--space-2);
   }
 
   .locale-buttons {

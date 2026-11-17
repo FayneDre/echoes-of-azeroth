@@ -18,7 +18,7 @@
   } from "../api";
   import { localized, t } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
-  import ErrorBox from "./ErrorBox.svelte";
+  import Notify from "./Notify.svelte";
   import OptionsPanel from "./OptionsPanel.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
@@ -113,12 +113,7 @@
   }
 </script>
 
-{#if error}
-  <ErrorBox {error} />
-{/if}
-{#if instance && running}
-  <p class="banner">{t("settings.stopFirst")}</p>
-{/if}
+<Notify {error} />
 
 {#if sections.length > 0}
   <nav class="segmented pages" aria-label={t("settings.pages")}>
@@ -172,11 +167,15 @@
       {/each}
     </ul>
     {#if instance}
-      {#if rebuilds.length > 0}
-        <p class="warn">{t("settings.rebuild", { databases: rebuilds.join(", ") })}</p>
-      {/if}
       <div class="apply">
-        <p class="muted">{t("modules.optionalHint")}</p>
+        <!-- One line of state, in place: nothing appears above the list. -->
+        {#if running}
+          <p class="warn">{t("settings.stopFirst")}</p>
+        {:else if rebuilds.length > 0}
+          <p class="warn">{t("settings.rebuild", { databases: rebuilds.join(", ") })}</p>
+        {:else}
+          <p class="muted">{t("modules.optionalHint")}</p>
+        {/if}
         <button class="btn" disabled={!changed || locked} onclick={() => (selection = [...installed])}>
           {t("common.reset")}
         </button>
@@ -321,12 +320,6 @@
     font-size: 0.85rem;
   }
 
-  .banner {
-    margin: 0;
-    padding: var(--space-2) var(--space-4);
-    border: 1px solid var(--frame-light);
-    background: var(--shade-soft);
-  }
 
   /* Hint on its own line, buttons under it on the right: never squeezed. */
   .apply {

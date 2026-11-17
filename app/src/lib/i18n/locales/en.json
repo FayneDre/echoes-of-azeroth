@@ -98,7 +98,7 @@
   "step.overlay-server-file": "Adding module files",
   "step.other": "Working",
   "update.body": "Installs the server build of the current release. Every database is backed up first.",
-  "update.check": "Check for updates",
+  "update.action": "Update the server",
   "update.upToDate": "This realm already runs the latest build.",
   "update.done": "Updated to build {build}.",
   "repair.body": "Repair reinstalls the server files and configuration and checks the databases (backed up first). Characters and accounts are kept.",
@@ -419,5 +419,8 @@
   "modules.allCategories": "All",
   "modules.homepage": "Module page",
   "modules.noMatch": "No module matches.",
-  "modules.selected": "{count} of {total} selected"
+  "modules.selected": "{count} of {total} selected",
+  "status.unfinished": "Change interrupted",
+  "status.moved": "Folder moved",
+  "client.localeTitle": "Game language"
 }
