@@ -13,11 +13,15 @@
 //   module SQL must NOT be applied (validates Updates.AllowedModules naming +
 //   inertness).
 // Round B ("modules on"): all modules allowed and enabled -> servers must start;
-//   optional module SQL must be applied on top of the existing databases.
+//   optional module SQL must be applied on top of the existing databases. Then,
+//   as a player would see it: a real logon on authserver (SRP6 challenge,
+//   proof, realm list naming the world port, realm online), random bots in
+//   the world, and AHBot auctions in the auction house.
 //
 // Usage: node tools/ci/smoke-test.mjs --staging <dir> --mysql <dir> --data <dir> --work <dir>
 //        [--snapshot <dir>] [--mysql-manifest <component.json>]
 //        [--mandatory mod-a,mod-b] [--optional mod-c,mod-d] [--timeout-min 25]
+//        [--live-min 10]
 
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -25,6 +29,7 @@ import { appendFileSync, copyFileSync, cpSync, createWriteStream, existsSync, mk
 import { createConnection } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { login, registration, selfTest } from "./auth-client.mjs";
 
 // ------------------------------------------------------------------ args
 const args = Object.fromEntries(
@@ -52,6 +57,8 @@ const sqlAlways = optional.filter((id) => {
   return existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).database.applyWhenDisabled === true;
 });
 const timeoutMs = Number(args["timeout-min"] ?? 25) * 60_000;
+// How long bots and AHBot get to show up once the world is ready.
+const liveMs = Number(args["live-min"] ?? 10) * 60_000;
 const snapshotDir = resolve(args.snapshot ?? join(work, "db-snapshot"));
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const mysqlManifest = JSON.parse(readFileSync(args["mysql-manifest"] ?? join(repoRoot, "catalog", "components", "mysql-8-4.json"), "utf8"));
@@ -377,11 +384,99 @@ const stopServers = async () => {
   await sleep(3000);
 };
 
-async function round(label, allowed, enabled, maxImportSeconds = Infinity) {
+// ------------------------------------------------------------------ players
+const SMOKE_USER = "RKSMOKE";
+const SMOKE_PASS = randomBytes(8).toString("hex");
+const hex = (buffer) => buffer.toString("hex").toUpperCase();
+
+/** An account as the launcher's driver writes it (AccountMgr::CreateAccount). Returns its id. */
+function createAccount(username, password) {
+  const { salt, verifier } = registration(username, password);
+  return Number(
+    sql(
+      `INSERT INTO account (username, salt, verifier, expansion, reg_mail, email, joindate) VALUES ('${username}', X'${hex(salt)}', X'${hex(verifier)}', 2, '', '', NOW()); ` +
+        "SET @id = LAST_INSERT_ID(); " +
+        "INSERT INTO realmcharacters (realmid, acctid, numchars) SELECT realmlist.id, @id, 0 FROM realmlist; " +
+        "SELECT @id;",
+      "acore_auth",
+    ),
+  );
+}
+
+/** The AHBot owner (module post-install steps): an account, one character, the config naming them. */
+function prepareAhBot() {
+  const account = createAccount("AHBOT", randomBytes(8).toString("hex"));
+  const guid = Number(
+    sql(
+      "SELECT COALESCE(MAX(guid), 0) + 1 INTO @guid FROM characters; " +
+        "INSERT INTO characters (guid, account, name, race, class, gender, level, money, map, zone, position_x, position_y, position_z, orientation, taximask, innTriggerId, at_login) " +
+        `VALUES (@guid, ${account}, 'Auctioneer', 1, 1, 0, 1, 0, 0, 12, -8949.95, -132.493, 83.5312, 0, '', 0, 0); ` +
+        "SELECT @guid;",
+      "acore_characters",
+    ),
+  );
+  setConf(confFile("modules/mod_ahbot.conf"), { "AuctionHouseBot.Account": account, "AuctionHouseBot.GUID": guid });
+  note(`✅ AHBot owner: account ${account}, character ${guid}`);
+  return guid;
+}
+
+/** A real logon, then the realm list: the realm must point at the world port and be online. */
+async function checkLogin(label) {
+  const started = Date.now();
+  let last;
+  while (Date.now() - started < 120_000) {
+    try {
+      const realms = await login({ port: 3724, user: SMOKE_USER, pass: SMOKE_PASS });
+      last = JSON.stringify(realms);
+      const realm = realms.find((r) => r.address.endsWith(":8085"));
+      if (realm && !realm.offline) {
+        note(`✅ logon (${label}): SRP6 accepted, realm "${realm.name}" online at ${realm.address}`);
+        return;
+      }
+    } catch (error) {
+      last = error.message;
+    }
+    // The authserver refreshes the realm states every RealmsStateUpdateDelay (20 s).
+    await sleep(5000);
+  }
+  fail(`logon (${label}) failed: ${last}`);
+}
+
+/** Waits until bots are in the world and (if AHBot runs) auctions are posted. */
+async function checkLive(label, world, ahbotGuid) {
+  const started = Date.now();
+  let bots = 0;
+  let auctions = 0;
+  while (Date.now() - started < liveMs) {
+    if (world.exitCodeValue !== null) fail(`worldserver (${label}) exited with code ${world.exitCodeValue} while running (see worldserver-${label}.log)`);
+    bots = Number(
+      sql(
+        "SELECT COUNT(*) FROM acore_characters.characters c JOIN acore_auth.account a ON a.id = c.account WHERE c.online <> 0 AND a.username LIKE 'RNDBOT%'",
+      ),
+    );
+    if (ahbotGuid) auctions = Number(sql(`SELECT COUNT(*) FROM acore_characters.auctionhouse WHERE itemowner = ${ahbotGuid}`));
+    if (bots > 0 && (!ahbotGuid || auctions > 0)) break;
+    await sleep(10_000);
+  }
+  const after = Math.round((Date.now() - started) / 1000);
+  if (bots === 0) fail(`no random bot in the world ${after} s after readiness (${label})`);
+  note(`✅ ${bots} random bots in the world after ${after} s (${label})`);
+  if (ahbotGuid) {
+    if (auctions === 0) fail(`AHBot posted no auction ${after} s after readiness (${label})`);
+    note(`✅ AHBot posted ${auctions} auctions (${label})`);
+  }
+}
+
+async function round(label, allowed, enabled, maxImportSeconds = Infinity, live = false) {
   note(`\n### Round ${label}`);
   toggle(enabled);
   const seconds = dbimport(label, allowed);
   if (seconds > maxImportSeconds) fail(`dbimport (${label}) took ${seconds} s: the restored snapshot is not up to date`);
+  let ahbotGuid = null;
+  if (live) {
+    createAccount(SMOKE_USER, SMOKE_PASS);
+    if (enabled && optional.includes("mod-ah-bot")) ahbotGuid = prepareAhBot();
+  }
 
   const auth = startProcess(`authserver-${label}`, exe.authserver, ["-c", confFile("authserver.conf")], work);
   children.push(auth);
@@ -389,18 +484,24 @@ async function round(label, allowed, enabled, maxImportSeconds = Infinity) {
   const world = startProcess(`worldserver-${label}`, exe.worldserver, ["-c", confFile("worldserver.conf")], work);
   children.push(world);
   await waitReady(`worldserver (${label})`, world, 8085);
-  await sleep(20_000); // let bots and modules run for a moment
+  if (live) {
+    await checkLogin(label);
+    await checkLive(label, world, ahbotGuid);
+  } else {
+    await sleep(20_000); // let bots and modules run for a moment
+  }
   if (world.exitCodeValue !== null) fail(`worldserver (${label}) crashed after startup (code ${world.exitCodeValue})`);
-  note(`✅ worldserver (${label}) still running 20 s after readiness`);
+  note(`✅ worldserver (${label}) still running after the checks`);
   await stopServers();
 }
 
 try {
+  selfTest();
   await makeSnapshot();
   await restoreSnapshot();
   // On the restored snapshot, dbimport only checks: seconds, not minutes.
   await round("A-modules-off", baseModules, false, 120);
-  await round("B-modules-on", [...mandatory, ...optional], true);
+  await round("B-modules-on", [...mandatory, ...optional], true, Infinity, true);
   note("\n✅ Smoke test passed");
 } finally {
   await stopServers();
