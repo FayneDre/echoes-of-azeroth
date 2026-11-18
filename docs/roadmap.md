@@ -90,7 +90,7 @@ Durations assume one full-time developer and are rough.
 - [x] Updater key pair in the repository settings (2026-11-15)
 - [x] First `release-app.yml` run: draft `app-v0.1.0` (unsigned, update signature made)
 - [ ] Maintainer: SignPath Foundation project
-- [ ] Closed beta
+- No beta phase: releases go public directly (decided 2026-11-18)
 
 ## Phase 6: player tools (started 2026-11-15)
 
@@ -124,6 +124,8 @@ Durations assume one full-time developer and are rough.
 - [x] LAN hosting firewall rule (optional elevation, principle 6; ADR 0022)
 - [x] Backups while the servers run (players saved first); unused `assets/` removed (ADR 0022)
 - [x] RealmKeeper 0.3.0: first public launcher release (2026-11-18, unsigned)
+- [x] RealmKeeper 0.3.1: Play once online, account tools without sub-tabs, working GM
+  panel, account work no longer races a start or a stop (2026-11-18)
 
 ## Later
 

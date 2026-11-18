@@ -413,8 +413,7 @@ app over CDP on `pubtest`); `rk repair|resume`; per-user NSIS, release
 workflow with SignPath + signed update feed, opt-in crash reports, zstd
 release archives (ADR 0015). Updater key pair set (2026-11-15, private key
 kept by the maintainer outside the repo); first `release-app.yml` run
-published the draft `app-v0.1.0`. Remaining: SignPath project (maintainer),
-closed beta.
+published the draft `app-v0.1.0`. Remaining: SignPath project (maintainer).
 After phase 5 (2026-11-15): Bots tab (Playerbots options, verified keys;
 options of mandatory modules now listed and settable), Backups tab and
 `rk backup` (ADR 0016, restore verified on `pubtest`), `rk join` / LAN
@@ -433,4 +432,6 @@ index is republished by the next `build-server` publish (new key).
 2026-11-18: RealmKeeper 0.3.0 published (`app-v0.3.0`, unsigned, update feed
 on). ADR 0022: backups while the servers run, asset pruning, LAN firewall
 rule (verified locally on `pubtest`), smoke test logon / bots / AHBot.
-Remaining before a wide release: SignPath (maintainer), closed beta.
+2026-11-18: 0.3.1 (Play once online, GM panel fixed, account work in the
+realm's database turn). No beta phase: releases go public directly.
+Remaining before a wide release: SignPath (maintainer).
