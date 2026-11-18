@@ -321,9 +321,10 @@ catalog in `crates/rk-catalog/tests/install.rs`.
 `download` · `verify` · `extract` · `render-config` · `merge-config` ·
 `db-init` · `db-start` · `db-provision` · `db-stop` ·
 `db-claim` · `db-adopt` · `db-import` · `run-tool` · `create-account` ·
-`create-character` · `set-config` · `copy-client-file` · `overlay-server-file` ·
-`register-firewall`. The vocabulary is closed and tested; emulator-specific
-steps are delegated to the driver.
+`create-character` · `set-config` · `copy-client-file` · `overlay-server-file`.
+The vocabulary is closed and tested; emulator-specific steps are delegated
+to the driver. The LAN firewall rule is not a step: it is an optional
+player action that asks for elevation (ADR 0022).
 
 ### Resolution
 

@@ -443,6 +443,43 @@ impl Running {
         self.processes.iter().find(|p| p.takes_console())
     }
 
+    /// Makes the servers write every player to the database (emulator
+    /// `savePlayers`, ADR 0022) and waits until they say so. `false` when
+    /// the emulator cannot, the console refused the line or the `done` line
+    /// did not come in time: a backup then holds what the server last saved
+    /// by itself.
+    pub async fn save_players(&self) -> bool {
+        let Some(save) = self.server.emulator.save_players.as_ref() else {
+            return false;
+        };
+        let Some(console) = self.console() else {
+            return false;
+        };
+        // Subscribed before the command is sent, so the answer is not missed.
+        let mut lines = self.server.subscribe();
+        if console.send_line(&save.command).await.is_err() {
+            return false;
+        }
+        let answered = async {
+            loop {
+                match lines.recv().await {
+                    Ok(line) if line.process == console.id() && line.text.contains(&save.done) => {
+                        return true
+                    }
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return false,
+                }
+            }
+        };
+        let done = tokio::time::timeout(Duration::from_secs(save.timeout_seconds), answered)
+            .await
+            .unwrap_or(false);
+        if done && save.settle_seconds > 0 {
+            tokio::time::sleep(Duration::from_secs(save.settle_seconds)).await;
+        }
+        done
+    }
+
     /// Waits until any process exits (a crash, or a shutdown typed in its
     /// console) and returns which one.
     pub async fn wait_any_exit(&self) -> (String, Exit) {

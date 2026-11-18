@@ -154,9 +154,11 @@ step. Each step is recorded, so nothing is lost when one stops.
   The game world itself is rebuilt from the server build.
 - **When?** A daily backup is made when the servers stop (if enabled), and
   a full one is made before every update, repair and restore. You can also
-  click **Back up now**.
-- **Restoring** puts the player data back as the backup holds it. The
-  current state is backed up first, so a restore can be undone.
+  click **Back up now**, even while the servers run: the players are saved
+  first, then their data is copied without stopping the realm.
+- **Restoring** puts the player data back as the backup holds it (the
+  servers must be stopped). The current state is backed up first, so a
+  restore can be undone.
 - **"This file holds no player data of this realm"**: the file comes from
   another emulator, or it is not a backup.
 
@@ -187,8 +189,12 @@ step. Each step is recorded, so nothing is lost when one stops.
   **Join a game on the local network** and enter the host's address (shown
   on the host's Home tab, for example `192.168.1.20`).
 - If friends cannot connect, the host's Windows firewall probably blocks
-  ports 3724 and 8085. Allow `authserver.exe` and `worldserver.exe` for
-  private networks when Windows asks, or add the rule by hand.
+  ports 3724 and 8085. On the host's Home tab, **Allow in the firewall**
+  adds a rule for this realm's servers only (Windows asks for
+  administrator rights once); **Remove the rule** takes it away.
+- The rule applies to **private** networks. If the launcher says Windows
+  treats your network as public, open Windows Settings > Network &
+  Internet > your connection, and choose **Private network**.
 - Module options that add client files (patches, add-ons) must also be
   installed on the friends' game folders.
 

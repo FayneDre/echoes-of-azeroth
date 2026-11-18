@@ -24,8 +24,9 @@ Durations assume one full-time developer and are rough.
 - zstd packaging: moved to phase 5
 - [x] Server data: pinned upstream release (ADR 0006)
 - [x] Smoke tests: start with modules off/on (`tools/ci/smoke-test.mjs`, green 2026-11-14)
-- [ ] Smoke tests later: login, bots, AH posts
-- [ ] Prototype AHBot account/character creation without a client
+- [x] Smoke tests: authserver logon (SRP6, realm list), random bots online, AHBot
+  auctions (ADR 0022)
+- [x] AHBot account/character creation without a client (phase 3 post-install steps)
 - **Exit:** a downloadable artifact that works when installed by hand ✅ (2026-11-14)
 
 ## Phase 2: install engine (~2–3 weeks) — started
@@ -37,7 +38,8 @@ Durations assume one full-time developer and are rough.
 - [x] `rk-db` (MySQL portable: secure init, clean start/stop, users, backup/restore)
 - [x] `rk-db` + engine: CI database snapshot restore (`db-claim`, `extract-db`, `db-adopt`,
       `rk install --db-snapshot`)
-- [ ] `rk-db`: Job Object, cloud-folder check
+- [x] Job Object for stateless servers (`rk-runtime`, ADR 0011), synchronised folders
+  refused (ADR 0020)
 - [x] `rk-engine` executor: journal, resume, rollback, finalize, atomic directory swap
 - [x] Built-in steps `download` + `extract`; `rk component install` (MySQL)
 - [x] Steps `db-init/start/provision/stop`, `render-config`, `run-tool`; instance
@@ -119,8 +121,9 @@ Durations assume one full-time developer and are rough.
 - [x] FAQ and troubleshooting (EN/FR) linked from every error,
   reduced motion, keyboard-friendly dialogs, UI smoke test in CI (ADR 0020)
 - [x] Project named RealmKeeper 0.2.0: logo, wordmark, `rk` names, new index signing key (ADR 0021)
-- [ ] LAN hosting firewall rule (optional elevation, principle 6)
-- [ ] Backups while the servers run; `assets/` retention
+- [x] LAN hosting firewall rule (optional elevation, principle 6; ADR 0022)
+- [x] Backups while the servers run (players saved first); unused `assets/` removed (ADR 0022)
+- [x] RealmKeeper 0.3.0: first public launcher release (2026-11-18, unsigned)
 
 ## Later
 

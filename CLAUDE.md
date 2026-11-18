@@ -82,6 +82,9 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | `netstat -ano -p TCP` on a French Windows translates the state column (`État`) but not `LISTENING`; a listening socket has a `:0` remote end. `tasklist /FI "PID eq n" /FO CSV /NH` gives the program name first. | local test (2026-11-15) |
 | worldserver console output is in the Windows OEM code page, not UTF-8 (banners became `�`); decoded as code page 850 when not valid UTF-8. | local start on `pubtest` (2026-11-15) |
 | A cold copy of a stopped realm (database without `auto.cnf`, `#innodb_temp/`, spare redo files; `bin`/`sql` hard-linked) starts under another DB port: copy 32 s (1.3 GB), worldserver ready in 79 s. Player-data export: 72 MB SQL → 21 MB deflated, 30 s; import from the signed index + restore: 90 s, accounts and characters back. | local test `pubtest` → `pubcopy`, `pubimport` (2026-11-16) |
+| Console `saveall` (`Console::Yes`) calls `ObjectAccessor::SaveAllPlayers` (queued saves) and prints `All players saved.` (`acore_string` 15). | fork `cs_misc.cpp`, `ObjectAccessor.cpp` @ 32fd347 (2026-11-18) |
+| Firewall rules: `New-NetFirewallRule` needs elevation, `Get-NetFirewallRule` does not; rules need an absolute `-Program` path with backslashes (a relative `.local/rk/...` one is refused). A network Windows treats as Public (this PC's Wi-Fi) ignores Private-profile rules. | local test `rk firewall allow`, `remove` on `pubtest` (2026-11-18) |
+| authserver answers a logon challenge for an unknown account with result `0x04`; the Node SRP6 client (`tools/ci/auth-client.mjs`) matches the worldserver verifier vector and a simulated `SRP6.cpp` server. | local test (2026-11-18) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -178,6 +181,14 @@ Update this table when a fact is (re)verified; date it.
   `icons/logo.svg`); wordmark Cinzel + Cinzel Decorative R/K. No migration of
   0.1.x installs (start fresh). New index signing key (`RK_INDEX_SIGNING_KEY`):
   after a rotation CI keeps only the previous serial.
+- **0022** Backups while the servers run: run by the app's session
+  (`SessionControl::while_running`, it holds the lock): manifest `savePlayers`
+  (`saveall`, waits for `All players saved.`), then a one-transaction dump;
+  a stop waits for it; refused while starting. Unused `assets/<sha>/` pruned
+  after changes (never while a realm is unfinished). Optional LAN firewall rule
+  (`rk-launcher::firewall`, one elevated PowerShell, per program + readiness
+  port, Private/Domain; removed at uninstall).
+  Smoke test round B: SRP6 logon + realm list, bots online, AHBot auctions.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -218,7 +229,7 @@ reduced in-game settings) unless the user asks.
 │  ├─ release-app.yml        launcher installer: build, SignPath, update feed, release (manual)
 │  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
 │                            changes; reuses the artifact when the build key is unchanged)
-├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs, index.mjs,
+├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs (+ auth-client.mjs), index.mjs,
 │                            zip-zstd.mjs (release archives), app-release.mjs (launcher release)
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs), faq.md + faq.fr.md
 │                            (player help, anchors linked from the UI errors)
@@ -286,6 +297,8 @@ cargo run -p rk-cli -- play <id> [--keep-running]   # prepare client, start serv
 cargo run -p rk-cli -- backup list|create <id> | restore|delete <id> <name>   # player-data backups (ADR 0016)
 cargo run -p rk-cli -- join <address>        # point the client at a LAN host and launch the game
 cargo run -p rk-cli -- diagnostic            # support report (redacted), ADR 0018
+cargo run -p rk-cli -- firewall show|allow|remove <id>   # LAN firewall rule (allow/remove ask for elevation), ADR 0022
+node tools/ci/auth-client.mjs --self-test | --login <user> <password>   # SRP6 logon client of the smoke test
 cargo run -p rk-cli -- realm duplicate <source> <id> [--name <n>] | export <id> <file> | import <file> <id> [--name <n>] | rename <id> [<name>]   # ADR 0020
 node tools/ci/index.mjs keygen|entry|update|verify   # CI side of the index (ADR 0010)
 node tools/ci/zip-zstd.mjs <dir> <out.zip> [--level 19]   # release archive (ADR 0015)
@@ -417,3 +430,7 @@ verified on `pubtest` → `pubcopy` and `pubimport`).
 ADR 0021 (2026-11-16): renamed to RealmKeeper 0.2.0 (logo, wordmark, `rk`
 names, repository renamed, new index signing key and `RK_*` secrets). The
 index is republished by the next `build-server` publish (new key).
+2026-11-18: RealmKeeper 0.3.0 published (`app-v0.3.0`, unsigned, update feed
+on). ADR 0022: backups while the servers run, asset pruning, LAN firewall
+rule (verified locally on `pubtest`), smoke test logon / bots / AHBot.
+Remaining before a wide release: SignPath (maintainer), closed beta.

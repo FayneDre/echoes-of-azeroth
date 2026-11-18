@@ -83,6 +83,8 @@ pub enum LauncherError {
     ExportUnsupported(String),
     #[error(transparent)]
     Console(#[from] rk_core::console::ConsoleError),
+    #[error(transparent)]
+    Firewall(#[from] crate::firewall::FirewallError),
     #[error("{0}")]
     Invalid(String),
 }
@@ -211,6 +213,11 @@ impl LauncherError {
             L::InvalidName(_) => ("realm.invalidName", none()),
             L::ExportInvalid(_) => ("realm.exportInvalid", none()),
             L::ExportUnsupported(what) => ("realm.exportUnsupported", vec![("what", what.clone())]),
+            L::Firewall(e) => match e {
+                crate::firewall::FirewallError::Declined => ("firewall.declined", none()),
+                crate::firewall::FirewallError::Failed(_) => ("firewall.failed", none()),
+                crate::firewall::FirewallError::Unsupported => ("firewall.unsupported", none()),
+            },
             L::Invalid(_) => ("unknown", none()),
         }
     }

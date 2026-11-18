@@ -17,10 +17,11 @@ use rk_core::LocalizedText;
 use rk_engine::install::{InstanceRecord, Network};
 use rk_engine::CancelToken;
 use rk_launcher::backups::Backup;
+use rk_launcher::firewall::FirewallStatus;
 use rk_launcher::preferences::{self, Preferences};
 use rk_launcher::progress::{EventObserver, OperationEvent};
 use rk_launcher::realms::ExportSummary;
-use rk_launcher::session::{Game, Session, SessionEvent};
+use rk_launcher::session::{Game, Session, SessionControl, SessionEvent};
 use rk_launcher::{
     InstallRequest, InstanceSummary, Launcher, LauncherError, ModuleOptions, SettingsView,
     SpaceEstimate, UiError, UninstallReport, UpdateOutcome,
@@ -135,6 +136,13 @@ impl AppState {
         let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
         sessions.retain(|_, s| !s.is_finished());
         sessions.contains_key(id)
+    }
+
+    /// Controls of the instance's running session, if any.
+    fn session_control(&self, id: &str) -> Option<SessionControl> {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        sessions.retain(|_, s| !s.is_finished());
+        sessions.get(id).map(Session::control)
     }
 
     /// Ids of the instances with a session.
@@ -903,12 +911,48 @@ pub async fn backup_now(state: State<'_, AppState>, id: String) -> Result<Backup
     if state.operation.lock().expect("operation lock").is_some() {
         return Err(app_error("operation.busy", &id));
     }
+    // A running realm: its session saves the players, then runs the dump
+    // while it keeps the database up (a stop waits for it; ADR 0022).
+    if let Some(control) = state.session_control(&id) {
+        let realm = id.clone();
+        return match control
+            .while_running(async move { launcher.backup_live(&realm).await })
+            .await
+        {
+            Some(made) => made.map_err(ui),
+            None => Err(app_error("backup.notReady", &id)),
+        };
+    }
     launcher.backup_now(&id).await.map_err(ui)
 }
 
 #[tauri::command]
 pub fn delete_backup(state: State<'_, AppState>, id: String, name: String) -> Result<()> {
+    if state.operation.lock().expect("operation lock").is_some() {
+        return Err(app_error("operation.busy", &id));
+    }
     state.launcher()?.delete_backup(&id, &name).map_err(ui)
+}
+
+// --------------------------------------------------- firewall (ADR 0022)
+
+#[tauri::command]
+pub async fn firewall_status(state: State<'_, AppState>, id: String) -> Result<FirewallStatus> {
+    let launcher = state.launcher()?;
+    launcher.firewall_status(&id).await.map_err(ui)
+}
+
+/// Makes the realm's firewall rules; Windows shows its administrator prompt.
+#[tauri::command]
+pub async fn allow_firewall(state: State<'_, AppState>, id: String) -> Result<FirewallStatus> {
+    let launcher = state.launcher()?;
+    launcher.allow_firewall(&id).await.map_err(ui)
+}
+
+#[tauri::command]
+pub async fn remove_firewall(state: State<'_, AppState>, id: String) -> Result<FirewallStatus> {
+    let launcher = state.launcher()?;
+    launcher.remove_firewall(&id).await.map_err(ui)
 }
 
 #[tauri::command]

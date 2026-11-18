@@ -4,7 +4,8 @@
   // automatic ones are made before each update, repair or restore, and once
   // a day when the servers stop (ADR 0018); only the newest few are kept. A
   // restore puts the player data back as a backup holds it, after saving
-  // the current state.
+  // the current state. A backup can be made while the servers run (the
+  // players are saved first, ADR 0022); a restore needs them stopped.
   import { api, asCommandError, type Backup, type CommandError, type EmulatorOverview } from "../api";
   import { i18n, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
@@ -16,9 +17,10 @@
   const instance = $derived(launcher.instanceFor(realm.id));
   const id = $derived(instance?.record.id ?? null);
   const running = $derived(id !== null && launcher.isRunning(id));
-  const locked = $derived(
-    running || launcher.progress !== null || !instance?.installed || !!instance?.unfinished,
-  );
+  /** No backup can be made or deleted: not installed, interrupted, or busy. */
+  const unavailable = $derived(launcher.progress !== null || !instance?.installed || !!instance?.unfinished);
+  /** No restore: the servers must be stopped too. */
+  const locked = $derived(running || unavailable);
 
   let list = $state<Backup[]>([]);
   let working = $state(false);
@@ -127,9 +129,9 @@
   {#if !instance}
     <p class="muted">{t("settings.installFirst")}</p>
   {:else}
-    <p class="muted intro">{running ? t("backups.stopFirst") : t("backups.body")}</p>
+    <p class="muted intro">{running ? t("backups.running") : t("backups.body")}</p>
     <div class="actions">
-      <button class="btn" disabled={locked || working} onclick={backupNow}>
+      <button class="btn" disabled={unavailable || working} onclick={backupNow}>
         {working ? t("backups.working") : t("backups.now")}
       </button>
       <button class="btn" onclick={openFolder}>{t("backups.openFolder")}</button>
@@ -169,7 +171,7 @@
               <button class="btn small" disabled={locked} onclick={() => (confirmRestore = backup)}>
                 {t("backups.restore")}
               </button>
-              <button class="btn small" disabled={locked} onclick={() => remove(backup)}>{t("backups.delete")}</button>
+              <button class="btn small" disabled={unavailable || working} onclick={() => remove(backup)}>{t("backups.delete")}</button>
             {/if}
           </li>
         {/each}

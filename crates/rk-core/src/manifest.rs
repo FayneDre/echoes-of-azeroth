@@ -87,6 +87,33 @@ pub struct EmulatorManifest {
     /// Ready-made console commands of the GM panel (ADR 0020).
     #[serde(default)]
     pub console_actions: Vec<ConsoleAction>,
+    /// How to make the running server write its players to the database
+    /// before a backup taken while it runs (ADR 0022). Without it, such a
+    /// backup holds what the server last saved by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_players: Option<SavePlayers>,
+}
+
+/// A console command that saves every player, and the output line that
+/// says it is done.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SavePlayers {
+    /// Sent to the process that takes console commands.
+    pub command: String,
+    /// Text of the output line printed once the saves are queued.
+    pub done: String,
+    /// Longest wait for `done` before the backup goes ahead anyway.
+    #[serde(default = "default_save_timeout")]
+    pub timeout_seconds: u64,
+    /// Extra wait after `done`, for writes the server makes in the
+    /// background.
+    #[serde(default)]
+    pub settle_seconds: u64,
+}
+
+fn default_save_timeout() -> u64 {
+    30
 }
 
 /// A console command with parameters the player fills in (GM panel). Sent

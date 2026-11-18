@@ -26,6 +26,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0019](0019-data-root-as-picked-renamed-or-moved.md) | The picked folder is the data root (marker file); missing, renamed or moved data roots | Accepted |
 | [0020](0020-data-safety-gm-panel-several-realms.md) | Clean stop at shutdown, location and quarantine checks, GM panel, start progress, client add-ons, duplicate / export / import a realm, FAQ, accessibility, UI smoke test | Accepted |
 | [0021](0021-rename-to-realmkeeper.md) | Project name RealmKeeper: names (crates `rk-*`, CLI `rk`, `RealmKeeperData`), logo and wordmark, new index signing key | Accepted |
+| [0022](0022-live-backups-assets-firewall.md) | Backups while the servers run (`savePlayers`), pruning `assets/`, optional LAN firewall rule, smoke test logon / bots / AHBot | Accepted |
 
 Template:
 

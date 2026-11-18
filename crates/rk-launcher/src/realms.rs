@@ -284,7 +284,7 @@ impl Launcher {
         };
         // In the instance folder, not with the backups (it is not one).
         let dump = self.layout.instance(id).root.join("export.sql.tmp");
-        let dumped = self.dump_player_data_to(id, &dump).await;
+        let dumped = self.dump_player_data_to(id, &dump, false).await;
         let written = dumped.and_then(|()| {
             let bindings = self.layout.instance(id).bindings;
             let bindings = match std::fs::read(&bindings) {

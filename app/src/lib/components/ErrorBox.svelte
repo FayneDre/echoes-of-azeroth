@@ -50,7 +50,7 @@
     [/^(server|database)\./, "servers"],
     [/^backup\./, "backups"],
     [/^realm\./, "realms"],
-    [/^lan\./, "lan"],
+    [/^(lan|firewall)\./, "lan"],
     [/^(gm|account)\./, "gm"],
   ];
   const FAQ_URL = "https://github.com/FayneDre/realmkeeper/blob/main/docs/";

@@ -7,6 +7,7 @@
     type ClientView,
     type CommandError,
     type EmulatorOverview,
+    type FirewallStatus,
     type InstanceView,
   } from "../api";
   import Emblem from "../emblems/Emblem.svelte";
@@ -96,6 +97,37 @@
           : t("update.done", { build: outcome.to.slice(0, 12) });
     });
   }
+
+  /** LAN realms: whether the Windows firewall lets other computers in (ADR 0022). */
+  const lan = $derived(instance.record.network === "lan");
+  let firewall = $state<FirewallStatus | null>(null);
+  let firewallBusy = $state(false);
+  $effect(() => {
+    firewall = null;
+    if (!lan) return;
+    const realm = id;
+    api
+      .firewallStatus(realm)
+      .then((status) => {
+        if (realm === id) firewall = status;
+      })
+      // Unreadable: offered as not allowed, so the player can still act.
+      .catch(() => {
+        if (realm === id) firewall = { supported: true, allowed: false, publicNetwork: false };
+      });
+  });
+  function changeFirewall(allow: boolean) {
+    const realm = id;
+    firewallBusy = true;
+    void act(async () => {
+      const status = await (allow ? api.allowFirewall(realm) : api.removeFirewall(realm));
+      if (realm === id) firewall = status;
+    }).finally(() => (firewallBusy = false));
+  }
+  const firewallText = $derived.by(() => {
+    if (firewall?.publicNetwork) return t("firewall.public");
+    return firewall?.allowed ? t("firewall.allowed") : t("firewall.short");
+  });
 
   /** Ticks every 30 s while online, for the uptime. */
   let now = $state(Date.now());
@@ -323,6 +355,19 @@
         {t("repair.action")}
       </button>
     </div>
+    {#if lan && firewall?.supported !== false}
+      <div class="task">
+        <p class="muted" title={t("firewall.body")}>{firewallText}</p>
+        <button
+          class="btn"
+          disabled={firewall === null || firewallBusy}
+          title={t("firewall.body")}
+          onclick={() => changeFirewall(!firewall?.allowed)}
+        >
+          {firewall?.allowed ? t("firewall.remove") : t("firewall.allow")}
+        </button>
+      </div>
+    {/if}
   </section>
 </div>
 

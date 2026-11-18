@@ -169,10 +169,12 @@ n'est perdu quand l'une s'arrête.
 - **Quand ?** Une sauvegarde quotidienne est faite à l'arrêt des serveurs
   (si elle est activée), et une sauvegarde complète avant chaque mise à
   jour, réparation et restauration. Tu peux aussi cliquer sur
-  **Sauvegarder maintenant**.
+  **Sauvegarder maintenant**, même pendant que les serveurs tournent : les
+  joueurs sont d'abord enregistrés, puis leurs données copiées sans arrêter
+  le royaume.
 - **Restaurer** remet les données des joueurs telles que la sauvegarde
-  les contient. L'état actuel est sauvegardé d'abord, donc une
-  restauration peut être annulée.
+  les contient (les serveurs doivent être arrêtés). L'état actuel est
+  sauvegardé d'abord, donc une restauration peut être annulée.
 - **« Ce fichier ne contient aucune donnée de joueur de ce royaume »** :
   le fichier vient d'un autre émulateur, ou ce n'est pas une sauvegarde.
 
@@ -205,9 +207,13 @@ n'est perdu quand l'une s'arrête.
   **Rejoindre une partie sur le réseau local** et saisissent l'adresse de
   l'hôte (affichée dans son onglet Accueil, par exemple `192.168.1.20`).
 - Si les amis ne peuvent pas se connecter, le pare-feu Windows de l'hôte
-  bloque sans doute les ports 3724 et 8085. Autorise `authserver.exe` et
-  `worldserver.exe` pour les réseaux privés quand Windows le demande, ou
-  ajoute la règle à la main.
+  bloque sans doute les ports 3724 et 8085. Dans l'onglet Accueil de
+  l'hôte, **Autoriser dans le pare-feu** ajoute une règle pour les serveurs
+  de ce royaume seulement (Windows demande une fois les droits
+  d'administrateur) ; **Retirer la règle** l'enlève.
+- La règle s'applique aux réseaux **privés**. Si le launcher indique que
+  Windows considère ton réseau comme public, ouvre Paramètres Windows >
+  Réseau et Internet > ta connexion, et choisis **Réseau privé**.
 - Les options de module qui ajoutent des fichiers au client (patchs,
   addons) doivent aussi être installées dans le dossier de jeu des amis.
 

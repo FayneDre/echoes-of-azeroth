@@ -178,6 +178,38 @@
       "items": {
         "$ref": "#/$defs/consoleAction"
       }
+    },
+    "savePlayers": {
+      "description": "Console command that writes every player to the database before a backup taken while the servers run, and the output line that says it is done (ADR 0022).",
+      "type": "object",
+      "required": [
+        "command",
+        "done"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "done": {
+          "description": "Text of the output line printed once the saves are queued.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeoutSeconds": {
+          "description": "Longest wait for `done` before the backup goes ahead anyway (default 30).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "settleSeconds": {
+          "description": "Extra wait after `done`, for writes the server makes in the background (default 0).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

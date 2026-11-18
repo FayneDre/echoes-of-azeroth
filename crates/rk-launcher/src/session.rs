@@ -3,12 +3,14 @@
 //! and a stop request, and receives [`SessionEvent`]s (progress, log lines,
 //! game state). The CLI uses the same session with stdin and stderr.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use rk_runtime::{Server, ServerEvent, Stopped, Stream};
 use serde::Serialize;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::{driver, LauncherError, PreparedClient, UiError};
@@ -154,8 +156,14 @@ enum Command {
     Console(String),
     /// Launches the game in a session whose servers are up.
     Launch(Box<PreparedClient>),
+    /// Work that needs the servers up (a live backup): run once the players
+    /// are saved; a stop waits for it.
+    WhileRunning(Work),
     Stop,
 }
+
+/// [`SessionControl::while_running`] work, its result sent on by itself.
+type Work = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Sends commands to a session; cheap to clone.
 #[derive(Clone)]
@@ -179,6 +187,23 @@ impl SessionControl {
     /// they were started on their own.
     pub fn launch_game(&self, client: PreparedClient) {
         let _ = self.commands.send(Command::Launch(Box::new(client)));
+    }
+
+    /// Runs `work` while the servers stay up (a backup of the running
+    /// database, ADR 0022): the players are saved first (emulator
+    /// `savePlayers`), a stop requested meanwhile waits for it, crashes are
+    /// still reported. `None` when the servers are not ready (starting,
+    /// stopping, ended) or another such work runs: `work` is not run.
+    pub async fn while_running<T: Send + 'static>(
+        &self,
+        work: impl Future<Output = T> + Send + 'static,
+    ) -> Option<T> {
+        let (answer, answered) = oneshot::channel();
+        let work: Work = Box::pin(async move {
+            let _ = answer.send(work.await);
+        });
+        self.commands.send(Command::WhileRunning(work)).ok()?;
+        answered.await.ok()
     }
 }
 
@@ -395,8 +420,18 @@ async fn supervise(
     );
     census.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut clean = true;
+    // At most one work that needs the servers up, and whether a stop waits
+    // for it.
+    let mut exclusive: Option<Pin<Box<dyn Future<Output = ()> + Send + '_>>> = None;
+    let mut stop_after = false;
     loop {
         tokio::select! {
+            () = async { exclusive.as_mut().expect("guarded").await }, if exclusive.is_some() => {
+                exclusive = None;
+                if stop_after {
+                    break;
+                }
+            }
             _ = census.tick() => {
                 // Best effort: a failed or slow count only leaves the figures
                 // as they were (bounded: a stop or a crash waits for it).
@@ -405,8 +440,20 @@ async fn supervise(
                     events(SessionEvent::Population { players: count.players, bots: count.bots });
                 }
             }
-            command = commands.recv() => match command {
+            command = commands.recv(), if !stop_after => match command {
+                None | Some(Command::Stop) if exclusive.is_some() => stop_after = true,
                 None | Some(Command::Stop) => break,
+                Some(Command::WhileRunning(work)) => {
+                    // One at a time; a refused work is dropped (its caller
+                    // gets `None`).
+                    if exclusive.is_none() {
+                        let running = &running;
+                        exclusive = Some(Box::pin(async move {
+                            running.save_players().await;
+                            work.await;
+                        }));
+                    }
+                }
                 Some(Command::Launch(client)) => {
                     if child.is_some() {
                         events(SessionEvent::Warning { message: "the game is already running".into() });
@@ -447,11 +494,17 @@ async fn supervise(
                 prepared = None;
                 events(SessionEvent::GameExited { code: status.ok().and_then(|s| s.code()) });
                 if !keep_running {
-                    break;
+                    if exclusive.is_some() {
+                        stop_after = true;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
     }
+    // A crash ends a work in progress (its database may go away).
+    drop(exclusive);
     running.stop(observer).await;
     drop(prepared);
     clean
@@ -488,6 +541,8 @@ async fn wait_stop(
             None | Some(Command::Stop) => return,
             Some(Command::Launch(client)) => *queued = Some(client),
             Some(Command::Console(_)) => {}
+            // Not ready yet: refused (dropped, its caller gets `None`).
+            Some(Command::WhileRunning(_)) => {}
         }
     }
 }

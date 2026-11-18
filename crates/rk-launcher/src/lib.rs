@@ -16,13 +16,14 @@ pub mod backups;
 pub mod crash;
 pub mod diagnostic;
 mod error;
+pub mod firewall;
 pub mod location;
 pub mod preferences;
 pub mod progress;
 pub mod realms;
 pub mod session;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -726,6 +727,7 @@ impl Launcher {
         // Best effort: the change itself succeeded, a locked file is
         // pruned next time.
         let _ = backups::prune(&self.layout.backups(&record.id));
+        self.prune_assets();
         Ok(record)
     }
 
@@ -906,7 +908,9 @@ impl Launcher {
             install::save_record(&self.layout, old)?;
             return Err(error);
         }
-        Ok(rk_runtime::modules::finished(&self.layout, &record)?)
+        let record = rk_runtime::modules::finished(&self.layout, &record)?;
+        self.prune_assets();
+        Ok(record)
     }
 
     /// Turns modules on or off (servers stopped). A removed module that
@@ -1156,10 +1160,22 @@ impl Launcher {
     /// manual backup: what [`restore`](Self::restore) puts back. Content
     /// databases are left out, the build and modules rebuild them. The
     /// servers must be stopped (the instance lock): the database is
-    /// started for the dump and stopped again.
+    /// started for the dump and stopped again. While they run, see
+    /// [`Self::backup_live`].
     pub async fn backup_now(&self, id: &str) -> Result<backups::Backup> {
         let _lock = install::lock_instance(&self.layout, id)?;
-        self.dump_player_data(id, backups::manual_name(unix_secs()))
+        self.dump_player_data(id, backups::manual_name(unix_secs()), false)
+            .await
+    }
+
+    /// The manual backup of a realm whose servers run (ADR 0022): their
+    /// database is dumped in one transaction and left running. Only for
+    /// work run by the realm's session
+    /// ([`SessionControl::while_running`](session::SessionControl::while_running)),
+    /// which holds the instance lock, has saved the players and keeps the
+    /// database up until this returns.
+    pub async fn backup_live(&self, id: &str) -> Result<backups::Backup> {
+        self.dump_player_data(id, backups::manual_name(unix_secs()), true)
             .await
     }
 
@@ -1178,7 +1194,7 @@ impl Launcher {
         }
         let _lock = install::lock_instance(&self.layout, id)?;
         let backup = self
-            .dump_player_data(id, backups::daily_name(unix_secs()))
+            .dump_player_data(id, backups::daily_name(unix_secs()), false)
             .await?;
         // Best effort, like after an update.
         let _ = backups::prune(&dir);
@@ -1186,11 +1202,18 @@ impl Launcher {
     }
 
     /// Dumps the player databases to `backups/<id>/<name>`, the instance
-    /// lock held by the caller.
-    async fn dump_player_data(&self, id: &str, name: String) -> Result<backups::Backup> {
+    /// lock held by the caller, or by the running servers (`running`: their
+    /// database is left as it is).
+    async fn dump_player_data(
+        &self,
+        id: &str,
+        name: String,
+        running: bool,
+    ) -> Result<backups::Backup> {
         let dir = self.layout.backups(id);
         std::fs::create_dir_all(&dir).map_err(|e| io_error(dir.clone(), e))?;
-        self.dump_player_data_to(id, &dir.join(&name)).await?;
+        self.dump_player_data_to(id, &dir.join(&name), running)
+            .await?;
         backups::list(&dir)?
             .into_iter()
             .find(|b| b.name == name)
@@ -1198,8 +1221,8 @@ impl Launcher {
     }
 
     /// Dumps the player databases to `out`, the instance lock held by the
-    /// caller.
-    async fn dump_player_data_to(&self, id: &str, out: &Path) -> Result<()> {
+    /// caller (or by the running servers, `running`).
+    async fn dump_player_data_to(&self, id: &str, out: &Path, running: bool) -> Result<()> {
         let (record, secrets) = install::open_existing(&self.layout, id)?;
         install::ensure_finished(
             &self.layout,
@@ -1209,9 +1232,12 @@ impl Launcher {
             ],
         )?;
         let plan = install::instance_plan(&self.catalog, &self.layout, &record, &secrets)?;
-        plan.db.start().await?;
         let player = rk_runtime::modules::player_databases(&self.catalog, &record)?;
         let databases: Vec<&str> = player.iter().map(String::as_str).collect();
+        if running {
+            return Ok(plan.db.backup(&databases, out).await?);
+        }
+        plan.db.start().await?;
         let dumped = plan.db.backup(&databases, out).await;
         let stopped = plan.db.stop().await;
         dumped?;
@@ -1219,10 +1245,28 @@ impl Launcher {
         Ok(())
     }
 
-    /// Deletes one backup file.
+    /// Deletes one backup file. Also while the instance lock is held by
+    /// something that does not read backups (running servers, an export),
+    /// never while a change is in flight: a restore reads its backup until
+    /// it completes (`pending.json`, operation journals).
     pub fn delete_backup(&self, id: &str, name: &str) -> Result<()> {
         install::open_existing(&self.layout, id)?;
-        let _lock = install::lock_instance(&self.layout, id)?;
+        let _lock = match install::lock_instance(&self.layout, id) {
+            Ok(lock) => Some(lock),
+            Err(busy @ install::PlanError::InstanceBusy(_)) => {
+                let operations = [
+                    install::instance_operation_id(id),
+                    install::modules_operation_id(id),
+                ];
+                if self.pending_path(id).exists()
+                    || install::ensure_finished(&self.layout, &operations).is_err()
+                {
+                    return Err(busy.into());
+                }
+                None
+            }
+            Err(other) => return Err(other.into()),
+        };
         let path = backups::resolve(&self.layout.backups(id), name)?;
         std::fs::remove_file(&path).map_err(|e| io_error(path, e))
     }
@@ -1301,7 +1345,7 @@ impl Launcher {
             let _lock = install::lock_instance(&self.layout, id)?;
             let backup = if keep_backup && summary.installed && summary.unfinished.is_none() {
                 Some(
-                    self.dump_player_data(id, backups::manual_name(unix_secs()))
+                    self.dump_player_data(id, backups::manual_name(unix_secs()), false)
                         .await?,
                 )
             } else {
@@ -1320,6 +1364,14 @@ impl Launcher {
             }
             if let Err(e) = self.release_client(&record) {
                 warnings.push(format!("game folder: {e}"));
+            }
+            // Its LAN firewall rules (ADR 0022) go too: only when there are
+            // some, so Windows asks for elevation only if the player once
+            // allowed this realm. Declined: they stay, said in a warning.
+            if firewall::has_rules(id).await {
+                if let Err(e) = firewall::remove(id, &self.firewall_log()).await {
+                    warnings.push(format!("firewall rules of '{id}': {e}"));
+                }
             }
             backup
         };
@@ -1347,6 +1399,8 @@ impl Launcher {
         let shared_removed = self.instances()?.is_empty();
         if shared_removed {
             warnings.extend(self.remove_shared());
+        } else {
+            self.prune_assets();
         }
         Ok(UninstallReport {
             backup,
@@ -1390,6 +1444,122 @@ impl Launcher {
                 let _ = std::fs::remove_dir_all(entry.path());
             }
         }
+    }
+
+    // ------------------------------------------------- firewall (ADR 0022)
+
+    /// The server programs of a realm other computers connect to, with the
+    /// TCP port each is waited on.
+    fn firewall_programs(&self, record: &InstanceRecord) -> Result<Vec<firewall::Program>> {
+        let emulator = self.emulator(&record.emulator)?;
+        // Windows wants a full path with backslashes (the data root may be
+        // relative, as the CLI's default is).
+        let root = self.layout.instance(&record.id).root;
+        let root = std::path::absolute(&root).map_err(|e| io_error(root.clone(), e))?;
+        Ok(emulator
+            .processes
+            .iter()
+            .map(|spec| firewall::Program {
+                process: spec.id.clone(),
+                path: std::path::absolute(root.join(&spec.executable))
+                    .unwrap_or_else(|_| root.join(&spec.executable)),
+                port: match &spec.readiness {
+                    rk_core::manifest::Readiness::Tcp { port } => record.ports.get(port).copied(),
+                    rk_core::manifest::Readiness::LogLine { .. } => None,
+                },
+            })
+            .collect())
+    }
+
+    /// Whether the firewall lets the other computers of the network reach
+    /// the realm's servers.
+    pub async fn firewall_status(&self, id: &str) -> Result<firewall::FirewallStatus> {
+        let (record, _) = install::open_existing(&self.layout, id)?;
+        let programs = self.firewall_programs(&record)?;
+        Ok(firewall::status(id, &programs).await)
+    }
+
+    /// Lets the other computers of the network reach the realm's servers:
+    /// one firewall rule per server program (Windows asks for elevation).
+    pub async fn allow_firewall(&self, id: &str) -> Result<firewall::FirewallStatus> {
+        let (record, _) = install::open_existing(&self.layout, id)?;
+        let programs = self.firewall_programs(&record)?;
+        firewall::allow(id, &programs, &self.firewall_log()).await?;
+        Ok(firewall::status(id, &programs).await)
+    }
+
+    /// Removes the realm's firewall rules (Windows asks for elevation).
+    pub async fn remove_firewall(&self, id: &str) -> Result<firewall::FirewallStatus> {
+        let (record, _) = install::open_existing(&self.layout, id)?;
+        let programs = self.firewall_programs(&record)?;
+        firewall::remove(id, &self.firewall_log()).await?;
+        Ok(firewall::status(id, &programs).await)
+    }
+
+    /// Where the elevated firewall change writes its error, if any: a full
+    /// path (the elevated PowerShell starts in another folder).
+    fn firewall_log(&self) -> PathBuf {
+        let path = self.layout.state().join("firewall-error.txt");
+        std::path::absolute(&path).unwrap_or(path)
+    }
+
+    /// Removes the unpacked module assets (`assets/<sha256>/`) that no realm
+    /// selects any more: options turned off, realms removed, older pins
+    /// (ADR 0022). Nothing is removed while a realm is being installed or
+    /// has an unfinished change (its plan may still need them). The
+    /// archives stay in the store: turning an option on again unpacks them
+    /// without a download. Server overlays and game folders hold copies,
+    /// never links into `assets/`. Best effort; returns what went.
+    pub fn prune_assets(&self) -> Vec<PathBuf> {
+        let Some(keep) = self.assets_in_use() else {
+            return Vec::new();
+        };
+        let Ok(entries) = std::fs::read_dir(self.layout.assets()) else {
+            return Vec::new();
+        };
+        let mut removed = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // Only unpacked archives: a staging folder has a longer name.
+            let unpacked = name.len() == 64
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            if !unpacked || keep.contains(&name) || !entry.path().is_dir() {
+                continue;
+            }
+            if std::fs::remove_dir_all(entry.path()).is_ok() {
+                removed.push(entry.path());
+            }
+        }
+        removed
+    }
+
+    /// Archive hashes of the assets every realm selects; `None` when one
+    /// is not fully installed or has a change in flight.
+    fn assets_in_use(&self) -> Option<BTreeSet<String>> {
+        let mut keep = BTreeSet::new();
+        for summary in self.instances().ok()? {
+            let record = &summary.record;
+            if !summary.installed
+                || summary.unfinished.is_some()
+                || self.pending_path(&record.id).exists()
+            {
+                return None;
+            }
+            let selected: Vec<&str> = record.modules.iter().map(String::as_str).collect();
+            let resolution = rk_core::resolve(
+                &self.catalog,
+                &record.emulator,
+                Some(&record.flavor),
+                &selected,
+            )
+            .ok()?;
+            let assets =
+                install::assets::selected(&self.catalog, &resolution, &record.options).ok()?;
+            keep.extend(assets.into_iter().map(|a| a.asset.source.sha256));
+        }
+        Some(keep)
     }
 
     /// Shared downloads and their journals, once no realm uses them. Kept:
@@ -1690,6 +1860,63 @@ mod tests {
         assert!(layout.state().join("index.json").exists());
         assert!(layout.store().join("blobs").is_dir());
         assert!(layout.backups("one").join("manual-1.sql").exists());
+    }
+
+    #[test]
+    fn unpacked_assets_no_realm_selects_are_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let catalog = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog");
+        let launcher = Launcher::open(&catalog, root.path()).unwrap();
+        let layout = launcher.layout().clone();
+        let module = "mod-individual-progression";
+        let (mut record, _) = install::open_or_create(
+            launcher.catalog(),
+            &layout,
+            &install::NewInstance {
+                id: "one".into(),
+                emulator: "azerothcore".into(),
+                flavor: None,
+                modules: vec![module.into()],
+                network: Network::Solo,
+            },
+        )
+        .unwrap();
+        record.build = Some("b".repeat(16));
+        record.options.insert(
+            module.into(),
+            BTreeMap::from([(
+                "vanilla-visuals".to_owned(),
+                OptionValue::Choice("on".into()),
+            )]),
+        );
+        install::save_record(&layout, &record).unwrap();
+        let used = install::assets::selected(
+            launcher.catalog(),
+            &rk_core::resolve(launcher.catalog(), "azerothcore", None, &[module]).unwrap(),
+            &record.options,
+        )
+        .unwrap()[0]
+            .asset
+            .source
+            .sha256
+            .clone();
+        let unused = "0".repeat(64);
+        let staging = format!("{unused}.rk-staging");
+        for name in [&used, &unused, &staging] {
+            std::fs::create_dir_all(layout.assets().join(name).join("x")).unwrap();
+        }
+
+        // A change in flight: nothing goes.
+        std::fs::write(layout.instance("one").root.join("pending.json"), "{}").unwrap();
+        assert!(launcher.prune_assets().is_empty());
+        std::fs::remove_file(layout.instance("one").root.join("pending.json")).unwrap();
+
+        assert_eq!(launcher.prune_assets(), [layout.assets().join(&unused)]);
+        assert!(layout.assets().join(&used).is_dir());
+        assert!(
+            layout.assets().join(&staging).is_dir(),
+            "not an unpacked archive"
+        );
     }
 
     #[test]

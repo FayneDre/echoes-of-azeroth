@@ -228,9 +228,19 @@ export interface SettingsSection {
 }
 
 /** A database backup of an instance (`backups/<id>/<name>`). */
+/** Whether other computers of the network can reach a realm (ADR 0022). */
+export interface FirewallStatus {
+  /** Rules can be made on this system (Windows). */
+  supported: boolean;
+  /** Every server program has its rule. */
+  allowed: boolean;
+  /** Windows treats this network as public: the rules do not apply there. */
+  publicNetwork: boolean;
+}
+
 export interface Backup {
   name: string;
-  kind: "manual" | "daily" | "update" | "repair" | "restore" | "other";
+  kind: "manual" | "daily" | "update" | "repair" | "restore" | "import" | "other";
   /** Unix seconds. */
   created: number;
   size: number;
@@ -427,6 +437,10 @@ export const api = {
   deleteBackup: (id: string, name: string) => invoke<void>("delete_backup", { id, name }),
   restoreBackup: (id: string, name: string) => invoke<InstanceRecord>("restore_backup", { id, name }),
   openBackupsFolder: (id: string) => invoke<void>("open_backups_folder", { id }),
+  firewallStatus: (id: string) => invoke<FirewallStatus>("firewall_status", { id }),
+  /** Windows asks for administrator rights. */
+  allowFirewall: (id: string) => invoke<FirewallStatus>("allow_firewall", { id }),
+  removeFirewall: (id: string) => invoke<FirewallStatus>("remove_firewall", { id }),
   /** Copies a stopped realm to a new one (ADR 0020). */
   duplicate: (source: string, id: string, name: string | null) =>
     invoke<InstanceRecord>("duplicate_instance", { source, id, name }),

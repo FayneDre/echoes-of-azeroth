@@ -139,7 +139,8 @@ enum Command {
         #[command(subcommand)]
         command: RealmCommand,
     },
-    /// Database backups of an instance (servers stopped).
+    /// Player-data backups of an instance (servers stopped; the app also
+    /// backs up a running realm, ADR 0022).
     Backup {
         #[command(subcommand)]
         command: BackupCommand,
@@ -179,12 +180,46 @@ enum Command {
         #[arg(long, default_value = ".local/rk")]
         root: PathBuf,
     },
+    /// Windows firewall rules that let the other computers of the network
+    /// reach a realm's servers (ADR 0022; allow and remove ask for elevation).
+    Firewall {
+        #[command(subcommand)]
+        command: FirewallCommand,
+    },
     /// Join a realm hosted on another computer of the local network: point
     /// the game at it and launch it (no server runs here).
     Join {
         address: String,
         #[arg(long, default_value = "azerothcore")]
         emulator: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/rk")]
+        root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum FirewallCommand {
+    /// Whether the rules are there.
+    Show {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/rk")]
+        root: PathBuf,
+    },
+    /// Make the rules (one per server program, private networks).
+    Allow {
+        instance: String,
+        #[arg(long, default_value = "catalog")]
+        catalog: PathBuf,
+        #[arg(long, default_value = ".local/rk")]
+        root: PathBuf,
+    },
+    /// Remove the rules.
+    Remove {
+        instance: String,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         #[arg(long, default_value = ".local/rk")]
@@ -315,7 +350,7 @@ enum BackupCommand {
         #[arg(long, default_value = ".local/rk")]
         root: PathBuf,
     },
-    /// Dump every database to a new manual backup.
+    /// Dump the player databases to a new manual backup.
     Create {
         instance: String,
         #[arg(long, default_value = "catalog")]
@@ -1073,6 +1108,49 @@ fn main() -> Result<ExitCode> {
                 "{}",
                 rk_launcher::diagnostic::report(&launcher, env!("CARGO_PKG_VERSION"), &[])
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Firewall { command } => {
+            let (instance, catalog, root, action) = match command {
+                FirewallCommand::Show {
+                    instance,
+                    catalog,
+                    root,
+                } => (instance, catalog, root, "show"),
+                FirewallCommand::Allow {
+                    instance,
+                    catalog,
+                    root,
+                } => (instance, catalog, root, "allow"),
+                FirewallCommand::Remove {
+                    instance,
+                    catalog,
+                    root,
+                } => (instance, catalog, root, "remove"),
+            };
+            let launcher = open(&catalog, &root)?;
+            let status = block_on(async {
+                match action {
+                    "allow" => launcher.allow_firewall(&instance).await,
+                    "remove" => launcher.remove_firewall(&instance).await,
+                    _ => launcher.firewall_status(&instance).await,
+                }
+            })??;
+            if !status.supported {
+                println!("firewall rules are only made on Windows");
+            } else {
+                println!(
+                    "{instance}: {}",
+                    if status.allowed {
+                        "other computers of the local network can connect"
+                    } else {
+                        "no firewall rule: other computers may be blocked"
+                    }
+                );
+                if status.public_network {
+                    println!("Windows treats this network as public: the rules apply to private networks only");
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::Join {
