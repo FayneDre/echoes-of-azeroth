@@ -87,6 +87,8 @@ pub enum LauncherError {
     Firewall(#[from] crate::firewall::FirewallError),
     #[error("{0}")]
     Invalid(String),
+    #[error("the servers of realm {0} are starting or stopping")]
+    NotReady(String),
 }
 
 /// What the UI shows: `code` selects the translated message
@@ -97,6 +99,12 @@ pub struct UiError {
     pub code: String,
     pub params: BTreeMap<String, String>,
     pub detail: String,
+}
+
+impl From<LauncherError> for UiError {
+    fn from(error: LauncherError) -> Self {
+        error.to_ui()
+    }
 }
 
 impl LauncherError {
@@ -219,6 +227,7 @@ impl LauncherError {
                 crate::firewall::FirewallError::Unsupported => ("firewall.unsupported", none()),
             },
             L::Invalid(_) => ("unknown", none()),
+            L::NotReady(_) => ("server.notReady", none()),
         }
     }
 }

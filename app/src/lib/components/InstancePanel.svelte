@@ -36,6 +36,12 @@
   const moved = $derived(instance.moved && !incomplete);
 
   let keepRunning = $state(false);
+  // The default of each realm (`lan` below: a LAN realm stays up for the
+  // others when the host closes the game); then the player's choice stays.
+  $effect(() => {
+    void id;
+    keepRunning = lan;
+  });
   let error = $state<CommandError | null>(null);
   let updateNote = $state<string | null>(null);
 
@@ -65,14 +71,13 @@
   }
 
   // A failed start is kept in the session and shown in the hero: not twice.
-  const play = () => act(() => startSession(id, true, keepRunning).catch(() => {}));
-  const startOnly = () => act(() => startSession(id, false, true).catch(() => {}));
+  const startOnly = () => act(() => startSession(id).catch(() => {}));
   const stop = () => act(() => api.stop(id));
-  /** Servers already up: launches only the game (they keep running after). */
+  /** Play needs the servers online; they stop when the game exits unless kept running. */
   let launching = $state(false);
   function launchGame() {
     launching = true;
-    void act(() => api.launchGame(id)).finally(() => setTimeout(() => (launching = false), 3000));
+    void act(() => api.launchGame(id, keepRunning)).finally(() => setTimeout(() => (launching = false), 3000));
   }
 
   /** Finishes the interrupted change with the plan it started with. */
@@ -227,12 +232,12 @@
           <button class="btn" disabled={busy || incomplete} onclick={startOnly}>
             {t("home.action.startServers")}
           </button>
-          <button class="btn btn-play" disabled={busy || !clientReady || incomplete} onclick={play}>
+          <button class="btn btn-play" disabled title={t("home.playWhenOnline")}>
             {t("home.action.play")}
           </button>
         {/if}
       </div>
-      {#if !running && status !== "unfinished" && status !== "moved"}
+      {#if status !== "unfinished" && status !== "moved" && session?.game !== "running"}
         <label class="keep">
           <input type="checkbox" bind:checked={keepRunning} />
           <small>{t("home.keepRunning")}</small>

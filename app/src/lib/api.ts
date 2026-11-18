@@ -425,12 +425,12 @@ export const api = {
   cancelOperation: () => invoke<void>("cancel_operation"),
   createAccount: (id: string, username: string, password: string, gmLevel: number) =>
     invoke<number>("create_account", { id, username, password, gmLevel }),
-  start: (id: string, play: boolean, keepRunning: boolean) =>
-    invoke<void>("start_instance", { id, play, keepRunning }),
+  /** Starts the servers; the game is launched once they are online (`launchGame`). */
+  start: (id: string) => invoke<void>("start_instance", { id }),
   stop: (id: string) => invoke<void>("stop_instance", { id }),
   console: (id: string, line: string) => invoke<void>("console_command", { id, line }),
-  /** Launches the game for an instance whose servers are up (or starting). */
-  launchGame: (id: string) => invoke<void>("launch_game", { id }),
+  /** Launches the game in a running session; the servers stop when it exits unless `keepRunning`. */
+  launchGame: (id: string, keepRunning: boolean) => invoke<void>("launch_game", { id, keepRunning }),
   joinLan: (emulator: string, address: string) => invoke<void>("join_lan", { emulator, address }),
   backups: (id: string) => invoke<Backup[]>("list_backups", { id }),
   backupNow: (id: string) => invoke<Backup>("backup_now", { id }),

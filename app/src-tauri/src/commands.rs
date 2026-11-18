@@ -21,7 +21,7 @@ use rk_launcher::firewall::FirewallStatus;
 use rk_launcher::preferences::{self, Preferences};
 use rk_launcher::progress::{EventObserver, OperationEvent};
 use rk_launcher::realms::ExportSummary;
-use rk_launcher::session::{Game, Session, SessionControl, SessionEvent};
+use rk_launcher::session::{Session, SessionControl, SessionEvent};
 use rk_launcher::{
     InstallRequest, InstanceSummary, Launcher, LauncherError, ModuleOptions, SettingsView,
     SpaceEstimate, UiError, UninstallReport, UpdateOutcome,
@@ -30,6 +30,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 type Result<T> = std::result::Result<T, UiError>;
+/// A realm's database turn (`Launcher::database_turn`).
+type Turn = tokio::sync::OwnedMutexGuard<()>;
 
 fn ui(error: LauncherError) -> UiError {
     error.to_ui()
@@ -104,8 +106,11 @@ impl AppState {
     }
 
     /// Waits for the background work of `id` (a daily backup holds the
-    /// instance lock for a few seconds).
-    async fn settle(&self, id: &str) {
+    /// instance lock for a few seconds), then for the realm's database turn
+    /// (`Launcher::database_turn`). Keep the turn until the session or
+    /// operation is registered, and check again under it what was checked
+    /// before: work that ran meanwhile may have changed it.
+    async fn settle(&self, launcher: &Launcher, id: &str) -> Turn {
         let pending = self
             .background
             .lock()
@@ -114,6 +119,7 @@ impl AppState {
         if let Some(handle) = pending {
             let _ = handle.await;
         }
+        launcher.database_turn(id).await
     }
 
     fn open_launcher(catalog: Option<&std::path::Path>) -> Result<Arc<Launcher>> {
@@ -143,6 +149,18 @@ impl AppState {
         let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
         sessions.retain(|_, s| !s.is_finished());
         sessions.get(id).map(Session::control)
+    }
+
+    /// Where database work on `id` goes (`Launcher::on_database`): its
+    /// session, or the database itself unless a change is in progress.
+    fn database_route(&self, id: &str) -> Result<Option<SessionControl>> {
+        if let Some(control) = self.session_control(id) {
+            return Ok(Some(control));
+        }
+        if self.operation.lock().expect("operation lock").is_some() {
+            return Err(app_error("operation.busy", id));
+        }
+        Ok(None)
     }
 
     /// Ids of the instances with a session.
@@ -275,6 +293,7 @@ pub struct ClientSummary {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EmulatorOverview {
     id: String,
     name: String,
@@ -504,7 +523,10 @@ where
     if state.running(instance) {
         return Err(app_error("server.running", instance));
     }
-    state.settle(instance).await;
+    let settled = state.settle(&launcher, instance).await;
+    if state.running(instance) {
+        return Err(app_error("server.running", instance));
+    }
     let cancel = CancelToken::new();
     {
         let mut active = state.operation.lock().unwrap_or_else(|e| e.into_inner());
@@ -516,6 +538,7 @@ where
             cancel: cancel.clone(),
         });
     }
+    drop(settled);
     // Awake and shutdown-safe while it works (ADR 0020).
     let awake_text = state
         .os_texts
@@ -747,7 +770,14 @@ pub async fn create_account(
         password,
         gm_level,
     };
-    launcher.create_account(&id, &account).await.map_err(ui)
+    let realm = id.clone();
+    launcher
+        .on_database(
+            &id,
+            || state.database_route(&id),
+            |launcher| async move { launcher.create_account(&realm, &account).await },
+        )
+        .await
 }
 
 #[derive(Serialize)]
@@ -762,13 +792,14 @@ pub struct AccountView {
 #[tauri::command]
 pub async fn list_accounts(state: State<'_, AppState>, id: String) -> Result<Vec<AccountView>> {
     let launcher = state.launcher()?;
-    if !state.running(&id) && state.operation.lock().expect("operation lock").is_some() {
-        return Err(app_error("operation.busy", &id));
-    }
+    let realm = id.clone();
     Ok(launcher
-        .accounts(&id)
-        .await
-        .map_err(ui)?
+        .on_database(
+            &id,
+            || state.database_route(&id),
+            |launcher| async move { launcher.accounts(&realm).await },
+        )
+        .await?
         .into_iter()
         .map(|a| AccountView {
             id: a.id,
@@ -786,13 +817,14 @@ pub async fn set_gm_level(
     gm_level: u8,
 ) -> Result<()> {
     let launcher = state.launcher()?;
-    if !state.running(&id) && state.operation.lock().expect("operation lock").is_some() {
-        return Err(app_error("operation.busy", &id));
-    }
+    let realm = id.clone();
     launcher
-        .set_gm_level(&id, &username, gm_level)
+        .on_database(
+            &id,
+            || state.database_route(&id),
+            |launcher| async move { launcher.set_gm_level(&realm, &username, gm_level).await },
+        )
         .await
-        .map_err(ui)
 }
 
 #[derive(Serialize)]
@@ -907,23 +939,44 @@ pub fn list_backups(state: State<'_, AppState>, id: String) -> Result<Vec<Backup
 #[tauri::command]
 pub async fn backup_now(state: State<'_, AppState>, id: String) -> Result<Backup> {
     let launcher = state.launcher()?;
-    state.settle(&id).await;
     if state.operation.lock().expect("operation lock").is_some() {
         return Err(app_error("operation.busy", &id));
     }
-    // A running realm: its session saves the players, then runs the dump
-    // while it keeps the database up (a stop waits for it; ADR 0022).
+    // Not under the turn while it runs: the realm's session keeps its
+    // database up (a stop waits for the dump).
     if let Some(control) = state.session_control(&id) {
-        let realm = id.clone();
-        return match control
-            .while_running(async move { launcher.backup_live(&realm).await })
-            .await
-        {
-            Some(made) => made.map_err(ui),
-            None => Err(app_error("backup.notReady", &id)),
-        };
+        return backup_live(launcher, control, id).await;
     }
-    launcher.backup_now(&id).await.map_err(ui)
+    // A stopped realm: the backup starts its database, so it holds the
+    // turn throughout. Started meanwhile: backed up through its session.
+    let turn = state.settle(&launcher, &id).await;
+    if let Some(control) = state.session_control(&id) {
+        drop(turn);
+        return backup_live(launcher, control, id).await;
+    }
+    if state.operation.lock().expect("operation lock").is_some() {
+        return Err(app_error("operation.busy", &id));
+    }
+    let made = launcher.backup_now(&id).await.map_err(ui);
+    drop(turn);
+    made
+}
+
+/// A backup of a running realm: its session saves the players, then runs
+/// the dump while it keeps the database up (ADR 0022).
+async fn backup_live(
+    launcher: Arc<Launcher>,
+    control: SessionControl,
+    id: String,
+) -> Result<Backup> {
+    let realm = id.clone();
+    match control
+        .while_running(async move { launcher.backup_live(&realm).await })
+        .await
+    {
+        Some(made) => made.map_err(ui),
+        None => Err(app_error("backup.notReady", &id)),
+    }
 }
 
 #[tauri::command]
@@ -989,7 +1042,9 @@ pub async fn duplicate_instance(
     if state.running(&source) {
         return Err(app_error("server.running", &source));
     }
-    state.settle(&source).await;
+    // Only waited for: the operation below settles again.
+    let launcher = state.launcher()?;
+    drop(state.settle(&launcher, &source).await);
     let instance = id.clone();
     operation(
         app,
@@ -1141,7 +1196,10 @@ fn schedule_daily_backup(app: &AppHandle, instance: &str) {
     };
     let id = instance.to_owned();
     let handle = tauri::async_runtime::spawn(async move {
-        // Best effort: a failure leaves the next stop to try again.
+        // In the realm's turn: account work waits instead of borrowing the
+        // database the backup started. Best effort: a failure leaves the
+        // next stop to try again.
+        let _turn = launcher.database_turn(&id).await;
         let _ = launcher.daily_backup(&id).await;
     });
     state
@@ -1194,39 +1252,33 @@ fn forward_session_events(app: AppHandle, instance: String) -> rk_launcher::sess
 /// Starts an instance; with `play`, prepares the client first and launches
 /// the game once the servers are ready.
 #[tauri::command]
-pub async fn start_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    play: bool,
-    keep_running: bool,
-) -> Result<()> {
+pub async fn start_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
     let launcher = state.launcher()?;
-    if state.running(&id) {
-        return Err(app_error("server.running", &id));
-    }
-    if let Some(active) = state
-        .operation
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-    {
-        if active.instance == id {
-            return Err(app_error("operation.busy", &id));
+    let refused = |state: &AppState| -> Result<()> {
+        if state.running(&id) {
+            return Err(app_error("server.running", &id));
         }
-    }
-    state.settle(&id).await;
-    let server = launcher.server(&id).map_err(ui)?;
-    let game = if play {
-        Some(Game {
-            client: launcher.prepare_client(server.record()).map_err(ui)?,
-            keep_running,
-        })
-    } else {
-        None
+        if let Some(active) = state
+            .operation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            if active.instance == id {
+                return Err(app_error("operation.busy", &id));
+            }
+        }
+        Ok(())
     };
+    refused(&state)?;
+    // Held until the session is registered; a second start, or a change,
+    // waiting for it then finds the realm running.
+    let _turn = state.settle(&launcher, &id).await;
+    refused(&state)?;
+    let server = launcher.server(&id).map_err(ui)?;
+    // The game is launched once the servers are online (`launch_game`).
     let events = forward_session_events(app.clone(), id.clone());
-    let session = Session::start(server, game, events).map_err(ui)?;
+    let session = Session::start(server, None, events).map_err(ui)?;
     state
         .sessions
         .lock()
@@ -1251,7 +1303,7 @@ pub fn stop_instance(state: State<'_, AppState>, id: String) {
 /// Launches the game for an instance whose servers are running (or
 /// starting: it is launched once they are ready).
 #[tauri::command]
-pub fn launch_game(state: State<'_, AppState>, id: String) -> Result<()> {
+pub fn launch_game(state: State<'_, AppState>, id: String, keep_running: bool) -> Result<()> {
     let launcher = state.launcher()?;
     let sessions = state.sessions.lock().unwrap_or_else(|e| e.into_inner());
     let session = sessions
@@ -1260,7 +1312,7 @@ pub fn launch_game(state: State<'_, AppState>, id: String) -> Result<()> {
         .ok_or_else(|| app_error("server.notRunning", &id))?;
     let (record, _) =
         rk_engine::install::open_existing(launcher.layout(), &id).map_err(|e| ui(e.into()))?;
-    session.launch_game(launcher.prepare_client(&record).map_err(ui)?);
+    session.launch_game(launcher.prepare_client(&record).map_err(ui)?, keep_running);
     Ok(())
 }
 

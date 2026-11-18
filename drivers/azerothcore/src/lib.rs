@@ -269,10 +269,11 @@ impl EmulatorDriver for AzerothCore {
             let out = cx
                 .db
                 .execute(&format!(
-                    "SELECT name FROM `{world}`.game_tele ORDER BY name;"
+                    "SELECT DISTINCT name FROM `{world}`.game_tele ORDER BY name;"
                 ))
                 .await?;
-            // Only names the console accepts as one argument: a place
+            // Upstream has a few duplicate names (one entry each). Only
+            // names the console accepts as one argument: a place
             // added with a space in its name could not be used.
             Ok(out
                 .lines()

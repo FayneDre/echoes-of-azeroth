@@ -58,6 +58,10 @@
   const action = $derived<ConsoleAction | null>(
     realm.consoleActions.find((a) => a.id === selected) ?? realm.consoleActions[0] ?? null,
   );
+  // The picker shows the action in use (the first one until one is picked).
+  $effect(() => {
+    if (action && selected !== action.id) selected = action.id;
+  });
   let values = $state<Record<string, string>>({});
   let error = $state<CommandError | null>(null);
   let sent = $state<string | null>(null);

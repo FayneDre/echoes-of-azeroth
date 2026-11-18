@@ -331,6 +331,8 @@ pub struct Launcher {
     catalog: Catalog,
     layout: Layout,
     store: Arc<Store>,
+    /// One turn per realm on its database ([`Launcher::database_turn`]).
+    turns: std::sync::Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl Launcher {
@@ -349,7 +351,58 @@ impl Launcher {
             catalog,
             layout,
             store,
+            turns: std::sync::Mutex::new(BTreeMap::new()),
         })
+    }
+
+    /// Waits for this process's turn on a realm's database. Held by short
+    /// database work run without a session ([`Launcher::on_database`]),
+    /// by a daily backup, and by a start or a change until it is
+    /// registered: none starts or stops the database under another. Realms
+    /// do not wait for each other. (Other processes meet on the instance
+    /// lock instead, which refuses rather than waits.)
+    pub async fn database_turn(&self, id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        let turn = self
+            .turns
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(id.to_owned())
+            .or_default()
+            .clone();
+        turn.lock_owned().await
+    }
+
+    /// Short database work on a realm (accounts), in its turn. `route` is
+    /// asked once the turn is held: the realm's session, if it has one (the
+    /// work then runs through it, so a stop waits for it; refused while the
+    /// servers start or stop), or an error to give up (a change in
+    /// progress). Without a session the database is borrowed for the work.
+    pub async fn on_database<T, E, Fut>(
+        self: &Arc<Self>,
+        id: &str,
+        route: impl FnOnce() -> std::result::Result<Option<session::SessionControl>, E>,
+        work: impl FnOnce(Arc<Self>) -> Fut,
+    ) -> std::result::Result<T, E>
+    where
+        T: Send + 'static,
+        E: From<LauncherError>,
+        Fut: std::future::Future<Output = Result<T>> + Send + 'static,
+    {
+        let turn = self.database_turn(id).await;
+        match route()? {
+            Some(control) => {
+                drop(turn);
+                match control.with_database(work(self.clone())).await {
+                    Some(done) => Ok(done?),
+                    None => Err(LauncherError::NotReady(id.to_owned()).into()),
+                }
+            }
+            None => {
+                let done = work(self.clone()).await;
+                drop(turn);
+                Ok(done?)
+            }
+        }
     }
 
     pub fn catalog(&self) -> &Catalog {

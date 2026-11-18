@@ -261,7 +261,7 @@
         </dl>
       {/if}
       {#if dialog.kind !== "uninstall"}
-        <label class="name">
+        <label class="name-field">
           <span>{t("realms.name")}</span>
           <input
             type="text"
@@ -376,7 +376,8 @@
     margin: 0;
   }
 
-  .name {
+  /* The name field of the rename / duplicate / import dialog. */
+  .name-field {
     display: grid;
     gap: var(--space-1);
     margin-bottom: var(--space-4);

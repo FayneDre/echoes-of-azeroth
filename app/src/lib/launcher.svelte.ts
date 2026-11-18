@@ -272,11 +272,11 @@ export async function runOperation<T>(
   }
 }
 
-/** Starts an instance (and the game with `play`); progress arrives as events. */
-export async function startSession(id: string, play: boolean, keepRunning: boolean): Promise<void> {
+/** Starts an instance; progress arrives as events. */
+export async function startSession(id: string): Promise<void> {
   sessions[id] = newSession();
   try {
-    await api.start(id, play, keepRunning);
+    await api.start(id);
   } catch (error) {
     sessions[id].error = asCommandError(error);
     sessions[id].failed = true;

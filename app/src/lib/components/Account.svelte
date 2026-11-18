@@ -1,7 +1,8 @@
 <script lang="ts">
-  // "Account" tab, in two parts: creating game accounts (works with the
-  // servers stopped: the database is started for it) and the game master
-  // panel (servers running).
+  // "Account" tab: game accounts and their GM level (works with the servers
+  // stopped: the database is started for it), then the game master tools
+  // while the servers are online.
+  import { untrack } from "svelte";
   import { api, asCommandError, type AccountView, type CommandError, type EmulatorOverview } from "../api";
   import { t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
@@ -11,9 +12,6 @@
   let { realm }: { realm: EmulatorOverview } = $props();
 
   const instance = $derived(launcher.instanceFor(realm.id));
-
-  type Part = "create" | "gm";
-  let part = $state<Part>("create");
 
   let username = $state("");
   let password = $state("");
@@ -28,30 +26,59 @@
   const busyElsewhere = $derived(launcher.progress !== null);
 
   let accounts = $state<AccountView[] | null>(null);
+  /** The realm `accounts` belong to (a GM level is set there). */
+  let listedFor = $state<string | null>(null);
   let listError = $state<CommandError | null>(null);
   let saving = $state<string | null>(null);
+  /** Only the latest listing is shown (an older one may answer last). */
+  let request = 0;
+
+  const realmId = $derived(instance?.record.id ?? null);
+
+  // Another realm: its list replaces the previous one, never shown under it.
+  $effect(() => {
+    const id = realmId;
+    untrack(() => {
+      if (listedFor !== id) {
+        accounts = null;
+        listError = null;
+        listedFor = id;
+      }
+    });
+  });
 
   async function loadAccounts() {
-    if (!instance) return;
+    const id = realmId;
+    if (!id) return;
+    const mine = ++request;
     listError = null;
     try {
-      accounts = await api.listAccounts(instance.record.id);
+      const list = await api.listAccounts(id);
+      if (mine === request && id === realmId) accounts = list;
     } catch (raw) {
-      listError = asCommandError(raw);
+      if (mine === request && id === realmId) listError = asCommandError(raw);
     }
   }
 
-  // Listed once per realm (the database starts for it when stopped).
+  const session = $derived(instance ? launcher.session(instance.record.id) : null);
+  /** Servers starting or stopping: their database may go away, nothing is read. */
+  const settling = $derived(session?.phase === "starting" || session?.phase === "stopping");
+  const online = $derived(!!instance && launcher.isRunning(instance.record.id) && !settling);
+  /** Listed again only when this changes (realm, servers up or down). */
+  const listKey = $derived(
+    instance?.installed && !busyElsewhere && !settling ? `${instance.record.id}:${online}` : null,
+  );
+
   $effect(() => {
-    if (instance?.installed && !busyElsewhere) void loadAccounts();
+    if (listKey) untrack(() => void loadAccounts());
   });
 
   async function setLevel(account: AccountView, level: number) {
-    if (!instance) return;
+    if (!listedFor || listedFor !== realmId) return;
     saving = account.username;
     listError = null;
     try {
-      await api.setGmLevel(instance.record.id, account.username, level);
+      await api.setGmLevel(listedFor, account.username, level);
       account.gmLevel = level;
     } catch (raw) {
       listError = asCommandError(raw);
@@ -84,18 +111,6 @@
   }
 </script>
 
-<div class="segmented parts" role="tablist" aria-label={t("nav.account")}>
-  <button role="tab" class:active={part === "create"} aria-selected={part === "create"} onclick={() => (part = "create")}>
-    {t("account.partCreate")}
-  </button>
-  <button role="tab" class:active={part === "gm"} aria-selected={part === "gm"} onclick={() => (part = "gm")}>
-    {t("nav.gm")}
-  </button>
-</div>
-
-{#if part === "gm"}
-  <GameMaster {realm} />
-{:else}
 <section class="panel">
   <h3 class="panel-title">{t("account.title")}</h3>
   {#if !instance}
@@ -171,13 +186,14 @@
     <Notify error={listError} onretry={loadAccounts} />
   </section>
 {/if}
+
+{#if online}
+  <div class="gm">
+    <GameMaster {realm} />
+  </div>
 {/if}
 
 <style>
-  .parts {
-    align-self: flex-start;
-  }
-
   form {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -206,7 +222,8 @@
   }
 
 
-  section + section {
+  section + section,
+  .gm {
     margin-top: var(--space-4);
   }
 

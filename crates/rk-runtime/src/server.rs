@@ -280,8 +280,43 @@ impl Server {
             })
     }
 
-    /// Runs `work` with the database up: started for it when it is not
-    /// running, and stopped again afterwards.
+    /// The database for short work (accounts) outside a session. With the
+    /// instance lock free, the lock is held and the database started when
+    /// it is down (stopped again by [`give_back`](Self::give_back)): a
+    /// start or a change waits or is refused meanwhile, and never gets its
+    /// database pulled away. With the lock held elsewhere (servers or a
+    /// change in another process), only a database already up is used, as
+    /// it is; down, the instance is busy.
+    async fn borrow_database(&self) -> Result<Borrowed, RuntimeError> {
+        match install::lock_instance(&self.layout, &self.record.id) {
+            Ok(lock) => {
+                let started = !self.db.ping().await;
+                if started {
+                    self.db.start().await?;
+                }
+                Ok(Borrowed {
+                    started,
+                    _lock: Some(lock),
+                })
+            }
+            Err(install::PlanError::InstanceBusy(_)) if self.db.ping().await => Ok(Borrowed {
+                started: false,
+                _lock: None,
+            }),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Stops the database when [`borrow_database`](Self::borrow_database)
+    /// started it; the lock goes with `borrowed`.
+    async fn give_back(&self, borrowed: Borrowed) -> Result<(), RuntimeError> {
+        if borrowed.started {
+            self.db.stop().await?;
+        }
+        Ok(())
+    }
+
+    /// Runs `work` on a borrowed database ([`borrow_database`](Self::borrow_database)).
     async fn with_database<T>(
         &self,
         driver: &dyn EmulatorDriver,
@@ -291,10 +326,7 @@ impl Server {
         ) -> crate::DriverFuture<'c, T>,
     ) -> Result<T, RuntimeError> {
         self.check_driver(driver)?;
-        let was_running = self.db.ping().await;
-        if !was_running {
-            self.db.start().await?;
-        }
+        let borrowed = self.borrow_database().await?;
         let (address, _) = self.realm_address();
         let cx = self.context(address);
         let result = work(driver, &cx)
@@ -303,9 +335,7 @@ impl Server {
                 driver: driver.id().into(),
                 source,
             });
-        if !was_running {
-            self.db.stop().await?;
-        }
+        self.give_back(borrowed).await?;
         result
     }
 
@@ -342,7 +372,7 @@ impl Server {
         self.with_database(driver, |d, cx| d.accounts(cx)).await
     }
 
-    /// Sets an account's GM level (database started for it if needed).
+    /// Sets an account's GM level (database borrowed for it).
     pub async fn set_gm_level(
         &self,
         driver: &dyn EmulatorDriver,
@@ -350,10 +380,7 @@ impl Server {
         gm_level: u8,
     ) -> Result<(), RuntimeError> {
         self.check_driver(driver)?;
-        let was_running = self.db.ping().await;
-        if !was_running {
-            self.db.start().await?;
-        }
+        let borrowed = self.borrow_database().await?;
         let (address, _) = self.realm_address();
         let result = driver
             .set_gm_level(&self.context(address), username, gm_level)
@@ -362,9 +389,7 @@ impl Server {
                 driver: driver.id().into(),
                 source,
             });
-        if !was_running {
-            self.db.stop().await?;
-        }
+        self.give_back(borrowed).await?;
         result
     }
 
@@ -391,18 +416,14 @@ impl Server {
             .unwrap_or_default())
     }
 
-    /// Creates a game account. Starts the database for it when it is not
-    /// running, and stops it again afterwards.
+    /// Creates a game account (database borrowed for it).
     pub async fn create_account(
         &self,
         driver: &dyn EmulatorDriver,
         account: &NewAccount,
     ) -> Result<u32, RuntimeError> {
         self.check_driver(driver)?;
-        let was_running = self.db.ping().await;
-        if !was_running {
-            self.db.start().await?;
-        }
+        let borrowed = self.borrow_database().await?;
         let (address, _) = self.realm_address();
         let created = driver
             .create_account(&self.context(address), account)
@@ -411,11 +432,16 @@ impl Server {
                 driver: driver.id().into(),
                 source,
             });
-        if !was_running {
-            self.db.stop().await?;
-        }
+        self.give_back(borrowed).await?;
         created
     }
+}
+
+/// A database lent by [`Server::borrow_database`].
+struct Borrowed {
+    /// Started for the work: stopped when given back.
+    started: bool,
+    _lock: Option<install::InstanceLock>,
 }
 
 /// A started instance. Dropping it without [`stop`](Self::stop) still ends

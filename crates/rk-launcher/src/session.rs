@@ -155,15 +155,25 @@ pub struct Game {
 enum Command {
     Console(String),
     /// Launches the game in a session whose servers are up.
-    Launch(Box<PreparedClient>),
-    /// Work that needs the servers up (a live backup): run once the players
-    /// are saved; a stop waits for it.
-    WhileRunning(Work),
+    Launch(Launch),
+    /// Work that needs the servers up: run (once the players are saved when
+    /// asked: a live backup); a stop waits for it.
+    WhileRunning {
+        work: Work,
+        save_players: bool,
+    },
     Stop,
 }
 
 /// [`SessionControl::while_running`] work, its result sent on by itself.
 type Work = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+/// A game to launch in a running session.
+struct Launch {
+    client: Box<PreparedClient>,
+    /// Keep the servers up when this game exits.
+    keep_running: bool,
+}
 
 /// Sends commands to a session; cheap to clone.
 #[derive(Clone)]
@@ -183,10 +193,12 @@ impl SessionControl {
     }
 
     /// Launches the game once the servers are ready (at once if they are).
-    /// A game launched this way leaves the servers running when it exits:
-    /// they were started on their own.
-    pub fn launch_game(&self, client: PreparedClient) {
-        let _ = self.commands.send(Command::Launch(Box::new(client)));
+    /// When it exits the servers stop, unless `keep_running`.
+    pub fn launch_game(&self, client: PreparedClient, keep_running: bool) {
+        let _ = self.commands.send(Command::Launch(Launch {
+            client: Box::new(client),
+            keep_running,
+        }));
     }
 
     /// Runs `work` while the servers stay up (a backup of the running
@@ -198,11 +210,32 @@ impl SessionControl {
         &self,
         work: impl Future<Output = T> + Send + 'static,
     ) -> Option<T> {
+        self.exclusive(work, true).await
+    }
+
+    /// Runs short database work (accounts) while the servers stay up:
+    /// players not saved, beside a live backup if one runs. A stop waits
+    /// for it, so its database never goes away under it. `None` at once
+    /// when the servers are not ready (starting, stopping, ended).
+    pub async fn with_database<T: Send + 'static>(
+        &self,
+        work: impl Future<Output = T> + Send + 'static,
+    ) -> Option<T> {
+        self.exclusive(work, false).await
+    }
+
+    async fn exclusive<T: Send + 'static>(
+        &self,
+        work: impl Future<Output = T> + Send + 'static,
+        save_players: bool,
+    ) -> Option<T> {
         let (answer, answered) = oneshot::channel();
         let work: Work = Box::pin(async move {
             let _ = answer.send(work.await);
         });
-        self.commands.send(Command::WhileRunning(work)).ok()?;
+        self.commands
+            .send(Command::WhileRunning { work, save_players })
+            .ok()?;
         answered.await.ok()
     }
 }
@@ -254,8 +287,8 @@ impl Session {
         self.control.stop();
     }
 
-    pub fn launch_game(&self, client: PreparedClient) {
-        self.control.launch_game(client);
+    pub fn launch_game(&self, client: PreparedClient, keep_running: bool) {
+        self.control.launch_game(client, keep_running);
     }
 
     /// Waits for the end; `true` when it ended cleanly.
@@ -369,7 +402,7 @@ async fn supervise(
     };
     // A stop requested during the start stops what was started, cleanly; a
     // game asked for meanwhile is launched once the servers are ready.
-    let mut queued: Option<Box<PreparedClient>> = None;
+    let mut queued: Option<Launch> = None;
     let running = match server
         .start_unless(driver, observer, wait_stop(commands, &mut queued))
         .await
@@ -410,8 +443,9 @@ async fn supervise(
                 return false;
             }
         }
-    } else if let Some(client) = queued.take() {
-        launch_later(client, &mut child, &mut prepared, events);
+    } else if let Some(launch) = queued.take() {
+        keep_running = launch.keep_running;
+        launch_later(launch, &mut child, &mut prepared, events);
     }
 
     let mut census = tokio::time::interval_at(
@@ -420,15 +454,25 @@ async fn supervise(
     );
     census.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut clean = true;
-    // At most one work that needs the servers up, and whether a stop waits
-    // for it.
+    // Work that needs the servers up: at most one that saves the players
+    // first (a live backup), any number of short ones (accounts) beside it.
+    // A stop waits for all of them; once it is asked, new work is refused
+    // at once.
     let mut exclusive: Option<Pin<Box<dyn Future<Output = ()> + Send + '_>>> = None;
+    let mut quick = tokio::task::JoinSet::new();
     let mut stop_after = false;
+    // Every control dropped: nothing more to read.
+    let mut closed = false;
     loop {
         tokio::select! {
             () = async { exclusive.as_mut().expect("guarded").await }, if exclusive.is_some() => {
                 exclusive = None;
-                if stop_after {
+                if stop_after && quick.is_empty() {
+                    break;
+                }
+            }
+            Some(_) = quick.join_next(), if !quick.is_empty() => {
+                if stop_after && exclusive.is_none() && quick.is_empty() {
                     break;
                 }
             }
@@ -440,12 +484,22 @@ async fn supervise(
                     events(SessionEvent::Population { players: count.players, bots: count.bots });
                 }
             }
-            command = commands.recv(), if !stop_after => match command {
-                None | Some(Command::Stop) if exclusive.is_some() => stop_after = true,
-                None | Some(Command::Stop) => break,
-                Some(Command::WhileRunning(work)) => {
-                    // One at a time; a refused work is dropped (its caller
-                    // gets `None`).
+            command = commands.recv(), if !closed => match command {
+                None | Some(Command::Stop) => {
+                    closed |= command.is_none();
+                    if exclusive.is_some() || !quick.is_empty() {
+                        stop_after = true;
+                    } else {
+                        break;
+                    }
+                }
+                // A refused work is dropped: its caller gets `None` at once.
+                Some(Command::WhileRunning { .. }) if stop_after => {}
+                Some(Command::WhileRunning { work, save_players: false }) => {
+                    quick.spawn(work);
+                }
+                Some(Command::WhileRunning { work, save_players: true }) => {
+                    // One at a time.
                     if exclusive.is_none() {
                         let running = &running;
                         exclusive = Some(Box::pin(async move {
@@ -454,12 +508,15 @@ async fn supervise(
                         }));
                     }
                 }
-                Some(Command::Launch(client)) => {
+                Some(Command::Launch(_)) if stop_after => {
+                    events(SessionEvent::Warning { message: "the servers are stopping".into() });
+                }
+                Some(Command::Launch(launch)) => {
                     if child.is_some() {
                         events(SessionEvent::Warning { message: "the game is already running".into() });
                     } else {
-                        keep_running = true;
-                        launch_later(client, &mut child, &mut prepared, events);
+                        keep_running = launch.keep_running;
+                        launch_later(launch, &mut child, &mut prepared, events);
                     }
                 }
                 Some(Command::Console(line)) => {
@@ -494,7 +551,7 @@ async fn supervise(
                 prepared = None;
                 events(SessionEvent::GameExited { code: status.ok().and_then(|s| s.code()) });
                 if !keep_running {
-                    if exclusive.is_some() {
+                    if exclusive.is_some() || !quick.is_empty() {
                         stop_after = true;
                     } else {
                         break;
@@ -505,6 +562,10 @@ async fn supervise(
     }
     // A crash ends a work in progress (its database may go away).
     drop(exclusive);
+    quick.abort_all();
+    // Work asked for from now on is refused at once, not after the stop.
+    commands.close();
+    while commands.try_recv().is_ok() {}
     running.stop(observer).await;
     drop(prepared);
     clean
@@ -513,14 +574,18 @@ async fn supervise(
 /// Launches the game in a running session; a failure is reported, the
 /// servers keep running.
 fn launch_later(
-    client: Box<PreparedClient>,
+    launch: Launch,
     child: &mut Option<tokio::process::Child>,
     prepared: &mut Option<Box<PreparedClient>>,
     events: &EventSink,
 ) {
+    let Launch {
+        client,
+        keep_running,
+    } = launch;
     match rk_client::launch(&client.manifest, &client.state) {
         Ok(c) => {
-            events(SessionEvent::GameStarted { keep_running: true });
+            events(SessionEvent::GameStarted { keep_running });
             *child = Some(c);
             *prepared = Some(client);
         }
@@ -532,17 +597,14 @@ fn launch_later(
 
 /// Waits for a stop request during the start; a game launch asked for
 /// meanwhile is kept for when the servers are ready.
-async fn wait_stop(
-    commands: &mut mpsc::UnboundedReceiver<Command>,
-    queued: &mut Option<Box<PreparedClient>>,
-) {
+async fn wait_stop(commands: &mut mpsc::UnboundedReceiver<Command>, queued: &mut Option<Launch>) {
     loop {
         match commands.recv().await {
             None | Some(Command::Stop) => return,
-            Some(Command::Launch(client)) => *queued = Some(client),
+            Some(Command::Launch(launch)) => *queued = Some(launch),
             Some(Command::Console(_)) => {}
             // Not ready yet: refused (dropped, its caller gets `None`).
-            Some(Command::WhileRunning(_)) => {}
+            Some(Command::WhileRunning { .. }) => {}
         }
     }
 }
