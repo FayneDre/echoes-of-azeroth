@@ -3628,7 +3628,7 @@ dependencies = [
 name = "rk-db"
 version = "0.3.2"
 dependencies = [
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -3638,7 +3638,7 @@ dependencies = [
 name = "rk-driver-azerothcore"
 version = "0.3.2"
 dependencies = [
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "hex",
  "num-bigint",
  "rk-conf",
