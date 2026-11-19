@@ -1,0 +1,160 @@
+name: Build server (Mists of Pandaria prototype)
+
+# ADR 0024: second emulator prototype, LoA-Pandaria-Playerbots (5.4.8, build
+# 18414). Builds the pinned commit on Windows with the map extractors and
+# uploads one artifact for development; nothing is published to the index
+# yet. The pin lives here until the `pandaria` emulator enters the catalog
+# (hidden as experimental), then moves to its flavor manifest like
+# AzerothCore's.
+#
+# Toolchain aligned with the upstream Windows CI (windows-build-release.yml
+# at the pinned commit): Boost 1.87 (msvc-14.3), OpenSSL 3.1.1 (3.2+ is not
+# supported by this core), MySQL client libraries from our mysql-8-4
+# component, `-DTOOLS=1 -DELUNA=0`.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-server-pandaria.yml
+      - tools/ci/package-pandaria.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-server-pandaria-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Release v1.1.1 (2026-11-13): its database zip matches this commit exactly.
+  CORE_REPO: https://github.com/1LineAtaTime/LoA-Pandaria-Playerbots
+  CORE_COMMIT: 2f9aebde9f68f7c79fbde2e7c1f2250ed49b0ef7
+  BOOST_VERSION: 1.87.0
+  BOOST_ROOT: C:\local\boost_1_87_0
+  OPENSSL_VERSION: 3.1.1
+  DB_MANIFEST: catalog/components/mysql-8-4.json
+  # Short path: MSVC and CMake choke on long source paths.
+  MOP_SRC: C:\mop
+
+jobs:
+  build:
+    name: Build (pandaria playerbot)
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Fetch the core at the pinned commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(cygpath "$MOP_SRC")"
+          mkdir -p "$src" && cd "$src"
+          git init -q && git remote add origin "$CORE_REPO"
+          git fetch -q --depth 1 origin "$CORE_COMMIT" && git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$CORE_COMMIT"
+          echo "$CORE_COMMIT  $CORE_REPO -> $src"
+
+      - name: Read MySQL component version
+        id: mysql
+        shell: bash
+        run: |
+          echo "version=$(node -p 'require("./" + process.env.DB_MANIFEST).version')" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(node -p 'require("./" + process.env.DB_MANIFEST).platforms["windows-x86_64"].sha256')" >> "$GITHUB_OUTPUT"
+
+      # Same paths and key as build-server.yml: both builds share the cache.
+      - name: Cache Boost and MySQL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            C:\local\boost_1_87_0
+            C:\tools\mysql\current
+          key: deps-boost-${{ env.BOOST_VERSION }}-mysql-${{ steps.mysql.outputs.version }}-${{ steps.mysql.outputs.sha256 }}
+
+      - name: Install Boost, MySQL (client libs) and OpenSSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path "$env:BOOST_ROOT\boost\version.hpp")) {
+            $v = $env:BOOST_VERSION; $u = $v -replace '\.', '_'
+            $exe = Join-Path $env:RUNNER_TEMP 'boost.exe'
+            for ($i = 1; $i -le 3; $i++) {
+              try {
+                # SourceForge serves the HTML page to browser user agents.
+                Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/boost/boost-binaries/$v/boost_$u-msvc-14.3-64.exe" `
+                  -OutFile $exe -UserAgent 'rk-ci' -ConnectionTimeoutSeconds 60 -OperationTimeoutSeconds 120
+                if ((Get-Item $exe).Length -lt 50MB) { throw 'Boost installer too small' }
+                break
+              } catch {
+                Write-Host "attempt $i failed: $($_.Exception.Message)"
+                if ($i -eq 3) { throw }
+                Start-Sleep -Seconds 15
+              }
+            }
+            $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$env:BOOST_ROOT" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Boost installer exit code $($p.ExitCode)" }
+          }
+          & ./tools/ci/fetch-mysql.ps1 -Manifest $env:DB_MANIFEST -Destination 'C:\tools\mysql\current'
+          # The runner's own OpenSSL is newer than 3.1, which this core refuses.
+          choco install -y openssl --version=$env:OPENSSL_VERSION --allow-downgrade --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "choco install openssl exit code $LASTEXITCODE" }
+          # The runner image may keep another OpenSSL beside it: take the 3.1 one.
+          $ssl = @('C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64') | Where-Object {
+            $h = Join-Path $_ 'include\openssl\opensslv.h'
+            (Test-Path $h) -and ((Get-Content $h -Raw) -match '#\s*define\s+OPENSSL_VERSION_TEXT\s+"OpenSSL 3\.1\.')
+          } | Select-Object -First 1
+          if (-not $ssl) { throw 'OpenSSL 3.1 development files not found' }
+          "OPENSSL_ROOT_DIR=$ssl" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "OpenSSL: $ssl"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S $env:MOP_SRC -B "$env:MOP_SRC\build" -A x64 `
+            -DTOOLS=1 -DELUNA=0 `
+            -DMYSQL_ROOT_DIR=C:/tools/mysql/current `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure exit code $LASTEXITCODE" }
+
+      # Two projects at a time: four ran the AzerothCore build out of memory
+      # with every module (C1060, 2026-11-19); each project still uses /MP.
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build "$env:MOP_SRC\build" --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "build exit code $LASTEXITCODE" }
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/ci/package-pandaria.mjs \
+            --source "$(cygpath -m "$MOP_SRC")" \
+            --bin "$(cygpath -m "$MOP_SRC")/build/bin/Release" \
+            --mysql C:/tools/mysql/current \
+            --openssl "$(cygpath -m "$OPENSSL_ROOT_DIR")" \
+            --repo "$CORE_REPO" --commit "$CORE_COMMIT" \
+            --out "$RUNNER_TEMP/staging"
+
+      - name: Servers start far enough to print their version
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/staging/bin
+        run: |
+          foreach ($exe in 'authserver.exe', 'worldserver.exe') {
+            & ".\$exe" --version
+            if ($LASTEXITCODE -ne 0) { throw "$exe --version exit code $LASTEXITCODE" }
+          }
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-pandaria-playerbot-${{ env.CORE_COMMIT }}
+          path: ${{ runner.temp }}/staging
+          retention-days: 90
+          compression-level: 9

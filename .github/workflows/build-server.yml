@@ -35,6 +35,8 @@ on:
       - catalog/components/**
       - catalog/clients/**
       - tools/ci/**
+      # The MoP prototype has its own workflow (ADR 0024).
+      - "!tools/ci/package-pandaria.mjs"
       - .github/workflows/build-server.yml
 
 permissions:

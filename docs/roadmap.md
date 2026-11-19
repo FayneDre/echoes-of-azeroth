@@ -136,7 +136,7 @@ Mists of Pandaria 5.4.8 with Playerbots (LoA-Pandaria-Playerbots), to prove
 that an emulator is data + a driver.
 
 - [x] Upstream facts verified; `v1.1.1` dumps import into MySQL 8.4.13 (94 s)
-- [ ] CI build of the pinned commit (servers + extractors), published in the index
+- [ ] CI build of the pinned commit (servers + extractors): `build-server-pandaria.yml`, core pinned to release v1.1.1 (`2f9aebde`); then published in the index
 - [ ] Catalog: client `wow-5-4-8`, emulator `pandaria`, flavor `playerbot`
 - [ ] Resumable game data extraction step from the player's client (mmaps: hours)
 - [ ] `drivers/pandaria`: accounts, realm list, start on MySQL 8.4

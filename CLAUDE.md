@@ -250,10 +250,12 @@ reduced in-game settings) unless the user asks.
 ├─ .github/workflows/
 │  ├─ ci.yml                 Windows full checks + Linux portable crates + cargo deny / npm audit
 │  ├─ release-app.yml        launcher installer: build, SignPath, update feed, release (manual)
-│  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
-│                            changes; reuses the artifact when the build key is unchanged)
+│  ├─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
+│  │                         changes; reuses the artifact when the build key is unchanged)
+│  └─ build-server-pandaria.yml   MoP prototype (ADR 0024): build + extractors + artifact, no publish yet
 ├─ tools/ci/                 build-plan.mjs, package-server.mjs, smoke-test.mjs (+ auth-client.mjs), index.mjs,
-│                            zip-zstd.mjs (release archives), app-release.mjs (launcher release)
+│                            zip-zstd.mjs (release archives), app-release.mjs (launcher release),
+│                            package-pandaria.mjs (MoP prototype artifact)
 ├─ docs/                     architecture.md, roadmap.md, decisions/ (ADRs), faq.md + faq.fr.md
 │                            (player help, anchors linked from the UI errors)
 ├─ .claude/
