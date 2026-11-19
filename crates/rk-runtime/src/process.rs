@@ -116,7 +116,7 @@ impl Process {
                 });
             }
         }
-        let log = open_log(&config.log_file)?;
+        let log = ConsoleLog::open(config.log_file.clone(), LOG_ROTATE_BYTES)?;
 
         let mut command = Command::new(&config.program);
         command
@@ -352,7 +352,7 @@ struct Pump {
     process: String,
     stream: Stream,
     logs: broadcast::Sender<LogLine>,
-    log: Arc<tokio::sync::Mutex<tokio::fs::File>>,
+    log: Arc<tokio::sync::Mutex<ConsoleLog>>,
     tail: Arc<Mutex<VecDeque<String>>>,
     last_output: Arc<Mutex<Instant>>,
     pattern: Option<Regex>,
@@ -403,11 +403,7 @@ impl Pump {
                 Ok(_) => {}
             }
             let text = decode_line(&buf).trim_end_matches(['\r', '\n']).to_owned();
-            {
-                let mut log = self.log.lock().await;
-                let _ = log.write_all(text.as_bytes()).await;
-                let _ = log.write_all(b"\n").await;
-            }
+            self.log.lock().await.write_line(&text).await;
             if let Some(re) = &self.pattern {
                 if re.is_match(&text) {
                     let _ = self.ready.send(true);
@@ -428,7 +424,65 @@ impl Pump {
                 text,
             });
         }
-        let _ = self.log.lock().await.flush().await;
+        self.log.lock().await.flush().await;
+    }
+}
+
+/// Size past which a run's console log starts over, the full one becoming
+/// `<name>.previous.log`: a realm left running for weeks (with Playerbots
+/// logging at debug level) never fills the disk, and the console of the
+/// current and previous stretch is kept, at most twice this size.
+const LOG_ROTATE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// The console log of a run (stdout and stderr of one process).
+struct ConsoleLog {
+    path: PathBuf,
+    /// `None` only while rotating, or when the new file could not be opened.
+    file: Option<tokio::fs::File>,
+    written: u64,
+    limit: u64,
+}
+
+impl ConsoleLog {
+    fn open(path: PathBuf, limit: u64) -> Result<Self, RuntimeError> {
+        let file = open_log(&path)?;
+        Ok(Self {
+            path,
+            file: Some(file),
+            written: 0,
+            limit,
+        })
+    }
+
+    /// Appends a line; a write error only costs that line (the console
+    /// still reaches the UI).
+    async fn write_line(&mut self, text: &str) {
+        let size = text.len() as u64 + 1;
+        if self.written > 0 && self.written + size > self.limit {
+            self.rotate().await;
+        }
+        if let Some(file) = &mut self.file {
+            if file.write_all(text.as_bytes()).await.is_ok() && file.write_all(b"\n").await.is_ok()
+            {
+                self.written += size;
+            }
+        }
+    }
+
+    async fn rotate(&mut self) {
+        if let Some(mut file) = self.file.take() {
+            let _ = file.flush().await;
+            // Closed before the rename: Windows refuses to rename an open file.
+            drop(file.into_std().await);
+        }
+        self.written = 0;
+        self.file = open_log(&self.path).ok();
+    }
+
+    async fn flush(&mut self) {
+        if let Some(file) = &mut self.file {
+            let _ = file.flush().await;
+        }
     }
 }
 
@@ -458,6 +512,25 @@ pub(crate) async fn port_open(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_long_run_rotates_its_console_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("worldserver.console.log");
+        std::fs::write(&path, "last run\n").unwrap();
+        let mut log = ConsoleLog::open(path.clone(), 20).unwrap();
+        let previous = dir.path().join("worldserver.console.previous.log");
+        assert_eq!(std::fs::read_to_string(&previous).unwrap(), "last run\n");
+        for line in ["0123456789", "abcdefgh", "next"] {
+            log.write_line(line).await;
+        }
+        log.flush().await;
+        assert_eq!(
+            std::fs::read_to_string(&previous).unwrap(),
+            "0123456789\nabcdefgh\n"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "next\n");
+    }
 
     #[test]
     fn oem_output_is_decoded() {
