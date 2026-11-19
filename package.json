@@ -10,10 +10,11 @@
     "validate:catalog": "node tools/validate-catalog.mjs",
     "check:i18n": "node tools/check-i18n.mjs",
     "test:hooks": "node tools/test-guard.mjs",
+    "test:unit": "npm run test --workspace app",
     "test:ui": "node tools/ci/ui-smoke.mjs run --exe target/debug/realmkeeper.exe --shots target/ui-smoke-shots",
     "dev": "npm run tauri dev --workspace app",
     "build": "npm run tauri build --workspace app",
-    "check": "npm run check --workspace app && npm run validate:catalog && npm run check:i18n && npm run test:hooks",
+    "check": "npm run check --workspace app && npm run test:unit && npm run validate:catalog && npm run check:i18n && npm run test:hooks",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

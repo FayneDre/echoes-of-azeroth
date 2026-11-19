@@ -284,7 +284,8 @@ unpacked MySQL 8.4 ZIP (`tools/ci/fetch-mysql.ps1` downloads a verified one).
 ```sh
 npm install                                   # JS deps (root + app workspace)
 npm run dev                                   # Tauri dev mode (needs Rust)
-npm run check                                 # svelte-check + catalog schema + i18n parity
+npm run check                                 # svelte-check + unit tests + catalog schema + i18n parity
+npm run test:unit                             # vitest: pure TypeScript of the app (`app/src/**/*.test.ts`)
 npm run validate:catalog                      # catalog JSON Schema + layout only
 npm run check:i18n                            # FR/EN locale parity only
 npm run test:ui                               # UI smoke test (debug app built with the ui-smoke.mjs config)
