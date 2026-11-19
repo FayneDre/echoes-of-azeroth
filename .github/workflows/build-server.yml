@@ -219,6 +219,10 @@ jobs:
           CMODULES="static"
           # dbimport is required by the launcher; map extractors are not (upstream data is used).
           CTOOLS_BUILD="db-only"
+          # acore.sh defaults to cores + 2 MSBuild projects at once, each with
+          # /MP: with every catalog module the modules project ran the
+          # runner out of memory (C1060, 2026-11-19). Two projects at a time.
+          MTHREADS=2
           EOF
           cat conf/config.sh
 
