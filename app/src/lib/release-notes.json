@@ -1,4 +1,20 @@
 {
+  "0.3.2": {
+    "en": [
+      "Six new optional modules in Server settings: Transmogrification, Auto Balance (dungeons scaled to your group), Dungeon Clear, Enchanter NPC, Assistant and Reagent Bank.",
+      "The transmogrification, enchanter and reagent bank NPCs wait for you in Stormwind and Orgrimmar as soon as their module is on.",
+      "An available launcher update now shows as a button in the title bar: it opens its notes, in your language, and the download progress.",
+      "After an update, the launcher shows what's new once.",
+      "Security: an imported realm file can no longer run anything on your computer or reach your other realms; a damaged backup is refused before anything changes. Update before importing a realm someone sent you."
+    ],
+    "fr": [
+      "Six nouveaux modules optionnels dans les réglages du serveur : Transmogrification, Équilibrage automatique (donjons adaptés à votre groupe), Exploration de donjon, PNJ enchanteur, Assistant et Banque de composants.",
+      "Les PNJ de transmogrification, d'enchantement et de banque de composants vous attendent à Hurlevent et Orgrimmar dès que leur module est activé.",
+      "Une mise à jour du launcher disponible apparaît maintenant comme un bouton dans la barre de titre : il ouvre ses notes, dans votre langue, et la progression du téléchargement.",
+      "Après une mise à jour, le launcher affiche une fois les nouveautés.",
+      "Sécurité : un fichier de royaume importé ne peut plus rien exécuter sur votre ordinateur ni atteindre vos autres royaumes ; une sauvegarde abîmée est refusée avant tout changement. Mettez à jour avant d'importer un royaume que l'on vous a envoyé."
+    ]
+  },
   "0.3.1": {
     "en": [
       "Play becomes available once the servers are online.",

@@ -126,6 +126,9 @@ Durations assume one full-time developer and are rough.
 - [x] RealmKeeper 0.3.0: first public launcher release (2026-11-18, unsigned)
 - [x] RealmKeeper 0.3.1: Play once online, account tools without sub-tabs, working GM
   panel, account work no longer races a start or a stop (2026-11-18)
+- [x] RealmKeeper 0.3.2: six optional modules (transmog, autobalance, dungeon clear,
+  enchanter, assistant, reagent bank) with their NPCs placed, safe realm import, bilingual release notes, title bar update
+  button (2026-11-19)
 
 ## Later
 

@@ -88,6 +88,9 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | worldserver aborts on a missing table or column (`ER_NO_SUCH_TABLE` / `ER_BAD_FIELD_ERROR` -> `ABORT`): a compiled-in module that queries its own tables while disabled needs `applyWhenDisabled`. | fork `MySQLConnection.cpp` @ Playerbot (2026-11-18) |
 | mod-transmog reads and cleans `custom_transmogrification*` / `custom_unlocked_appearances` (characters) at startup and at each login whatever `Transmogrification.Enable` says -> `applyWhenDisabled`. mod-reagent-bank never reads `ReagentBank.Enable` (inert without its NPC, world SQL). mod-assistant has no global switch (one `Assistant.<service>.Enabled` per service). mod-junk-to-gold has no config at all: not in the catalog (always on in a full build). | module sources @ d309745, 62c2653, 77505b1, 2134690 (2026-11-18) |
 | dbimport reads module SQL recursively under `data/sql/` (depth 10): `db-world/base/*.sql` works. Transmog, enchanter and reagent bank NPCs are templates only (placed with `.npc add 190010` / `601015` / `290011`); mod-assistant spawns its own. mod-dungeon-clear links against mod-playerbots (switch `DungeonClear.Enable`). | fork `UpdateFetcher.cpp`, module SQL and READMEs (2026-11-18) |
+| The `mysql` 8.4 client runs its own commands from a piped file (`system` starts a program, `tee` writes a file, `source`). `--skip-system-command` stops only `system`; `--commands=OFF` stops all but `USE`/`DELIMITER` yet **disables the `--one-database` filter** (so does `--binary-mode`). The portable server has `secure_file_priv = NULL`, `local_infile = 0`. A database grant on `acore_auth` also covers `acoreXauth` (`_` is a wildcard). | local tests on `pubtest` and `rk-db` tests (2026-11-19) |
+| `.npc add` (and every `.npc` subcommand) is `Console::No`: it needs a character in game, the GM panel cannot place NPCs. Fork `creature` table: `guid, id, map, ..., position_x/y/z, orientation, spawntimesecs, ..., Comment` (column `id`, not `id1`); max guid 5 300 678 with every module; `game_tele` has `Stormwind` (0, -8833.38, 628.628, 94.0066) and `Orgrimmar` (1, 1629.85, -4373.64, 31.5573). | fork `cs_npc.cpp`, `pubtest` world DB (2026-11-19) |
+| PowerShell ends a single-quoted string at U+2018-U+201B too (`'Player’s'` is a parse error); doubling them escapes them like `''`. | local test (2026-11-19) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -192,6 +195,12 @@ Update this table when a fact is (re)verified; date it.
   (`rk-launcher::firewall`, one elevated PowerShell, per program + readiness
   port, Private/Domain; removed at uninstall).
   Smoke test round B: SRP6 logon + realm list, bots online, AHBot auctions.
+- **0023** Module NPCs: manifest `spawns` (`creature` template + `game_tele`
+  place names); `EmulatorDriver::prepare_start` deletes the launcher's
+  `creature` rows (guids 9 900 000-9 900 999) and re-inserts those of the
+  enabled modules from `game_tele` joined with `creature_template`
+  (`.npc add` is `Console::No`). Transmog, enchanter, reagent bank in
+  Stormwind and Orgrimmar.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
@@ -202,6 +211,7 @@ reduced in-game settings) unless the user asks.
 ```
 ├─ CLAUDE.md                 this file
 ├─ Cargo.toml                Rust workspace (crates/* + app/src-tauri)
+├─ deny.toml                 cargo deny: advisories, GPL-3.0-compatible licences, crates.io only
 ├─ package.json              npm workspace root (app) + catalog validation
 ├─ catalog/                  manifests + JSON Schemas (see catalog/README.md)
 ├─ crates/
@@ -227,8 +237,9 @@ reduced in-game settings) unless the user asks.
 │  ├─ ci/cdp.mjs, ci/ui-smoke.mjs   DevTools driver + UI smoke test (npm run test:ui)
 │  └─ git-hooks/             pre-commit / commit-msg logic (Node, cross-platform)
 ├─ .githooks/                git hook entry points (core.hooksPath, set by npm install)
+├─ .github/dependabot.yml    weekly grouped updates: SHA-pinned actions, cargo, npm
 ├─ .github/workflows/
-│  ├─ ci.yml                 Windows full checks + Linux portable crates
+│  ├─ ci.yml                 Windows full checks + Linux portable crates + cargo deny / npm audit
 │  ├─ release-app.yml        launcher installer: build, SignPath, update feed, release (manual)
 │  └─ build-server.yml       phase 1: full server build + package + smoke test (on demand / catalog
 │                            changes; reuses the artifact when the build key is unchanged)
@@ -280,6 +291,7 @@ npm run test:ui                               # UI smoke test (debug app built w
 cargo test --workspace                        # Rust tests, incl. the real catalog
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
+cargo deny check advisories licenses sources bans   # deny.toml (cargo install cargo-deny --locked)
 cargo run -p rk-cli -- catalog validate
 cargo run -p rk-cli -- catalog resolve --emulator azerothcore --module mod-ah-bot
 cargo run -p rk-cli -- store fetch --url <url> --size <bytes> --sha256 <hex>   # into .local/store
@@ -375,6 +387,9 @@ installers: `cd app && npx tauri build --debug --no-bundle`.
   (not even to trigger CI). Never `--no-verify`, never force-push.
 - Commit identity is repository-local (GitHub handle + no-reply e-mail); don't change it.
 - Never commit build outputs, installed servers, client files or secrets.
+- Workflow actions are pinned by full commit SHA with the version in a comment
+  (`uses: owner/action@<sha> # vX.Y.Z`); Dependabot bumps them. Secrets never sit
+  in a step that builds or installs dependencies.
 - Architecture changes need an ADR in `docs/decisions/` (`new-adr` skill).
 
 ### Licensing
@@ -437,4 +452,7 @@ on). ADR 0022: backups while the servers run, asset pruning, LAN firewall
 rule (verified locally on `pubtest`), smoke test logon / bots / AHBot.
 2026-11-18: 0.3.1 (Play once online, GM panel fixed, account work in the
 realm's database turn). No beta phase: releases go public directly.
+2026-11-19: 0.3.2 (six optional modules: transmog, autobalance, dungeon
+clear, enchanter, assistant, reagent bank; bilingual release notes in
+`app/src/lib/release-notes.json`, title bar update button).
 Remaining before a wide release: SignPath (maintainer).

@@ -3391,7 +3391,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "realmkeeper"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "rk-client",
  "rk-core",
@@ -3564,7 +3564,7 @@ dependencies = [
 
 [[package]]
 name = "rk-catalog"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -3580,7 +3580,7 @@ dependencies = [
 
 [[package]]
 name = "rk-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -3597,7 +3597,7 @@ dependencies = [
 
 [[package]]
 name = "rk-client"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "hex",
  "rk-core",
@@ -3611,7 +3611,7 @@ dependencies = [
 
 [[package]]
 name = "rk-conf"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "rk-core",
  "thiserror 2.0.21",
@@ -3619,7 +3619,7 @@ dependencies = [
 
 [[package]]
 name = "rk-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -3627,7 +3627,7 @@ dependencies = [
 
 [[package]]
 name = "rk-db"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "getrandom 0.3.4",
  "tempfile",
@@ -3637,7 +3637,7 @@ dependencies = [
 
 [[package]]
 name = "rk-driver-azerothcore"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "getrandom 0.3.4",
  "hex",
@@ -3653,7 +3653,7 @@ dependencies = [
 
 [[package]]
 name = "rk-engine"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "futures-util",
  "hex",
@@ -3675,7 +3675,7 @@ dependencies = [
 
 [[package]]
 name = "rk-launcher"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "rk-catalog",
  "rk-client",
@@ -3695,7 +3695,7 @@ dependencies = [
 
 [[package]]
 name = "rk-runtime"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "futures-util",
  "regex",
@@ -3712,7 +3712,7 @@ dependencies = [
 
 [[package]]
 name = "rk-store"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "fs4",
  "futures-util",
