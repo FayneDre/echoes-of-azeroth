@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-transmog",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Transmogrification",
+    "fr": "Transmogrification"
+  },
+  "description": {
+    "en": "Change the look of your gear with the appearance of other items you collected. A GM places the transmogrifier with .npc add 190010; a portable one comes with the module.",
+    "fr": "Change l'apparence de ton équipement avec celle d'objets que tu as collectés. Un MJ place le transmogrifieur avec .npc add 190010 ; une version portable est fournie avec le module."
+  },
+  "category": "cosmetic",
+  "homepage": "https://github.com/azerothcore/mod-transmog",
+  "license": "AGPL-3.0",
+  "source": {
+    "repo": "https://github.com/azerothcore/mod-transmog",
+    "ref": "master",
+    "commit": "d309745c9151ff2ea4202204c1efa991848414bf"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/transmog.conf": {
+        "Transmogrification.Enable": 1
+      }
+    },
+    "disable": {
+      "modules/transmog.conf": {
+        "Transmogrification.Enable": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-transmog",
+    "applyWhenDisabled": true,
+    "touches": [
+      "auth",
+      "characters",
+      "world"
+    ]
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/transmog.conf",
+        "dist": "modules/transmog.conf.dist"
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "collection",
+      "type": "boolean",
+      "label": {
+        "en": "Unlock appearances by collecting items",
+        "fr": "Débloquer les apparences en collectant les objets"
+      },
+      "target": {
+        "file": "modules/transmog.conf",
+        "key": "Transmogrification.UseCollectionSystem"
+      },
+      "default": true
+    },
+    {
+      "id": "portable",
+      "type": "boolean",
+      "label": {
+        "en": "Portable transmogrifier",
+        "fr": "Transmogrifieur portable"
+      },
+      "target": {
+        "file": "modules/transmog.conf",
+        "key": "Transmogrification.EnablePortable"
+      },
+      "default": true
+    },
+    {
+      "id": "cost",
+      "type": "number",
+      "label": {
+        "en": "Cost multiplier",
+        "fr": "Multiplicateur de coût"
+      },
+      "target": {
+        "file": "modules/transmog.conf",
+        "key": "Transmogrification.ScaledCostModifier"
+      },
+      "default": 1,
+      "min": 0,
+      "max": 100
+    }
+  ]
+}

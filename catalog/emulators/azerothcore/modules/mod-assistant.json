@@ -1,0 +1,112 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-assistant",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Assistant",
+    "fr": "Assistant"
+  },
+  "description": {
+    "en": "An NPC in the main cities that sells heirlooms, glyphs, gems, elixirs and food, and offers name, race and faction changes, flight paths, professions and instance resets.",
+    "fr": "Un PNJ dans les capitales qui vend héritages, glyphes, gemmes, élixirs et nourriture, et propose changements de nom, de race et de faction, trajets aériens, métiers et réinitialisations d'instances."
+  },
+  "category": "quality-of-life",
+  "homepage": "https://github.com/noisiver/mod-assistant",
+  "license": "AGPL-3.0",
+  "source": {
+    "repo": "https://github.com/noisiver/mod-assistant",
+    "ref": "master",
+    "commit": "77505b1a3d561438a13fd3fabfe40676daa7fdfe"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/mod_assistant.conf": {
+        "Assistant.Heirlooms.Enabled": 1,
+        "Assistant.Glyphs.Enabled": 1,
+        "Assistant.Gems.Enabled": 1,
+        "Assistant.Elixirs.Enabled": 1,
+        "Assistant.Food.Enabled": 1,
+        "Assistant.Enchants.Enabled": 1,
+        "Assistant.Containers.Enabled": 1,
+        "Assistant.Utilities.Enabled": 1,
+        "Assistant.Instances.Enabled": 1
+      }
+    },
+    "disable": {
+      "modules/mod_assistant.conf": {
+        "Assistant.Heirlooms.Enabled": 0,
+        "Assistant.Glyphs.Enabled": 0,
+        "Assistant.Gems.Enabled": 0,
+        "Assistant.Elixirs.Enabled": 0,
+        "Assistant.Food.Enabled": 0,
+        "Assistant.Enchants.Enabled": 0,
+        "Assistant.Containers.Enabled": 0,
+        "Assistant.Utilities.Enabled": 0,
+        "Assistant.Instances.Enabled": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-assistant",
+    "touches": [
+      "world"
+    ]
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/mod_assistant.conf",
+        "dist": "modules/mod_assistant.conf.dist"
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "heirlooms",
+      "type": "boolean",
+      "label": {
+        "en": "Sell heirlooms",
+        "fr": "Vendre les héritages"
+      },
+      "target": {
+        "file": "modules/mod_assistant.conf",
+        "key": "Assistant.Heirlooms.Enabled"
+      },
+      "default": true
+    },
+    {
+      "id": "utilities",
+      "type": "boolean",
+      "label": {
+        "en": "Name, race and faction changes",
+        "fr": "Changements de nom, de race et de faction"
+      },
+      "target": {
+        "file": "modules/mod_assistant.conf",
+        "key": "Assistant.Utilities.Enabled"
+      },
+      "default": true
+    },
+    {
+      "id": "instances",
+      "type": "boolean",
+      "label": {
+        "en": "Instance resets",
+        "fr": "Réinitialisation des instances"
+      },
+      "target": {
+        "file": "modules/mod_assistant.conf",
+        "key": "Assistant.Instances.Enabled"
+      },
+      "default": true
+    }
+  ]
+}

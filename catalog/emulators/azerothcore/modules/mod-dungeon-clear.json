@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-dungeon-clear",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Dungeon Clear",
+    "fr": "Exploration de donjon"
+  },
+  "description": {
+    "en": "Your group's tank bot leads the way through a dungeon on its own: pulls, bosses, regrouping and resting. Start it inside a dungeon with .dc on.",
+    "fr": "Le bot tank de ton groupe mène seul l'exploration d'un donjon : pulls, boss, regroupement et repos. Lance-le dans un donjon avec .dc on."
+  },
+  "category": "bots",
+  "homepage": "https://github.com/jrad7/mod-dungeon-clear",
+  "license": "AGPL-3.0",
+  "source": {
+    "repo": "https://github.com/jrad7/mod-dungeon-clear",
+    "ref": "master",
+    "commit": "142732c59ce1597e6407ec5a23c6b308a9d4b219"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [
+    "mod-playerbots"
+  ],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/mod_dungeon_clear.conf": {
+        "DungeonClear.Enable": 1
+      }
+    },
+    "disable": {
+      "modules/mod_dungeon_clear.conf": {
+        "DungeonClear.Enable": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-dungeon-clear",
+    "touches": []
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/mod_dungeon_clear.conf",
+        "dist": "modules/mod_dungeon_clear.conf.dist"
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "clear-room",
+      "type": "boolean",
+      "label": {
+        "en": "Clear the room before each boss",
+        "fr": "Nettoyer la salle avant chaque boss"
+      },
+      "target": {
+        "file": "modules/mod_dungeon_clear.conf",
+        "key": "DungeonClear.ClearRoomBeforeBoss"
+      },
+      "default": true
+    },
+    {
+      "id": "ignore-chests",
+      "type": "boolean",
+      "label": {
+        "en": "Ignore chests",
+        "fr": "Ignorer les coffres"
+      },
+      "target": {
+        "file": "modules/mod_dungeon_clear.conf",
+        "key": "DungeonClear.IgnoreChests"
+      },
+      "default": true
+    },
+    {
+      "id": "better-loot",
+      "type": "boolean",
+      "label": {
+        "en": "Smarter loot rolls for bots",
+        "fr": "Jets de butin plus malins pour les bots"
+      },
+      "target": {
+        "file": "modules/mod_dungeon_clear.conf",
+        "key": "DungeonClear.BetterLootRolling"
+      },
+      "default": false
+    }
+  ]
+}

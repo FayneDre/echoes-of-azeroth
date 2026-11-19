@@ -209,17 +209,21 @@ if (existsSync(playerbotsConf)) {
   // CI-only: keep startup fast. Never shipped as a user default.
   setConf(playerbotsConf, { "Playerbots.MinRandomBots": 10, "Playerbots.MaxRandomBots": 10 });
 }
-const moduleToggles = {
-  "mod-ah-bot": ["mod_ahbot.conf", { "AuctionHouseBot.EnableSeller": 1, "AuctionHouseBot.EnableBuyer": 1 }, { "AuctionHouseBot.EnableSeller": 0, "AuctionHouseBot.EnableBuyer": 0 }],
-  "mod-individual-progression": ["individualProgression.conf", { "IndividualProgression.Enable": 1 }, { "IndividualProgression.Enable": 0 }],
+// Each optional module's switch, as its catalog manifest declares it
+// (`activation.enable` / `disable`: config file -> values).
+const activation = (id) => {
+  const manifest = join(emulatorDir, "modules", `${id}.json`);
+  return existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).activation : null;
 };
 const toggle = (enabled) => {
   for (const id of optional) {
-    const entry = moduleToggles[id];
-    if (!entry) continue;
-    const file = confFile(`modules/${entry[0]}`);
-    if (existsSync(file)) setConf(file, enabled ? entry[1] : entry[2]);
-    else note(`⚠️ ${entry[0]} not found for ${id}`);
+    const values = activation(id)?.[enabled ? "enable" : "disable"];
+    if (!values) continue;
+    for (const [conf, settings] of Object.entries(values)) {
+      const file = confFile(conf);
+      if (existsSync(file)) setConf(file, settings);
+      else fail(`${conf} not found for ${id}: the module config is not packaged`);
+    }
   }
   if (optional.includes("mod-individual-progression")) {
     setConf(confFile("worldserver.conf"), enabled ? { EnablePlayerSettings: 1, "DBC.EnforceItemAttributes": 0 } : { EnablePlayerSettings: 0, "DBC.EnforceItemAttributes": 1 });

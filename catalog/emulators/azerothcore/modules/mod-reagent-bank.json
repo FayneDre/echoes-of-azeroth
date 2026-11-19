@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-reagent-bank",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Reagent Bank",
+    "fr": "Banque de composants"
+  },
+  "description": {
+    "en": "An NPC that stores your crafting reagents without using bag or bank space. A GM places it with .npc add 290011.",
+    "fr": "Un PNJ qui garde tes composants d'artisanat sans prendre de place dans tes sacs ni ta banque. Un MJ le place avec .npc add 290011."
+  },
+  "category": "quality-of-life",
+  "homepage": "https://github.com/ZhengPeiRu21/mod-reagent-bank",
+  "license": "MIT",
+  "source": {
+    "repo": "https://github.com/ZhengPeiRu21/mod-reagent-bank",
+    "ref": "master",
+    "commit": "62c265338ceba10fb754394413e6c4c61cedf9de"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/reagent_bank.conf": {
+        "ReagentBank.Enable": 1
+      }
+    },
+    "disable": {
+      "modules/reagent_bank.conf": {
+        "ReagentBank.Enable": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-reagent-bank",
+    "touches": [
+      "characters",
+      "world"
+    ]
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/reagent_bank.conf",
+        "dist": "modules/reagent_bank.conf.dist"
+      }
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-npc-enchanter",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Enchanter NPC",
+    "fr": "PNJ enchanteur"
+  },
+  "description": {
+    "en": "An NPC that enchants your gear. A GM places it with .npc add 601015.",
+    "fr": "Un PNJ qui enchante ton équipement. Un MJ le place avec .npc add 601015."
+  },
+  "category": "quality-of-life",
+  "homepage": "https://github.com/azerothcore/mod-npc-enchanter",
+  "license": "AGPL-3.0",
+  "source": {
+    "repo": "https://github.com/azerothcore/mod-npc-enchanter",
+    "ref": "master",
+    "commit": "af32add66eafc0e0eb8775999e76ceed75f18b74"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/npc_enchanter.conf": {
+        "Enchanter.Enable": 1
+      }
+    },
+    "disable": {
+      "modules/npc_enchanter.conf": {
+        "Enchanter.Enable": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-npc-enchanter",
+    "touches": [
+      "world"
+    ]
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/npc_enchanter.conf",
+        "dist": "modules/npc_enchanter.conf.dist"
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "announce",
+      "type": "boolean",
+      "label": {
+        "en": "Announce the module at login",
+        "fr": "Annoncer le module à la connexion"
+      },
+      "target": {
+        "file": "modules/npc_enchanter.conf",
+        "key": "Enchanter.Announce"
+      },
+      "default": true
+    }
+  ]
+}

@@ -138,13 +138,18 @@ fn launcher_values_are_locked_and_typed() {
 #[test]
 fn modules_not_chosen_are_disabled_and_their_sql_not_allowed() {
     let plans = plan(&[]);
-    // AHBot reads its own tables even while disabled (ADR 0008); Individual
-    // Progression's SQL changes game content, so it is never applied unchosen.
+    // AHBot and Transmog read their own tables even while disabled (ADR
+    // 0008); Individual Progression's SQL changes game content, so it is
+    // never applied unchosen.
     assert_eq!(
         effective(&plans, "dbimport.conf", "Updates.AllowedModules")
             .unwrap()
             .0,
-        text("mod-playerbots,mod-ah-bot")
+        text("mod-playerbots,mod-ah-bot,mod-transmog")
+    );
+    assert_eq!(
+        effective(&plans, "modules/transmog.conf", "Transmogrification.Enable"),
+        Some((ConfigValue::Integer(0), LayerKind::CoreOverride))
     );
     assert_eq!(
         effective(
@@ -191,7 +196,12 @@ fn chosen_modules_are_enabled_with_their_overrides() {
     allowed.sort();
     assert_eq!(
         allowed,
-        ["mod-ah-bot", "mod-individual-progression", "mod-playerbots"]
+        [
+            "mod-ah-bot",
+            "mod-individual-progression",
+            "mod-playerbots",
+            "mod-transmog"
+        ]
     );
     assert_eq!(
         effective(

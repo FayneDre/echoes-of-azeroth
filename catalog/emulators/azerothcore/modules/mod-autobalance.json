@@ -1,0 +1,109 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-autobalance",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "Auto Balance",
+    "fr": "Équilibrage automatique"
+  },
+  "description": {
+    "en": "Scales dungeon and raid creatures to the number of players in the group, so a small group can clear group content.",
+    "fr": "Adapte les créatures des donjons et des raids au nombre de joueurs du groupe, pour qu'un petit groupe puisse en venir à bout."
+  },
+  "category": "gameplay",
+  "homepage": "https://github.com/azerothcore/mod-autobalance",
+  "license": "NOASSERTION",
+  "source": {
+    "repo": "https://github.com/azerothcore/mod-autobalance",
+    "ref": "master",
+    "commit": "1d707cb61a0962ab01e4123681e2d3b66cc558a2"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "removable": true,
+  "activation": {
+    "mode": "config",
+    "enable": {
+      "modules/AutoBalance.conf": {
+        "AutoBalance.Enable.Global": 1
+      }
+    },
+    "disable": {
+      "modules/AutoBalance.conf": {
+        "AutoBalance.Enable.Global": 0
+      }
+    }
+  },
+  "database": {
+    "dbimportId": "mod-autobalance",
+    "touches": []
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/AutoBalance.conf",
+        "dist": "modules/AutoBalance.conf.dist"
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "dungeons",
+      "type": "boolean",
+      "label": {
+        "en": "Balance 5-player dungeons",
+        "fr": "Équilibrer les donjons à 5"
+      },
+      "target": {
+        "file": "modules/AutoBalance.conf",
+        "key": "AutoBalance.Enable.5M"
+      },
+      "default": true
+    },
+    {
+      "id": "raids-10",
+      "type": "boolean",
+      "label": {
+        "en": "Balance 10-player raids",
+        "fr": "Équilibrer les raids à 10"
+      },
+      "target": {
+        "file": "modules/AutoBalance.conf",
+        "key": "AutoBalance.Enable.10M"
+      },
+      "default": true
+    },
+    {
+      "id": "raids-25",
+      "type": "boolean",
+      "label": {
+        "en": "Balance 25-player raids",
+        "fr": "Équilibrer les raids à 25"
+      },
+      "target": {
+        "file": "modules/AutoBalance.conf",
+        "key": "AutoBalance.Enable.25M"
+      },
+      "default": true
+    },
+    {
+      "id": "min-players",
+      "type": "integer",
+      "label": {
+        "en": "Balance for at least this many players",
+        "fr": "Équilibrer pour au moins ce nombre de joueurs"
+      },
+      "target": {
+        "file": "modules/AutoBalance.conf",
+        "key": "AutoBalance.MinPlayers"
+      },
+      "default": 1,
+      "min": 1,
+      "max": 40
+    }
+  ]
+}
