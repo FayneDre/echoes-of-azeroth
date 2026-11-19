@@ -284,6 +284,9 @@ fn engine_code(e: &EngineError) -> (&'static str, Vec<(&'static str, String)>) {
             ("instance.unfinished", Vec::new())
         }
         EngineError::StepFailed { step, source, .. } => {
+            if let Some(e) = source.downcast_ref::<rk_engine::steps::ExtractDataError>() {
+                return extract_code(e);
+            }
             if step == "servers-stopped" {
                 ("server.running", Vec::new())
             } else if source.to_string().contains("download") || step.starts_with("download") {
@@ -294,6 +297,25 @@ fn engine_code(e: &EngineError) -> (&'static str, Vec<(&'static str, String)>) {
         }
         EngineError::RollbackFailed(_) => ("operation.rollbackFailed", Vec::new()),
         _ => ("unknown", Vec::new()),
+    }
+}
+
+/// Server data made from the player's client (ADR 0024).
+fn extract_code(
+    e: &rk_engine::steps::ExtractDataError,
+) -> (&'static str, Vec<(&'static str, String)>) {
+    use rk_engine::steps::ExtractDataError as X;
+    match e {
+        X::ClientPathTooLong { length, max, .. } => (
+            "extract.pathTooLong",
+            vec![("length", length.to_string()), ("max", max.to_string())],
+        ),
+        X::MissingLocale { locale, .. } => ("extract.locale", vec![("locale", locale.clone())]),
+        X::MissingTool { .. } => ("instance.damaged", Vec::new()),
+        X::ToolFailed { step, .. } => ("extract.failed", vec![("step", step.clone())]),
+        X::Incomplete { .. } | X::Template { .. } => {
+            ("extract.failed", vec![("step", String::new())])
+        }
     }
 }
 

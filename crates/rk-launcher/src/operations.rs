@@ -139,7 +139,43 @@ impl Launcher {
             }
         };
         self.save_pending(&record.id, &pending)?;
-        self.finish(record, pending, observer, cancel).await
+        let record = self.finish(record, pending, observer, cancel).await?;
+        self.extract_server_data(&record, observer, cancel).await?;
+        Ok(record)
+    }
+
+    /// Makes the server data of an emulator that extracts it from the
+    /// player's client (ADR 0024), with the tools of `record`'s build; shared
+    /// by every realm of the emulator, so it runs once. Nothing to do for
+    /// downloaded data or when it is already there. Resumable.
+    pub(crate) async fn extract_server_data(
+        &self,
+        record: &InstanceRecord,
+        observer: &dyn Observer,
+        cancel: &CancelToken,
+    ) -> Result<()> {
+        let Some(ServerDataSource::Extract(_)) = self.catalog.server_data_source(&record.emulator)
+        else {
+            return Ok(());
+        };
+        let client = self.client_manifest_for(&record.emulator)?;
+        let state = rk_client::load(&self.layout.clients(), &client.id)?
+            .ok_or_else(|| LauncherError::NoClient(client.version.clone()))?;
+        let paths = self.layout.instance(&record.id);
+        let input = install::ExtractionInput {
+            tools_root: paths.root.clone(),
+            client_root: state.path,
+            logs: paths.logs.join("extract"),
+            cpus: std::thread::available_parallelism().map_or(1, |n| n.get()),
+        };
+        if let Some((op, target)) =
+            install::extraction_operation(&self.catalog, &self.layout, &record.emulator, input)?
+        {
+            if !target.is_dir() {
+                self.run(&op, observer, cancel).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Runs the `instance-<id>` operation described by `pending`, records
@@ -334,6 +370,7 @@ impl Launcher {
         if self.import_unfinished(id) {
             return self.finish_import(id, observer, cancel).await;
         }
+        self.extract_server_data(&record, observer, cancel).await?;
         Ok(record)
     }
 

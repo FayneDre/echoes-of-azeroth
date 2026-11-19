@@ -29,7 +29,7 @@ pub use steps::{
     RenderConfigs, RunTool, ToolFailed,
 };
 
-use crate::steps::{read_entry, Extract, Fetch, Strip};
+use crate::steps::{read_entry, Extract, ExtractData, Fetch, Strip};
 use crate::{fsutil, Operation};
 
 #[derive(Debug, Error)]
@@ -414,7 +414,7 @@ pub fn component_operation(
 
 /// `serverdata-<client>-<version>`: the emulator's downloaded server data
 /// (ADR 0006). `None` when the emulator extracts it from the player's client
-/// instead (ADR 0024).
+/// instead: [`extraction_operation`], once a realm holds the tools.
 pub fn server_data_operation(
     catalog: &Catalog,
     layout: &Layout,
@@ -446,6 +446,50 @@ pub fn server_data_operation(
     let op = Operation::new(format!("serverdata-{}-{}", client.id, data.version))
         .step(Fetch::new("download", store, request))
         .step(Extract::new("extract", blob, &target));
+    Ok(Some((op, target)))
+}
+
+/// What an extraction of server data reads (ADR 0024).
+#[derive(Debug, Clone)]
+pub struct ExtractionInput {
+    /// Root of an installed realm of the emulator: its build has the tools.
+    pub tools_root: PathBuf,
+    /// The player's registered game folder.
+    pub client_root: PathBuf,
+    pub logs: PathBuf,
+    pub cpus: usize,
+}
+
+/// `serverdata-<client>-extract-<emulator>-<version>`: the emulator's server
+/// data made from the player's client (ADR 0024). `None` when the emulator
+/// downloads it ([`server_data_operation`]).
+pub fn extraction_operation(
+    catalog: &Catalog,
+    layout: &Layout,
+    emulator: &str,
+    input: ExtractionInput,
+) -> Result<Option<(Operation<()>, PathBuf)>, PlanError> {
+    let emu = &catalog
+        .emulator(emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("emulator '{emulator}'")))?
+        .manifest;
+    let source = catalog
+        .server_data_source(emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("server data of '{emulator}'")))?;
+    let ServerDataSource::Extract(extraction) = source else {
+        return Ok(None);
+    };
+    let folder = source.folder(emulator);
+    let target = layout.server_data(&emu.client, &folder);
+    let op = Operation::new(format!("serverdata-{}-{folder}", emu.client)).step(ExtractData {
+        id: "extract-data".into(),
+        extraction: extraction.clone(),
+        tools_root: input.tools_root,
+        client_root: input.client_root,
+        target: target.clone(),
+        logs: input.logs,
+        cpus: input.cpus,
+    });
     Ok(Some((op, target)))
 }
 
