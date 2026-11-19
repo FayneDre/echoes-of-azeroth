@@ -12,12 +12,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rk_core::manifest::ModuleCategory;
-use rk_core::LocalizedText;
 use rk_engine::install::{InstanceRecord, Network};
 use rk_engine::CancelToken;
 use rk_launcher::backups::Backup;
 use rk_launcher::firewall::FirewallStatus;
+use rk_launcher::overview::EmulatorOverview;
 use rk_launcher::preferences::{self, Preferences};
 use rk_launcher::progress::{EventObserver, OperationEvent};
 use rk_launcher::realms::ExportSummary;
@@ -269,108 +268,9 @@ fn catalog_dir(app: &AppHandle) -> Option<PathBuf> {
 
 // ------------------------------------------------------------------ catalog
 
-#[derive(Serialize)]
-pub struct ModuleSummary {
-    id: String,
-    name: LocalizedText,
-    description: LocalizedText,
-    category: ModuleCategory,
-    homepage: String,
-    mandatory: bool,
-}
-
-/// How the side bar presents the client an emulator serves.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientSummary {
-    id: String,
-    name: LocalizedText,
-    short_name: LocalizedText,
-    version: String,
-    build: u32,
-    emblem: String,
-    accent: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EmulatorOverview {
-    id: String,
-    name: String,
-    description: LocalizedText,
-    client: Option<ClientSummary>,
-    /// Server processes in start order (the database is implicit and first).
-    processes: Vec<String>,
-    /// The process whose stdin is the server console (stopped by closing
-    /// stdin, ADR 0011), if any.
-    console: Option<String>,
-    modules: Vec<ModuleSummary>,
-    /// Ready-made console commands of the GM panel (ADR 0020).
-    console_actions: Vec<rk_core::manifest::ConsoleAction>,
-}
-
 #[tauri::command]
 pub fn catalog_overview(state: State<'_, AppState>) -> Result<Vec<EmulatorOverview>> {
-    let launcher = state.launcher()?;
-    let catalog = launcher.catalog();
-    Ok(catalog
-        .emulators
-        .values()
-        .map(|entry| {
-            let mandatory =
-                catalog.mandatory_modules(&entry.manifest.id, &entry.manifest.default_flavor);
-            let mut modules: Vec<ModuleSummary> = entry
-                .modules
-                .values()
-                .filter(|m| {
-                    m.compatible_flavors
-                        .contains(&entry.manifest.default_flavor)
-                })
-                .map(|m| ModuleSummary {
-                    id: m.id.clone(),
-                    name: m.name.clone(),
-                    description: m.description.clone(),
-                    category: m.category,
-                    homepage: m.homepage.clone(),
-                    mandatory: mandatory.contains(&m.id),
-                })
-                .collect();
-            // Mandatory modules first, then alphabetical by id.
-            modules.sort_by(|a, b| b.mandatory.cmp(&a.mandatory).then_with(|| a.id.cmp(&b.id)));
-            let client = catalog
-                .clients
-                .get(&entry.manifest.client)
-                .map(|c| ClientSummary {
-                    id: c.id.clone(),
-                    name: c.name.clone(),
-                    short_name: c.branding.short_name.clone(),
-                    version: c.version.clone(),
-                    build: c.build,
-                    emblem: c.branding.emblem.clone(),
-                    accent: c.branding.accent.clone(),
-                });
-            EmulatorOverview {
-                id: entry.manifest.id.clone(),
-                name: entry.manifest.name.clone(),
-                description: entry.manifest.description.clone(),
-                client,
-                processes: entry
-                    .manifest
-                    .processes
-                    .iter()
-                    .map(|p| p.id.clone())
-                    .collect(),
-                console: entry
-                    .manifest
-                    .processes
-                    .iter()
-                    .find(|p| matches!(p.stop, rk_core::manifest::StopMethod::CloseStdin { .. }))
-                    .map(|p| p.id.clone()),
-                console_actions: entry.manifest.console_actions.clone(),
-                modules,
-            }
-        })
-        .collect())
+    Ok(state.launcher()?.catalog_overview())
 }
 
 // ---------------------------------------------------------------- overview

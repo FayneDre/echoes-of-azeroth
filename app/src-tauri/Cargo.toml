@@ -18,7 +18,6 @@ tauri-build.workspace = true
 
 [dependencies]
 rk-client.workspace = true
-rk-core.workspace = true
 rk-engine.workspace = true
 rk-launcher.workspace = true
 rk-runtime.workspace = true

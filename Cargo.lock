@@ -3394,7 +3394,6 @@ name = "realmkeeper"
 version = "0.3.2"
 dependencies = [
  "rk-client",
- "rk-core",
  "rk-engine",
  "rk-launcher",
  "rk-runtime",
