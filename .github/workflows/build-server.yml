@@ -230,6 +230,14 @@ jobs:
           EOF
           cat conf/config.sh
 
+      # `compiler build` = configure + compile, split so that _CL_ applies
+      # only to the compile: CMake's compiler check fails with /MP, then
+      # falls back to the clang path acore.sh always passes (2026-11-19).
+      - name: Configure CMake
+        shell: bash
+        working-directory: ${{ env.AC_SRC }}
+        run: ./acore.sh compiler configure
+
       - name: Build
         shell: bash
         working-directory: ${{ env.AC_SRC }}
@@ -239,7 +247,7 @@ jobs:
           # (C1060 in modules.vcxproj, 2026-11-19). _CL_ is appended after the
           # project's options, so its /MP2 wins: at most 2 x 2 compilers.
           _CL_: /MP2
-        run: ./acore.sh compiler build
+        run: ./acore.sh compiler compile
 
       # acore.sh only runs `cmake --install` when $OSTYPE is msys*/linux*/darwin*;
       # the runner's Git Bash reports "cygwin", so nothing would be installed and
