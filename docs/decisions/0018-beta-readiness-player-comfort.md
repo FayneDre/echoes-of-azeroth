@@ -80,6 +80,15 @@ problems we expect most often are not bugs but environments:
 10. **Release notes after a launcher update:** the notes of the update
     feed are kept in local storage before the installer restarts the
     launcher and shown once that version runs.
+    *Amended 2026-11-18 (0.3.2):* the notes live in
+    `app/src/lib/release-notes.json` (one entry per version, one line per
+    change, English and French; the release workflow fails without them).
+    `tools/ci/app-release.mjs` writes them to the feed (`notesByLocale`,
+    plus an English `notes` text for 0.3.x launchers) and to the GitHub
+    release. An available update is a title bar button opening a dialog
+    with its notes, the install button and the download progress; after
+    the restart, the new build shows its own bundled notes once (last
+    version run kept in local storage).
 
 ## Consequences
 

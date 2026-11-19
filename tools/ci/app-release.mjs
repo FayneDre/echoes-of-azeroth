@@ -6,9 +6,14 @@
 //       build makes updater artifacts and the app checks the signed feed;
 //       without one, the release has no auto-update (the app hides it).
 //
-//   feed    --version <v> --installer-url <url> --signature <file.sig>
-//           [--notes <text>] --out <latest.json>
+//   feed    --version <v> --installer-url <url> --signature <file.sig> --out <latest.json>
 //       The update feed read by tauri-plugin-updater (static JSON format).
+//       Release notes come from app/src/lib/release-notes.json: `notesByLocale`
+//       for the launcher, `notes` (English, one change per line) for 0.3.x.
+//
+//   notes   --version <v>
+//       Prints the GitHub release body (English, then French). Fails when the
+//       version has no entry in release-notes.json.
 //
 //   version
 //       Prints the app version from app/src-tauri/tauri.conf.json.
@@ -24,8 +29,19 @@ for (let i = 0; i < rest.length; i += 2) {
 
 function usage(message) {
   console.error(`app-release.mjs: ${message}`);
-  console.error("usage: app-release.mjs config|feed|version [options] (see the header)");
+  console.error("usage: app-release.mjs config|feed|notes|version [options] (see the header)");
   process.exit(2);
+}
+
+/** The entry of release-notes.json for `version` (required). */
+function releaseNotes(version) {
+  const all = JSON.parse(readFileSync(new URL("../../app/src/lib/release-notes.json", import.meta.url), "utf8"));
+  const notes = all[version];
+  if (!notes?.en?.length || !notes?.fr?.length) {
+    console.error(`app-release.mjs: app/src/lib/release-notes.json has no English and French notes for ${version}`);
+    process.exit(1);
+  }
+  return notes;
 }
 
 function need(name) {
@@ -53,9 +69,11 @@ switch (command) {
   }
   case "feed": {
     const signature = readFileSync(need("signature"), "utf8").trim();
+    const notes = releaseNotes(need("version"));
     const feed = {
       version: need("version"),
-      notes: options.notes ?? "",
+      notes: notes.en.map((line) => `• ${line}`).join("\n"),
+      notesByLocale: notes,
       pub_date: new Date().toISOString(),
       platforms: {
         "windows-x86_64": { signature, url: need("installer-url") },
@@ -63,6 +81,12 @@ switch (command) {
     };
     writeFileSync(need("out"), JSON.stringify(feed, null, 2));
     console.log(`feed for ${feed.version}`);
+    break;
+  }
+  case "notes": {
+    const notes = releaseNotes(need("version"));
+    const list = (lines) => lines.map((line) => `- ${line}`).join("\n");
+    console.log(`## What's new\n\n${list(notes.en)}\n\n## Nouveautés\n\n${list(notes.fr)}`);
     break;
   }
   case "version": {

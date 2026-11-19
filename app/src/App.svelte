@@ -17,7 +17,7 @@
   import Console from "./lib/components/Console.svelte";
   import CrashNotice from "./lib/components/CrashNotice.svelte";
   import Toasts from "./lib/components/Toasts.svelte";
-  import AppUpdateNotice from "./lib/components/AppUpdateNotice.svelte";
+  import AppUpdate from "./lib/components/AppUpdate.svelte";
   import ErrorBox from "./lib/components/ErrorBox.svelte";
   import ProgressPanel from "./lib/components/ProgressPanel.svelte";
   import { connect, launcher } from "./lib/launcher.svelte";
@@ -151,6 +151,11 @@
       {/each}
     </nav>
 
+    {#if inDesktopApp()}
+      <AppUpdate />
+      <WhatsNew />
+    {/if}
+
     <div class="segmented" role="group" aria-label={t("nav.language")}>
       {#each LOCALES as locale (locale.id)}
         <button
@@ -225,8 +230,6 @@
         {#if inDesktopApp()}
           <MissingLocation />
           <CrashNotice />
-          <AppUpdateNotice />
-          <WhatsNew />
         {/if}
         <Toasts />
       </div>

@@ -1481,7 +1481,42 @@ pub fn has_update_feed(app: &AppHandle) -> bool {
 #[derive(Serialize)]
 pub struct AppUpdate {
     version: String,
-    notes: Option<String>,
+    /// Release notes by locale (`en`, `fr`): one line per change.
+    notes: BTreeMap<String, Vec<String>>,
+}
+
+/// The notes of a feed entry: `notesByLocale` (written from
+/// `app/src/lib/release-notes.json` by `tools/ci/app-release.mjs`), else
+/// the plain `notes` text of older feeds, one change per line, as English.
+fn feed_notes(raw: &serde_json::Value, body: Option<&str>) -> BTreeMap<String, Vec<String>> {
+    let by_locale: Option<BTreeMap<String, Vec<String>>> = raw
+        .get("notesByLocale")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    by_locale.unwrap_or_else(|| {
+        let lines: Vec<String> = body
+            .unwrap_or_default()
+            .lines()
+            .map(|l| {
+                l.trim()
+                    .trim_start_matches(['•', '-', '*'])
+                    .trim()
+                    .to_owned()
+            })
+            .filter(|l| !l.is_empty())
+            .collect();
+        if lines.is_empty() {
+            BTreeMap::new()
+        } else {
+            BTreeMap::from([("en".to_owned(), lines)])
+        }
+    })
+}
+
+/// Download progress of a launcher update, emitted as `app-update`.
+#[derive(Clone, Serialize)]
+struct AppUpdateProgress {
+    downloaded: u64,
+    total: Option<u64>,
 }
 
 async fn pending_app_update(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Update>> {
@@ -1503,7 +1538,7 @@ async fn pending_app_update(app: &AppHandle) -> Result<Option<tauri_plugin_updat
 pub async fn check_app_update(app: AppHandle) -> Result<Option<AppUpdate>> {
     Ok(pending_app_update(&app).await?.map(|u| AppUpdate {
         version: u.version.clone(),
-        notes: u.body.clone(),
+        notes: feed_notes(&u.raw_json, u.body.as_deref()),
     }))
 }
 
@@ -1525,9 +1560,39 @@ pub async fn install_app_update(app: AppHandle, state: State<'_, AppState>) -> R
     let update = pending_app_update(&app)
         .await?
         .ok_or_else(|| app_error("appUpdate.none", "no update available"))?;
+    let mut downloaded = 0u64;
+    let progress = app.clone();
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = progress.emit("app-update", AppUpdateProgress { downloaded, total });
+            },
+            || {},
+        )
         .await
         .map_err(|e| app_error("appUpdate.failed", e))?;
     app.restart()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::feed_notes;
+
+    #[test]
+    fn feed_notes_by_locale_or_from_the_plain_text() {
+        let raw = serde_json::json!({
+            "notes": "• ignored",
+            "notesByLocale": { "en": ["One."], "fr": ["Un."] }
+        });
+        let notes = feed_notes(&raw, Some("• ignored"));
+        assert_eq!(notes["fr"], ["Un."]);
+        assert_eq!(notes["en"], ["One."]);
+
+        // A 0.3.x feed: one sentence, or one change per line.
+        let old = feed_notes(&serde_json::json!({}), Some("• First.\n\n- Second.\n"));
+        assert_eq!(old.len(), 1);
+        assert_eq!(old["en"], ["First.", "Second."]);
+        assert!(feed_notes(&serde_json::json!({}), None).is_empty());
+    }
 }

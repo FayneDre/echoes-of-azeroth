@@ -282,7 +282,14 @@ export interface CrashReport {
 /** A newer launcher version, from the signed update feed. */
 export interface AppUpdate {
   version: string;
-  notes: string | null;
+  /** Release notes by locale (`en`, `fr`), one line per change. */
+  notes: Record<string, string[]>;
+}
+
+/** Download progress of a launcher update (bytes). */
+export interface AppUpdateProgress {
+  downloaded: number;
+  total: number | null;
 }
 
 export type UpdateOutcome =
@@ -474,6 +481,8 @@ export const events = {
       handler(e.payload.instance, e.payload.events),
     ),
   closing: (handler: () => void): Promise<UnlistenFn> => listen("closing", () => handler()),
+  appUpdate: (handler: (progress: AppUpdateProgress) => void): Promise<UnlistenFn> =>
+    listen<AppUpdateProgress>("app-update", (e) => handler(e.payload)),
 };
 
 /** Window chrome: the launcher draws its own title bar (decorations off). */

@@ -1,0 +1,18 @@
+{
+  "0.3.1": {
+    "en": [
+      "Play becomes available once the servers are online.",
+      "On a LAN realm, the servers keep running after the game closes (a box to tick or untick next to Play).",
+      "The game master tools work again and sit under the accounts while the servers are online.",
+      "No more error message when the servers stop after the game closes.",
+      "The realm name is centred in its bar."
+    ],
+    "fr": [
+      "Jouer devient disponible dès que les serveurs sont en ligne.",
+      "Sur un royaume en réseau local, les serveurs restent allumés quand le jeu se ferme (case à cocher à côté de Jouer).",
+      "Les outils de maître du jeu fonctionnent de nouveau et se trouvent sous les comptes quand les serveurs sont en ligne.",
+      "Plus de message d'erreur quand les serveurs s'arrêtent après la fermeture du jeu.",
+      "Le nom du royaume est centré dans sa barre."
+    ]
+  }
+}

@@ -14,14 +14,10 @@ name: Release launcher
 on:
   workflow_dispatch:
     inputs:
-      notes:
-        description: Release notes (shown by the launcher's update notice)
-        required: false
-        default: ""
       draft:
-        description: Publish as a draft (closed beta)
+        description: Publish as a draft (not offered to the launchers)
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -64,7 +60,12 @@ jobs:
       - name: Version
         id: version
         shell: bash
-        run: echo "version=$(node tools/ci/app-release.mjs version)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          version=$(node tools/ci/app-release.mjs version)
+          # Fails now, not after the build, when the notes are missing.
+          node tools/ci/app-release.mjs notes --version "$version" > /dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Release config
         shell: bash
@@ -174,7 +175,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          NOTES: ${{ inputs.notes }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/out"
@@ -182,12 +182,11 @@ jobs:
           (cd "$GITHUB_WORKSPACE/app" && npx tauri signer sign "$RUNNER_TEMP/out/$installer")
           node "$GITHUB_WORKSPACE/tools/ci/app-release.mjs" feed --version "$VERSION" \
             --installer-url "https://github.com/$GITHUB_REPOSITORY/releases/download/app-v$VERSION/$installer" \
-            --signature "$installer.sig" --notes "$NOTES" --out latest.json
+            --signature "$installer.sig" --out latest.json
 
       - name: Release
         shell: bash
         env:
-          NOTES: ${{ inputs.notes }}
           DRAFT: ${{ inputs.draft }}
         run: |
           set -euo pipefail
@@ -197,11 +196,12 @@ jobs:
             echo "::error::$tag already exists: bump the version in app/src-tauri/tauri.conf.json"
             exit 1
           fi
-          flags=(--title "RealmKeeper $VERSION" --notes "${NOTES:-RealmKeeper $VERSION}")
+          node "$GITHUB_WORKSPACE/tools/ci/app-release.mjs" notes --version "$VERSION" > notes.md
+          flags=(--title "RealmKeeper $VERSION" --notes-file notes.md)
           [ "$DRAFT" = "true" ] && flags+=(--draft)
           gh release create "$tag" --target "$GITHUB_SHA" "${flags[@]}" "RealmKeeper_${VERSION}_x64-setup.exe"
-          # The feed moves only for a public release: a draft (closed beta)
-          # never reaches the players' auto-update.
+          # The feed moves only for a public release: a draft never reaches
+          # the players' auto-update.
           if [ -f latest.json ] && [ "$DRAFT" != "true" ]; then
             if ! gh release view app-latest > /dev/null 2>&1; then
               gh release create app-latest --latest=false --title "Launcher update feed" \

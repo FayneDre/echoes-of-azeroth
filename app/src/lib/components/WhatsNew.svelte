@@ -1,66 +1,29 @@
 <script lang="ts">
-  // After a launcher update: the release notes of the version now running,
-  // saved by AppUpdateNotice before the installer restarted the launcher.
+  // After a launcher update: once, a dialog with the changes of the version
+  // now running, from the notes shipped in this build.
   import { appVersion } from "../api";
   import { t } from "../i18n/i18n.svelte";
-  import { readWhatsNew, clearWhatsNew, type WhatsNewNotes } from "../whatsNew";
+  import { bundledNotes, justUpdated, type ReleaseNotes } from "../whatsNew";
+  import Modal from "./Modal.svelte";
+  import ReleaseNotesList from "./ReleaseNotesList.svelte";
 
-  let shown = $state<WhatsNewNotes | null>(null);
+  let shown = $state<{ version: string; notes: ReleaseNotes } | null>(null);
 
   $effect(() => {
-    const saved = readWhatsNew();
-    if (!saved) return;
     appVersion()
       .then((version) => {
-        // Saved for another version: the update did not go through (yet).
-        if (saved.version === version) shown = saved;
+        const notes = bundledNotes(version);
+        if (justUpdated(version) && notes) shown = { version, notes };
       })
       .catch(() => {});
   });
-
-  function dismiss() {
-    clearWhatsNew();
-    shown = null;
-  }
 </script>
 
 {#if shown}
-  <div class="whats-new" role="status">
-    <p class="title">{t("whatsNew.title", { version: shown.version })}</p>
-    {#if shown.notes}
-      <pre>{shown.notes}</pre>
-    {/if}
-    <button class="btn" onclick={dismiss}>{t("whatsNew.dismiss")}</button>
-  </div>
+  <Modal title={t("whatsNew.title", { version: shown.version })} onclose={() => (shown = null)} width="560px">
+    <ReleaseNotesList notes={shown.notes} />
+    {#snippet actions()}
+      <button class="btn btn-play" onclick={() => (shown = null)}>{t("whatsNew.dismiss")}</button>
+    {/snippet}
+  </Modal>
 {/if}
-
-<style>
-  .whats-new {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--frame-light);
-    background: var(--bg-elevated);
-    box-shadow:
-      0 0 8px var(--glow),
-      var(--panel-shadow);
-  }
-
-  .title {
-    margin: 0;
-    color: var(--title);
-  }
-
-  pre {
-    margin: 0;
-    max-height: 220px;
-    width: 100%;
-    overflow: auto;
-    white-space: pre-wrap;
-    font-family: inherit;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-  }
-</style>
