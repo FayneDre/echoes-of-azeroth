@@ -66,5 +66,14 @@
       },
       "default": true
     }
+  ],
+  "spawns": [
+    {
+      "creature": 601015,
+      "places": [
+        "Stormwind",
+        "Orgrimmar"
+      ]
+    }
   ]
 }

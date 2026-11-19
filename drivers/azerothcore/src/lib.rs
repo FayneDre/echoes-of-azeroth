@@ -86,6 +86,10 @@ impl EmulatorDriver for AzerothCore {
             cx.db
                 .execute(&realm_sql(auth, cx.realm_address, port, icon))
                 .await?;
+            let world = cx
+                .database("world")
+                .ok_or(AccountError::MissingDatabase("world"))?;
+            cx.db.execute(&spawns_sql(world, cx.spawns)?).await?;
             Ok(())
         })
     }
@@ -551,6 +555,59 @@ fn realm_icon(worldserver_conf: &std::path::Path) -> u8 {
         .unwrap_or(0)
 }
 
+/// First `creature.guid` of the NPCs the launcher places (ADR 0023): far
+/// above the base data and the modules' spawns (5 300 678 at most on the
+/// Playerbot fork with Individual Progression, 2026-11-19).
+const SPAWN_GUID_FIRST: u32 = 9_900_000;
+/// Room for the launcher's NPCs.
+const SPAWN_GUID_COUNT: u32 = 1_000;
+/// Distance between NPCs placed at one place, in yards (along x).
+const SPAWN_SPACING: f32 = 2.5;
+
+/// Places the NPCs of the enabled modules (ADR 0023), from scratch at each
+/// start: the launcher's rows are deleted, then one row per NPC and place
+/// is copied from the place's `game_tele` position. A place or a creature
+/// template that does not exist (module SQL not applied) adds nothing,
+/// so the server never loads a spawn without its template.
+fn spawns_sql(world: &str, spawns: &[rk_core::manifest::Spawn]) -> Result<String, AccountError> {
+    let last = SPAWN_GUID_FIRST + SPAWN_GUID_COUNT - 1;
+    let mut sql = String::new();
+    let _ = writeln!(sql, "USE `{world}`;");
+    sql.push_str("START TRANSACTION;\n");
+    let _ = writeln!(
+        sql,
+        "DELETE FROM creature WHERE guid BETWEEN {SPAWN_GUID_FIRST} AND {last};"
+    );
+    let mut guid = SPAWN_GUID_FIRST;
+    let mut at_place: std::collections::BTreeMap<&str, u32> = Default::default();
+    for spawn in spawns {
+        for place in &spawn.places {
+            if !rk_core::manifest::Spawn::valid_place(place) {
+                return Err(AccountError::Unexpected(format!("place name {place:?}")));
+            }
+            if guid > last {
+                return Err(AccountError::Unexpected("too many NPCs to place".into()));
+            }
+            let slot = at_place.entry(place).or_default();
+            *slot += 1;
+            let offset = SPAWN_SPACING * *slot as f32;
+            let _ = writeln!(
+                sql,
+                "INSERT INTO creature (guid, id, map, position_x, position_y, position_z, \
+                 orientation, spawntimesecs, Comment) \
+                 SELECT {guid}, c.entry, t.map, t.position_x + {offset}, t.position_y, t.position_z, \
+                 t.orientation, 300, 'Placed by RealmKeeper' \
+                 FROM game_tele t JOIN creature_template c ON c.entry = {creature} \
+                 WHERE t.name = '{place}' ORDER BY t.id LIMIT 1;",
+                creature = spawn.creature,
+            );
+            guid += 1;
+        }
+    }
+    sql.push_str("COMMIT;\n");
+    Ok(sql)
+}
+
 /// Points realm 1 at the address players connect to, with its type.
 fn realm_sql(auth: &str, address: std::net::Ipv4Addr, port: u16, icon: u8) -> String {
     format!(
@@ -664,6 +721,35 @@ GameType = 8
             sql.contains("VALUES (@guid, 5, 'Auctioneer', 1, 1,"),
             "{sql}"
         );
+    }
+
+    #[test]
+    fn spawns_replace_the_launcher_rows_and_space_npcs_per_place() {
+        use rk_core::manifest::Spawn;
+        let spawns = [
+            Spawn {
+                creature: 190010,
+                places: vec!["Stormwind".into(), "Orgrimmar".into()],
+            },
+            Spawn {
+                creature: 601015,
+                places: vec!["Stormwind".into()],
+            },
+        ];
+        let sql = spawns_sql("acore_world", &spawns).unwrap();
+        assert!(sql.contains("DELETE FROM creature WHERE guid BETWEEN 9900000 AND 9900999;"));
+        assert_eq!(sql.matches("INSERT INTO creature").count(), 3);
+        assert!(sql.contains("SELECT 9900000, c.entry, t.map, t.position_x + 2.5,"));
+        assert!(sql.contains("SELECT 9900002, c.entry, t.map, t.position_x + 5,"));
+        assert!(sql.contains("ON c.entry = 601015 WHERE t.name = 'Stormwind'"));
+        // Nothing enabled: the launcher's NPCs are only removed.
+        let none = spawns_sql("acore_world", &[]).unwrap();
+        assert!(none.contains("DELETE FROM creature") && !none.contains("INSERT"));
+        let bad = Spawn {
+            creature: 1,
+            places: vec!["Storm'wind".into()],
+        };
+        assert!(spawns_sql("acore_world", &[bad]).is_err());
     }
 
     #[test]

@@ -52,5 +52,14 @@
         "dist": "modules/reagent_bank.conf.dist"
       }
     ]
-  }
+  },
+  "spawns": [
+    {
+      "creature": 290011,
+      "places": [
+        "Stormwind",
+        "Orgrimmar"
+      ]
+    }
+  ]
 }

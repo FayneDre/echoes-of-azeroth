@@ -97,5 +97,14 @@
       "min": 0,
       "max": 100
     }
+  ],
+  "spawns": [
+    {
+      "creature": 190010,
+      "places": [
+        "Stormwind",
+        "Orgrimmar"
+      ]
+    }
   ]
 }

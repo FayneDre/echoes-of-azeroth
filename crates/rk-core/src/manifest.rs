@@ -322,6 +322,29 @@ pub struct ModuleManifest {
     pub assets: Vec<Asset>,
     #[serde(default)]
     pub post_install: Vec<PostInstallStep>,
+    /// NPCs the module only defines (a template, placed in game with a GM
+    /// command): the launcher places them while the module is enabled
+    /// (ADR 0023).
+    #[serde(default)]
+    pub spawns: Vec<Spawn>,
+}
+
+/// One NPC of a module, placed at named places of the world.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Spawn {
+    /// Creature template id the module's SQL defines.
+    pub creature: u32,
+    /// Teleport place names of the emulator's world database (AzerothCore
+    /// `game_tele.name`, e.g. `Stormwind`): the NPC stands there.
+    pub places: Vec<String>,
+}
+
+impl Spawn {
+    /// A place name safe to quote in SQL: ASCII letters and digits only.
+    pub fn valid_place(place: &str) -> bool {
+        (1..=64).contains(&place.len()) && place.bytes().all(|b| b.is_ascii_alphanumeric())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

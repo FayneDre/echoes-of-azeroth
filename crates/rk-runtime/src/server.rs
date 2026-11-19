@@ -55,6 +55,8 @@ pub struct Server {
     processes: Vec<ProcessConfig>,
     logs: broadcast::Sender<LogLine>,
     paths_configs: std::path::PathBuf,
+    /// NPCs of the enabled modules (ADR 0023).
+    spawns: Vec<rk_core::manifest::Spawn>,
 }
 
 impl Server {
@@ -100,10 +102,16 @@ impl Server {
                 })
             })
             .collect::<Result<Vec<_>, RuntimeError>>()?;
+        let spawns = crate::modules::enabled_modules(catalog, &record)?
+            .iter()
+            .filter_map(|m| catalog.module(&record.emulator, m))
+            .flat_map(|m| m.spawns.iter().cloned())
+            .collect();
         let (logs, _) = broadcast::channel(4096);
         Ok(Self {
             layout: layout.clone(),
             db,
+            spawns,
             emulator,
             paths_configs: layout.instance(&record.id).configs,
             record,
@@ -157,6 +165,7 @@ impl Server {
             record: &self.record,
             realm_address,
             configs: &self.paths_configs,
+            spawns: &self.spawns,
         }
     }
 

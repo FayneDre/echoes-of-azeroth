@@ -115,6 +115,33 @@
       "items": {
         "$ref": "#/$defs/postInstallStep"
       }
+    },
+    "spawns": {
+      "description": "NPCs the module only defines as templates: the launcher places them at named teleport places while the module is enabled (ADR 0023).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["creature", "places"],
+        "properties": {
+          "creature": {
+            "description": "Creature template id defined by the module's SQL.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "places": {
+            "description": "Teleport place names of the world database (AzerothCore game_tele.name).",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,64}$"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false,

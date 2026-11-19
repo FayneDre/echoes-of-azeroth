@@ -5,7 +5,7 @@ use std::future::Future;
 use std::net::Ipv4Addr;
 use std::pin::Pin;
 
-use rk_core::manifest::EmulatorManifest;
+use rk_core::manifest::{EmulatorManifest, Spawn};
 use rk_engine::install::InstanceRecord;
 
 /// Errors stay typed so the UI can translate them (principle 8).
@@ -22,6 +22,9 @@ pub struct DriverContext<'a> {
     pub realm_address: Ipv4Addr,
     /// The instance's rendered config files (`instances/<id>/configs`).
     pub configs: &'a std::path::Path,
+    /// NPCs of the enabled modules to place (ADR 0023), in resolution
+    /// order; empty outside a start.
+    pub spawns: &'a [Spawn],
 }
 
 impl DriverContext<'_> {
