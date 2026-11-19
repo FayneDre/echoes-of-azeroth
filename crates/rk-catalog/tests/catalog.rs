@@ -121,3 +121,40 @@ fn instance_placeholders_are_checked() {
         );
     }
 }
+
+#[test]
+fn server_data_comes_from_a_download_or_an_extraction() {
+    use rk_core::manifest::ServerDataSource;
+    let mut catalog = catalog();
+    assert!(matches!(
+        catalog.server_data_source("azerothcore"),
+        Some(ServerDataSource::Download(_))
+    ));
+    assert!(matches!(
+        catalog.server_data_source("pandaria"),
+        Some(ServerDataSource::Extract(_))
+    ));
+
+    let emu = &mut catalog.emulators.get_mut("pandaria").unwrap().manifest;
+    let extraction = emu.data_extraction.as_mut().unwrap();
+    extraction.locale = "deDE".into();
+    let step = extraction.steps[0].clone();
+    extraction.steps.push(step);
+    extraction.steps[1].args.push("${client.nowhere}".into());
+    catalog.clients.get_mut("wow-3-3-5a").unwrap().server_data = None;
+    let messages: Vec<String> = rk_catalog::validate(&catalog)
+        .into_iter()
+        .map(|i| i.message)
+        .collect();
+    for expected in [
+        "needs locale 'deDE'",
+        "extraction step 'maps' declared twice",
+        "uses unknown '${client.nowhere}'",
+        "no server data: client 'wow-3-3-5a'",
+    ] {
+        assert!(
+            messages.iter().any(|m| m.contains(expected)),
+            "{expected} in {messages:?}"
+        );
+    }
+}

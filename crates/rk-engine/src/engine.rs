@@ -33,6 +33,14 @@ impl<C> Operation<C> {
         self
     }
 
+    /// Adds `step` when there is one (a step only some emulators need).
+    pub fn maybe_step(self, step: Option<impl Step<C> + 'static>) -> Self {
+        match step {
+            Some(step) => self.step(step),
+            None => self,
+        }
+    }
+
     pub fn push(&mut self, step: Box<dyn Step<C>>) {
         self.steps.push(step);
     }

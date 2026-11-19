@@ -13,6 +13,8 @@ pub enum LauncherError {
     Catalog(String),
     #[error("unknown emulator '{0}'")]
     UnknownEmulator(String),
+    #[error("emulator '{0}' is experimental (set RK_EXPERIMENTAL=1 to use it)")]
+    Experimental(String),
     #[error("no driver '{0}' in this build")]
     NoDriver(String),
     #[error("no {0} client registered: choose your game folder first")]
@@ -175,6 +177,7 @@ impl LauncherError {
         match self {
             L::Catalog(_) => ("catalog.unreadable", none()),
             L::UnknownEmulator(_) | L::NoDriver(_) => ("catalog.invalid", none()),
+            L::Experimental(_) => ("emulator.experimental", none()),
             L::NoClient(version) => ("client.notRegistered", vec![("version", version.clone())]),
             L::MissingAsset(_) => ("assets.missing", none()),
             L::RolledBack { .. } => ("operation.rolledBack", none()),

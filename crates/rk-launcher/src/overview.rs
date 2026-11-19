@@ -51,11 +51,17 @@ pub struct EmulatorOverview {
 impl Launcher {
     /// Every emulator of the catalog, as the app presents it. Modules are
     /// those of the default flavor, mandatory ones first, then by id.
+    /// Experimental emulators only with `RK_EXPERIMENTAL=1` (ADR 0024).
     pub fn catalog_overview(&self) -> Vec<EmulatorOverview> {
+        self.overview_of(crate::experimental_enabled())
+    }
+
+    fn overview_of(&self, experimental: bool) -> Vec<EmulatorOverview> {
         let catalog = self.catalog();
         catalog
             .emulators
             .values()
+            .filter(|entry| experimental || !entry.manifest.experimental)
             .map(|entry| {
                 let manifest = &entry.manifest;
                 let mandatory = catalog.mandatory_modules(&manifest.id, &manifest.default_flavor);
@@ -120,5 +126,22 @@ mod tests {
             .any(|m| m.id == "mod-playerbots"));
         assert!(ac.modules[first_optional..].iter().all(|m| !m.mandatory));
         assert!(ac.client.as_ref().is_some_and(|c| c.build == 12340));
+    }
+
+    #[test]
+    fn experimental_emulators_are_hidden_unless_asked_for() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog");
+        let dir = tempfile::tempdir().unwrap();
+        let launcher = crate::Launcher::open(&root, dir.path()).unwrap();
+        let ids = |experimental| -> Vec<String> {
+            launcher
+                .overview_of(experimental)
+                .into_iter()
+                .map(|e| e.id)
+                .collect()
+        };
+        assert!(!ids(false).contains(&"pandaria".to_owned()));
+        assert!(ids(true).contains(&"pandaria".to_owned()));
+        assert!(ids(false).contains(&"azerothcore".to_owned()));
     }
 }

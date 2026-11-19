@@ -148,7 +148,7 @@ pub fn apply_modules_operation(
     });
     Ok(op
         .step(plan.render)
-        .step(plan.import)
+        .maybe_step(plan.import)
         .step(DbStop { db: plan.db }))
 }
 
@@ -203,7 +203,7 @@ pub fn update_operation(
         .step(overlay(layout, record, &plan))
         .step(post_install)
         .step(plan.render)
-        .step(plan.import)
+        .maybe_step(plan.import)
         .step(DbStop { db: plan.db }))
 }
 
@@ -251,7 +251,7 @@ pub fn restore_operation(
             user: secrets.db_user.clone(),
             password: secrets.db_password.clone(),
         })
-        .step(plan.import)
+        .maybe_step(plan.import)
         .step(DbStop { db: plan.db }))
 }
 

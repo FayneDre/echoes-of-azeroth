@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../schema/flavor.schema.json",
+  "schemaVersion": 1,
+  "id": "playerbot",
+  "emulator": "pandaria",
+  "name": {
+    "en": "LoA Pandaria (Playerbots)",
+    "fr": "LoA Pandaria (Playerbots)"
+  },
+  "description": {
+    "en": "Legends of Azeroth Pandaria 5.4.8 fork with Playerbots built in. Pinned to release v1.1.1, whose database dumps match this commit.",
+    "fr": "Fork de Legends of Azeroth Pandaria 5.4.8 avec Playerbots intégré. Épinglé sur la release v1.1.1, dont les dumps de base correspondent à ce commit."
+  },
+  "source": {
+    "repo": "https://github.com/1LineAtaTime/LoA-Pandaria-Playerbots",
+    "ref": "v1.1.1",
+    "commit": "2f9aebde9f68f7c79fbde2e7c1f2250ed49b0ef7"
+  },
+  "requiredModules": []
+}

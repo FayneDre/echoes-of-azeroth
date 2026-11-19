@@ -35,14 +35,21 @@ impl Launcher {
                 );
             }
         }
-        if let Some(client) = self.catalog.clients.get(&emu.client) {
-            let data = &client.server_data;
-            add(
-                &data.sha256,
-                data.size,
-                data.unpacked_size,
-                self.layout.server_data(&client.id, &data.version),
-            );
+        let source = self.catalog.server_data_source(emulator);
+        if let (Some(client), Some(source)) = (self.catalog.clients.get(&emu.client), source) {
+            let target = self
+                .layout
+                .server_data(&client.id, &source.folder(emulator));
+            match source {
+                ServerDataSource::Download(data) => {
+                    add(&data.sha256, data.size, data.unpacked_size, target)
+                }
+                // Made on this machine: nothing to download, only its size.
+                ServerDataSource::Extract(extraction) if !target.is_dir() => {
+                    needed += extraction.unpacked_size.unwrap_or(0)
+                }
+                ServerDataSource::Extract(_) => {}
+            }
         }
         needed += emu.instance.disk_size.unwrap_or(0);
         let available = rk_store::available_space(self.layout.root()).ok();
@@ -63,6 +70,9 @@ impl Launcher {
         cancel: &CancelToken,
     ) -> Result<InstanceRecord> {
         let emu = self.emulator(&request.emulator)?.clone();
+        if emu.experimental && !experimental_enabled() {
+            return Err(LauncherError::Experimental(emu.id));
+        }
         // A new realm: refuse before downloading gigabytes onto a disk that
         // cannot hold them. A resumed one already took part of its room.
         if !self
@@ -92,13 +102,15 @@ impl Launcher {
             )?;
             self.run(&op, observer, cancel).await?;
         }
-        let (op, _) = install::server_data_operation(
+        // Downloaded data comes first; extracted data needs the realm's tools.
+        if let Some((op, _)) = install::server_data_operation(
             &self.catalog,
             &self.layout,
             self.store.clone(),
             &request.emulator,
-        )?;
-        self.run(&op, observer, cancel).await?;
+        )? {
+            self.run(&op, observer, cancel).await?;
+        }
 
         let new = install::NewInstance {
             id: request.id.clone(),

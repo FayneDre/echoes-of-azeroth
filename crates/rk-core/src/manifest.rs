@@ -92,6 +92,14 @@ pub struct EmulatorManifest {
     /// backup holds what the server last saved by itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save_players: Option<SavePlayers>,
+    /// Not offered to players (ADR 0024): listed and installable only when
+    /// `RK_EXPERIMENTAL=1` (development).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub experimental: bool,
+    /// Server data made from the player's client instead of the client
+    /// manifest's download (ADR 0024).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_extraction: Option<DataExtraction>,
 }
 
 /// A console command that saves every player, and the output line that
@@ -200,7 +208,11 @@ pub struct InstanceSpec {
     pub connection: String,
     /// Config file -> key -> value (Launcher layer, locked).
     pub config: ConfigChanges,
-    pub db_import: ToolSpec,
+    /// Migration tool run after every install or change (AzerothCore's
+    /// dbimport). Without it, the servers migrate their own databases when
+    /// they start (built-in updater).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub db_import: Option<ToolSpec>,
 }
 
 /// A command-line tool shipped with the server build.
@@ -742,7 +754,10 @@ pub struct ClientManifest {
     /// Where add-ons go (`Interface/AddOns`), when the client has them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addons: Option<DirectoryRef>,
-    pub server_data: ServerData,
+    /// Pre-extracted data for the emulators of this client, unless an
+    /// emulator extracts its own (`dataExtraction`, ADR 0024).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_data: Option<ServerData>,
 }
 
 /// Presentation of a client in the launcher. Emblems are original artwork
@@ -813,6 +828,81 @@ pub struct ServerData {
     pub unpacked_size: Option<u64>,
     pub sha256: String,
     pub contents: Vec<String>,
+}
+
+/// Server data made on the player's machine from their own client, by
+/// tools of the server build (ADR 0024): nothing derived from the game is
+/// ever downloaded or shared. Each step runs in the output directory, so the
+/// client folder is only read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DataExtraction {
+    /// Format of the extracted files: a new value (new extractor output)
+    /// makes a new folder in the store; realms keep the one they use.
+    pub version: String,
+    /// The client must have this locale (the server reads its DBC files).
+    pub locale: String,
+    /// Longest client path the tools accept (fixed-size buffers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_client_path: Option<usize>,
+    /// Approximate size of the result (free-space check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unpacked_size: Option<u64>,
+    /// Run in order; each one is resumable as a whole.
+    pub steps: Vec<ExtractionStep>,
+    /// Intermediate directories removed once every step is done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove: Vec<String>,
+    /// Top-level directories of the result (what `DataDir` must hold).
+    pub contents: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtractionStep {
+    pub id: String,
+    /// Relative to the instance root (a tool of the server build).
+    pub executable: String,
+    /// `${client.root}`, `${client.data}` (its `Data` folder) and
+    /// `${cpu.count}` are replaced; paths are relative to the output.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Directories to create in the output before the step runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub create: Vec<String>,
+    /// Share of the whole extraction time, for the progress bar.
+    pub weight: f64,
+    pub label: LocalizedText,
+}
+
+/// Placeholders an [`ExtractionStep`] may use.
+pub const EXTRACTION_PLACEHOLDERS: &[&str] = &["client.root", "client.data", "cpu.count"];
+
+/// Where an emulator's server data comes from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ServerDataSource<'a> {
+    /// Downloaded from the client manifest's pinned release (ADR 0006).
+    Download(&'a ServerData),
+    /// Made from the player's client (ADR 0024).
+    Extract(&'a DataExtraction),
+}
+
+impl ServerDataSource<'_> {
+    /// Folder name under `server-data/<client>/` in the store.
+    pub fn folder(&self, emulator: &str) -> String {
+        match self {
+            Self::Download(data) => data.version.clone(),
+            Self::Extract(extraction) => format!("extract-{emulator}-{}", extraction.version),
+        }
+    }
+
+    /// Approximate unpacked size, when known.
+    pub fn unpacked_size(&self) -> Option<u64> {
+        match self {
+            Self::Download(data) => data.unpacked_size,
+            Self::Extract(extraction) => extraction.unpacked_size,
+        }
+    }
 }
 
 // --------------------------------------------------------------- component

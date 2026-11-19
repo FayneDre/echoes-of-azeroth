@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rk_core::manifest::{EmulatorManifest, OptionValue};
+use rk_core::manifest::{EmulatorManifest, OptionValue, ServerDataSource};
 use rk_core::template::TemplateError;
 use rk_core::{Catalog, Resolution, ResolveError};
 use rk_store::{FetchRequest, Store};
@@ -412,13 +412,15 @@ pub fn component_operation(
         .step(Extract::new("extract", blob, layout.component(id)).strip(Strip::SingleRootDir)))
 }
 
-/// `serverdata-<client>-<version>`: the emulator's server data (ADR 0006).
+/// `serverdata-<client>-<version>`: the emulator's downloaded server data
+/// (ADR 0006). `None` when the emulator extracts it from the player's client
+/// instead (ADR 0024).
 pub fn server_data_operation(
     catalog: &Catalog,
     layout: &Layout,
     store: Arc<Store>,
     emulator: &str,
-) -> Result<(Operation<()>, PathBuf), PlanError> {
+) -> Result<Option<(Operation<()>, PathBuf)>, PlanError> {
     let emu = &catalog
         .emulator(emulator)
         .ok_or_else(|| PlanError::Unknown(format!("emulator '{emulator}'")))?
@@ -427,8 +429,14 @@ pub fn server_data_operation(
         .clients
         .get(&emu.client)
         .ok_or_else(|| PlanError::Unknown(format!("client '{}'", emu.client)))?;
-    let data = &client.server_data;
-    let target = layout.server_data(&client.id, &data.version);
+    let source = catalog
+        .server_data_source(emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("server data of '{emulator}'")))?;
+    let data = match source {
+        ServerDataSource::Download(data) => data,
+        ServerDataSource::Extract(_) => return Ok(None),
+    };
+    let target = layout.server_data(&client.id, &source.folder(emulator));
     let blob = store.blob_path(&data.sha256);
     let request = FetchRequest {
         urls: vec![data.url.clone()],
@@ -438,7 +446,7 @@ pub fn server_data_operation(
     let op = Operation::new(format!("serverdata-{}-{}", client.id, data.version))
         .step(Fetch::new("download", store, request))
         .step(Extract::new("extract", blob, &target));
-    Ok((op, target))
+    Ok(Some((op, target)))
 }
 
 /// `snapshot.json` of a database snapshot archive (ADR 0009).
@@ -533,7 +541,9 @@ pub struct InstancePlan {
     pub mysql: (String, String),
     pub databases: Vec<String>,
     pub render: RenderConfigs,
-    pub import: RunTool,
+    /// dbimport, when the emulator migrates through one (else the servers
+    /// migrate their databases themselves at start).
+    pub import: Option<RunTool>,
     /// Module assets selected by the option values (ADR 0013).
     pub assets: Vec<assets::SelectedAsset>,
     /// Shared server data and the directory `DataDir` points at (the
@@ -573,7 +583,10 @@ pub fn instance_plan(
         .ok_or_else(|| PlanError::Unknown(format!("client executable of '{}'", mysql.id)))?;
     let db = Arc::new(database(catalog, layout, record)?);
     let selected_assets = assets::selected(catalog, &resolution, &record.options)?;
-    let server_data = layout.server_data(&client.id, &client.server_data.version);
+    let source = catalog
+        .server_data_source(&record.emulator)
+        .ok_or_else(|| PlanError::Unknown(format!("server data of '{}'", record.emulator)))?;
+    let server_data = layout.server_data(&client.id, &source.folder(&record.emulator));
     let data = if selected_assets.iter().any(|a| !a.asset.server.is_empty()) {
         paths.data.clone()
     } else {
@@ -598,7 +611,6 @@ pub fn instance_plan(
         .into_iter()
         .map(|d| d.name)
         .collect();
-    let tool = &emu.instance.db_import;
     Ok(InstancePlan {
         db,
         mysql: (mysql.id.clone(), mysql.version.clone()),
@@ -609,13 +621,13 @@ pub fn instance_plan(
             files,
             bindings: Some(paths.bindings.clone()),
         },
-        import: RunTool {
+        import: emu.instance.db_import.as_ref().map(|tool| RunTool {
             id: "db-import".into(),
             executable: paths.root.join(&tool.executable),
             args: vec!["-c".into(), format!("configs/{}", tool.config_file)],
             cwd: paths.root.clone(),
             log: paths.logs.join("dbimport.log"),
-        },
+        }),
         resolution,
         assets: selected_assets,
         server_data,
@@ -665,7 +677,7 @@ pub fn instance_operation(
             password: secrets.db_password.clone(),
         })
         .step(plan.render)
-        .step(plan.import)
+        .maybe_step(plan.import)
         .step(DbStop { db }))
 }
 

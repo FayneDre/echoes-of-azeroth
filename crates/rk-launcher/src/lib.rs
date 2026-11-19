@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rk_client::{ClientLock, ClientState, PrepareReport};
-use rk_core::manifest::{ClientManifest, ModuleOption, OptionValue};
+use rk_core::manifest::{ClientManifest, ModuleOption, OptionValue, ServerDataSource};
 use rk_core::Catalog;
 use rk_engine::install::{self, InstanceRecord, Layout, Network};
 use rk_engine::{CancelToken, Engine, Observer, Operation, Outcome};
@@ -46,6 +46,12 @@ use serde::{Deserialize, Serialize};
 pub use error::{LauncherError, UiError};
 
 pub type Result<T, E = LauncherError> = std::result::Result<T, E>;
+
+/// Whether emulators marked `experimental` in the catalog are listed and
+/// installable (ADR 0024): only with `RK_EXPERIMENTAL=1`, for development.
+pub fn experimental_enabled() -> bool {
+    std::env::var("RK_EXPERIMENTAL").is_ok_and(|v| v == "1")
+}
 
 /// The launcher's own folder: `%LOCALAPPDATA%\RealmKeeperData` (principle 6),
 /// or `RK_ROOT` when set (development, tests). Holds the crash reports and
@@ -823,7 +829,10 @@ mod tests {
         let launcher = Launcher::open(&catalog, root.path()).unwrap();
         let space = launcher.install_space("azerothcore").unwrap();
         let mysql = &launcher.catalog().components["mysql-8-4"].platforms[&install::platform()];
-        let data = &launcher.catalog().clients["wow-3-3-5a"].server_data;
+        let data = launcher.catalog().clients["wow-3-3-5a"]
+            .server_data
+            .as_ref()
+            .unwrap();
         assert_eq!(space.download, mysql.size + data.size);
         let disk = launcher.catalog().emulators["azerothcore"]
             .manifest

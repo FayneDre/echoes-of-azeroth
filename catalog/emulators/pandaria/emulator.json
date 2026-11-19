@@ -1,0 +1,190 @@
+{
+  "$schema": "../../schema/emulator.schema.json",
+  "schemaVersion": 1,
+  "id": "pandaria",
+  "name": "LoA Pandaria",
+  "description": {
+    "en": "Open-source World of Warcraft: Mists of Pandaria (5.4.8) server emulator with Playerbots. Prototype of a second emulator (ADR 0024), not offered to players yet.",
+    "fr": "Émulateur de serveur open source pour World of Warcraft: Mists of Pandaria (5.4.8), avec Playerbots. Prototype d'un second émulateur (ADR 0024), pas encore proposé aux joueurs."
+  },
+  "homepage": "https://github.com/1LineAtaTime/LoA-Pandaria-Playerbots",
+  "license": "GPL-2.0",
+  "driver": "pandaria",
+  "client": "wow-5-4-8",
+  "experimental": true,
+  "components": [
+    {
+      "id": "mysql-8-4"
+    }
+  ],
+  "defaultFlavor": "playerbot",
+  "databases": [
+    {
+      "id": "auth",
+      "name": "mop_auth",
+      "playerData": true,
+      "connections": [
+        {
+          "file": "authserver.conf",
+          "key": "LoginDatabaseInfo"
+        },
+        {
+          "file": "worldserver.conf",
+          "key": "LoginDatabaseInfo"
+        }
+      ]
+    },
+    {
+      "id": "characters",
+      "name": "mop_characters",
+      "playerData": true,
+      "connections": [
+        {
+          "file": "worldserver.conf",
+          "key": "CharacterDatabaseInfo"
+        }
+      ]
+    },
+    {
+      "id": "world",
+      "name": "mop_world",
+      "playerData": false,
+      "connections": [
+        {
+          "file": "worldserver.conf",
+          "key": "WorldDatabaseInfo"
+        }
+      ]
+    },
+    {
+      "id": "playerbots",
+      "name": "mop_playerbots",
+      "playerData": true,
+      "connections": [
+        {
+          "file": "worldserver.conf",
+          "key": "PlayerbotsDatabaseInfo"
+        }
+      ]
+    }
+  ],
+  "instance": {
+    "connection": "127.0.0.1;${db.port};${db.user};${db.password};${db.name}",
+    "config": {
+      "authserver.conf": {
+        "LogsDir": "${dir.logs}",
+        "SourceDirectory": "${dir.sql}",
+        "MySQLExecutable": "${tool.mysql}",
+        "RealmServerPort": "${port.auth}",
+        "BindIP": "${network.bind}",
+        "Updates.EnableDatabases": 0
+      },
+      "worldserver.conf": {
+        "DataDir": "${dir.data}",
+        "LogsDir": "${dir.logs}",
+        "SourceDirectory": "${dir.sql}",
+        "MySQLExecutable": "${tool.mysql}",
+        "WorldServerPort": "${port.world}",
+        "BindIP": "${network.bind}",
+        "SOAP.Port": "${port.soap}",
+        "Updates.EnableDatabases": 15,
+        "Console.Enable": 0,
+        "BeepAtStart": 0,
+        "FlashAtStart": 0
+      },
+      "playerbots.conf": {
+        "AiPlayerbot.Enabled": 1
+      }
+    }
+  },
+  "ports": {
+    "auth": 3724,
+    "world": 8085,
+    "soap": 7878
+  },
+  "processes": [
+    {
+      "id": "authserver",
+      "executable": "bin/authserver.exe",
+      "configFile": "authserver.conf",
+      "args": [
+        "-c",
+        "configs/authserver.conf"
+      ],
+      "readiness": {
+        "type": "tcp",
+        "port": "auth"
+      },
+      "stop": {
+        "type": "terminate"
+      }
+    },
+    {
+      "id": "worldserver",
+      "executable": "bin/worldserver.exe",
+      "configFile": "worldserver.conf",
+      "args": [
+        "-c",
+        "configs/worldserver.conf"
+      ],
+      "readiness": {
+        "type": "tcp",
+        "port": "world"
+      },
+      "stop": {
+        "type": "terminate"
+      }
+    }
+  ],
+  "dataExtraction": {
+    "version": "1",
+    "locale": "enUS",
+    "maxClientPath": 127,
+    "steps": [
+      {
+        "id": "maps",
+        "executable": "bin/mapextractor.exe",
+        "args": ["-i", "${client.root}", "-o", "."],
+        "weight": 0.05,
+        "label": {
+          "en": "Reading maps and game tables",
+          "fr": "Lecture des cartes et des tables du jeu"
+        }
+      },
+      {
+        "id": "vmaps-extract",
+        "executable": "bin/vmap4extractor.exe",
+        "args": ["-d", "${client.data}"],
+        "weight": 0.05,
+        "label": {
+          "en": "Reading buildings and objects",
+          "fr": "Lecture des bâtiments et des objets"
+        }
+      },
+      {
+        "id": "vmaps-assemble",
+        "executable": "bin/vmap4assembler.exe",
+        "args": ["Buildings", "vmaps"],
+        "create": ["vmaps"],
+        "weight": 0.05,
+        "label": {
+          "en": "Building line of sight",
+          "fr": "Calcul des lignes de vue"
+        }
+      },
+      {
+        "id": "mmaps",
+        "executable": "bin/mmaps_generator.exe",
+        "args": ["--threads", "${cpu.count}"],
+        "create": ["mmaps"],
+        "weight": 0.85,
+        "label": {
+          "en": "Building movement maps for the bots (several hours)",
+          "fr": "Calcul des cartes de déplacement des bots (plusieurs heures)"
+        }
+      }
+    ],
+    "remove": ["Buildings"],
+    "contents": ["cameras", "dbc", "maps", "mmaps", "vmaps"]
+  }
+}

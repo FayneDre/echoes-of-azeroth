@@ -162,6 +162,7 @@
   "error.catalog.missing": "Le catalogue des jeux est absent de cette installation. Réinstalle RealmKeeper.",
   "error.catalog.unreadable": "Le catalogue des jeux est illisible. Réinstalle RealmKeeper ; si cela se reproduit, signale le problème.",
   "error.catalog.invalid": "Le catalogue des jeux contient des incohérences. Mets à jour RealmKeeper ; si cela se reproduit, signale le problème.",
+  "error.emulator.experimental": "Cette version du jeu est encore en préparation et ne peut pas encore être installée.",
   "error.client.notRegistered": "Choisis d'abord le dossier de ton jeu {version}.",
   "error.client.notFound": "Aucun jeu trouvé dans ce dossier. Choisis le dossier qui contient l'exécutable du jeu.",
   "error.client.wrongBuild": "Ce jeu est en build {found} ; ce royaume demande la version {version} (build {expected}).",

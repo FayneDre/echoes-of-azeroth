@@ -101,8 +101,7 @@
       "type": "object",
       "required": [
         "connection",
-        "config",
-        "dbImport"
+        "config"
       ],
       "properties": {
         "diskSize": {
@@ -123,7 +122,7 @@
           }
         },
         "dbImport": {
-          "description": "Tool that applies core and module SQL to the databases.",
+          "description": "Tool that applies core and module SQL to the databases after every install or change (AzerothCore dbimport). Without it, the servers migrate their own databases when they start (built-in updater).",
           "type": "object",
           "required": [
             "executable",
@@ -179,6 +178,57 @@
         "$ref": "#/$defs/consoleAction"
       }
     },
+    "experimental": {
+      "description": "Not offered to players (ADR 0024): listed and installable only when RK_EXPERIMENTAL=1 (development).",
+      "type": "boolean",
+      "default": false
+    },
+    "dataExtraction": {
+      "description": "Server data made on the player's machine from their own client by tools of the server build, instead of the client manifest's serverData download (ADR 0024). Each step runs in the output directory; the client folder is only read.",
+      "type": "object",
+      "required": ["version", "locale", "steps", "contents"],
+      "properties": {
+        "version": {
+          "description": "Format of the extracted files: a new value makes a new folder in the store.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.-]{0,31}$"
+        },
+        "locale": {
+          "description": "Locale the client must have (the server reads its DBC files).",
+          "type": "string",
+          "pattern": "^[a-z]{2}[A-Z]{2}$"
+        },
+        "maxClientPath": {
+          "description": "Longest client path the tools accept (fixed-size buffers).",
+          "type": "integer",
+          "minimum": 8
+        },
+        "unpackedSize": {
+          "description": "Approximate size in bytes of the result (free-space check).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/extractionStep" }
+        },
+        "remove": {
+          "description": "Intermediate directories removed once every step is done.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/relativePath" },
+          "uniqueItems": true
+        },
+        "contents": {
+          "description": "Top-level directories of the result (what DataDir must hold).",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/relativePath" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
     "savePlayers": {
       "description": "Console command that writes every player to the database before a backup taken while the servers run, and the output line that says it is done (ADR 0022).",
       "type": "object",
@@ -214,6 +264,40 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "relativePath": {
+      "description": "Relative path: '/' separators, segments of letters, digits, '.', '_' or '-', never '.' or '..'.",
+      "type": "string",
+      "pattern": "^(?!\\.\\.?(/|$))(?!.*/\\.\\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+    },
+    "extractionStep": {
+      "type": "object",
+      "required": ["id", "executable", "weight", "label"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "executable": {
+          "description": "Relative to the instance root (a tool of the server build).",
+          "$ref": "#/$defs/relativePath"
+        },
+        "args": {
+          "description": "Arguments; ${client.root}, ${client.data} and ${cpu.count} are replaced. Paths are relative to the output directory.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "create": {
+          "description": "Directories created in the output before the step runs.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/relativePath" },
+          "uniqueItems": true
+        },
+        "weight": {
+          "description": "Share of the whole extraction time (progress bar).",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "label": { "$ref": "common.schema.json#/$defs/localizedText" }
+      },
+      "additionalProperties": false
+    },
     "database": {
       "type": "object",
       "required": [

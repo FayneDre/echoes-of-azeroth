@@ -1,0 +1,42 @@
+{
+  "$schema": "../schema/client.schema.json",
+  "schemaVersion": 1,
+  "id": "wow-5-4-8",
+  "name": {
+    "en": "World of Warcraft: Mists of Pandaria 5.4.8",
+    "fr": "World of Warcraft : Mists of Pandaria 5.4.8"
+  },
+  "game": "wow",
+  "branding": {
+    "shortName": { "en": "Mists of Pandaria", "fr": "Mists of Pandaria" },
+    "emblem": "jade-serpent",
+    "accent": "#4fb39a"
+  },
+  "version": "5.4.8",
+  "build": 18414,
+  "detection": {
+    "executable": "Wow.exe",
+    "build": 18414
+  },
+  "locales": [
+    "enUS"
+  ],
+  "realmlist": {
+    "file": "Data/{locale}/realmlist.wtf",
+    "line": "set realmlist {address}",
+    "saved": {
+      "file": "WTF/Config.wtf",
+      "prefix": "SET realmlist ",
+      "line": "SET realmlist \"{address}\""
+    }
+  },
+  "patches": {
+    "directory": "Data"
+  },
+  "addons": {
+    "directory": "Interface/AddOns"
+  },
+  "cache": {
+    "directory": "Cache"
+  }
+}

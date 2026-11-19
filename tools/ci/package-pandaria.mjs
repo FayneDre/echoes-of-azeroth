@@ -2,11 +2,15 @@
 // finished LoA-Pandaria-Playerbots build:
 //
 //   <out>/
-//     bin/                    servers, map extractors, runtime DLLs, *.conf.dist
-//     sql-sources/sql/**      core SQL the worldserver's updater reads (SourceDirectory)
-//     sql-sources/modules/<dir>/data/sql/**   module SQL (playerbots database updates)
+//     dist/                   servers, map extractors, runtime DLLs (the instance's bin/)
+//     dist/configs/*.conf.dist   configuration templates, playerbots.conf.dist included
+//     sql/sql/**              core SQL the worldserver's updater reads (SourceDirectory)
+//     sql/modules/<dir>/data/sql/**   module SQL (playerbots database updates)
 //     build-info.json         source commit, toolchain
 //     files.json              every file with size and sha256
+//
+// Same layout as the AzerothCore artifact (package-server.mjs): the engine
+// installs both the same way.
 //
 // Usage: node tools/ci/package-pandaria.mjs --source <dir> --bin <dir>
 //          --mysql <dir> --openssl <dir> --repo <url> --commit <sha> --out <dir>
@@ -38,18 +42,22 @@ const walk = (dir) =>
     });
 const posix = (path) => path.split(sep).join("/");
 
-// ------------------------------------------------------------------- bin
-const bin = join(opts.out, "bin");
-mkdirSync(bin, { recursive: true });
+// ------------------------------------------------------------------ dist
+const dist = join(opts.out, "dist");
+const configs = join(dist, "configs");
+mkdirSync(configs, { recursive: true });
 for (const path of walk(opts.bin)) {
-  if (/\.(exe|dll|conf\.dist)$/i.test(path)) copyFileSync(path, join(bin, basename(path)));
+  const name = basename(path);
+  if (/\.(exe|dll)$/i.test(name)) copyFileSync(path, join(dist, name));
+  else if (name.endsWith(".conf.dist")) copyFileSync(path, join(configs, name));
 }
 // Configuration templates the build did not copy next to the executables
-// (module ones always stay in the source tree).
+// (module ones always stay in the source tree). playerbots.conf is read
+// next to worldserver.conf.
 for (const path of ["src/server", "modules"].flatMap((dir) => walk(join(opts.source, dir)))) {
   const name = basename(path);
-  if (name.endsWith(".conf.dist") && !existsSync(join(bin, name))) {
-    copyFileSync(path, join(bin, name));
+  if (name.endsWith(".conf.dist") && !existsSync(join(configs, name))) {
+    copyFileSync(path, join(configs, name));
     console.log(`added ${name} from ${posix(relative(opts.source, path))}`);
   }
 }
@@ -68,10 +76,10 @@ const runtime = {
   ],
 };
 for (const [name, candidates] of Object.entries(runtime)) {
-  if (existsSync(join(bin, name))) continue;
+  if (existsSync(join(dist, name))) continue;
   const found = candidates.find((c) => existsSync(c));
   if (!found) fail(`runtime library ${name} not found (looked in: ${candidates.join(", ")})`);
-  copyFileSync(found, join(bin, name));
+  copyFileSync(found, join(dist, name));
   console.log(`added ${name} from ${posix(found)}`);
 }
 
@@ -82,15 +90,16 @@ const required = [
   "vmap4extractor.exe",
   "vmap4assembler.exe",
   "mmaps_generator.exe",
-  "worldserver.conf.dist",
-  "authserver.conf.dist",
   ...Object.keys(runtime),
+  "configs/worldserver.conf.dist",
+  "configs/authserver.conf.dist",
+  "configs/playerbots.conf.dist",
 ];
-const missing = required.filter((name) => !existsSync(join(bin, name)));
+const missing = required.filter((name) => !existsSync(join(dist, name)));
 if (missing.length) fail(`missing in the build output: ${missing.join(", ")}`);
 
 // ----------------------------------------------------------- SQL sources
-const sql = join(opts.out, "sql-sources");
+const sql = join(opts.out, "sql");
 cpSync(join(opts.source, "sql"), join(sql, "sql"), { recursive: true });
 for (const dir of readdirSync(join(opts.source, "modules")).sort()) {
   const moduleSql = join(opts.source, "modules", dir, "data", "sql");
@@ -133,4 +142,5 @@ writeFileSync(join(opts.out, "files.json"), JSON.stringify({ commit: opts.commit
 
 const total = files.reduce((sum, f) => sum + f.size, 0);
 console.log(`packaged ${files.length} files, ${(total / 1048576).toFixed(1)} MB`);
-for (const name of readdirSync(bin).sort()) console.log(`  bin/${name}`);
+for (const name of readdirSync(dist).sort()) console.log(`  dist/${name}`);
+for (const name of readdirSync(configs).sort()) console.log(`  dist/configs/${name}`);

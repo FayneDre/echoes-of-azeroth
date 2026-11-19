@@ -57,6 +57,68 @@ pub fn validate(catalog: &Catalog) -> Vec<Issue> {
                 format!("unknown default flavor '{}'", emu.default_flavor),
             );
         }
+        // Server data (ADR 0006, 0024): downloaded for the client, or
+        // extracted from it with known placeholders, in a locale it has.
+        match &emu.data_extraction {
+            None => {
+                if catalog
+                    .clients
+                    .get(&emu.client)
+                    .is_some_and(|c| c.server_data.is_none())
+                {
+                    push(
+                        here.clone(),
+                        format!(
+                            "no server data: client '{}' has no serverData and no dataExtraction is declared",
+                            emu.client
+                        ),
+                    );
+                }
+            }
+            Some(extraction) => {
+                if let Some(client) = catalog.clients.get(&emu.client) {
+                    if !client.locales.contains(&extraction.locale) {
+                        push(
+                            here.clone(),
+                            format!(
+                                "data extraction needs locale '{}', which client '{}' does not list",
+                                extraction.locale, emu.client
+                            ),
+                        );
+                    }
+                }
+                let mut step_ids = BTreeSet::new();
+                for step in &extraction.steps {
+                    if !step_ids.insert(&step.id) {
+                        push(
+                            here.clone(),
+                            format!("extraction step '{}' declared twice", step.id),
+                        );
+                    }
+                    for arg in &step.args {
+                        match rk_core::template::placeholders(arg) {
+                            Ok(names) => {
+                                for name in names {
+                                    if !rk_core::manifest::EXTRACTION_PLACEHOLDERS.contains(&name) {
+                                        push(
+                                            here.clone(),
+                                            format!(
+                                                "extraction step '{}' uses unknown '${{{name}}}'",
+                                                step.id
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                push(here.clone(), format!("extraction step '{}': {e}", step.id))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // GM panel: every placeholder is a parameter, ids are unique, and
         // start milestones only move forward.
         let mut action_ids = std::collections::BTreeSet::new();
