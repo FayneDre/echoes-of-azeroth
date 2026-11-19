@@ -1360,6 +1360,9 @@ impl Launcher {
     ) -> Result<InstanceRecord> {
         let id = record.id.clone();
         let id = id.as_str();
+        if !rk_db::dump_complete(&dump)? {
+            return Err(LauncherError::BackupIncomplete(name.to_owned()));
+        }
         let held = {
             let dump = dump.clone();
             tokio::task::spawn_blocking(move || rk_db::dump_databases(&dump))

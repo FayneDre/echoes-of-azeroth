@@ -36,6 +36,10 @@ pub enum DbError {
     },
     #[error("invalid identifier '{0}': use letters, digits and '_' only")]
     InvalidIdentifier(String),
+    #[error("the backup {0} is incomplete (it does not end like a finished dump)")]
+    DumpIncomplete(PathBuf),
+    #[error("the backup {dump} does not contain the database {database}")]
+    DumpLacks { dump: PathBuf, database: String },
     #[error("could not generate a random password: {0}")]
     Random(String),
 }

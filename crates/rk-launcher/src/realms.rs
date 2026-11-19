@@ -661,12 +661,17 @@ fn read_export_head(file: &Path) -> Result<(ExportedRealm, Option<serde_json::Va
     Ok((realm, bindings, dump_size))
 }
 
-/// Unpacks the player data dump of an export to `out` (atomically).
+/// Unpacks the player data dump of an export to `out` (atomically). A
+/// dump that does not end like a finished one (a truncated download) is
+/// refused here, before anything is installed.
 fn extract_dump(file: &Path, out: &Path) -> Result<()> {
     let mut zip = open_export(file)?;
     let mut entry = zip
         .by_name(DUMP_ENTRY)
         .map_err(|_| invalid_export(file, format!("no {DUMP_ENTRY}")))?;
+    if let Some(dir) = out.parent() {
+        rk_store::ensure_space(dir, entry.size()).map_err(LauncherError::NoSpace)?;
+    }
     let tmp = out.with_extension("sql.tmp");
     let copied = (|| -> std::io::Result<()> {
         let mut target = std::fs::File::create(&tmp)?;
@@ -677,6 +682,10 @@ fn extract_dump(file: &Path, out: &Path) -> Result<()> {
     if let Err(e) = copied {
         let _ = std::fs::remove_file(&tmp);
         return Err(io_error(out.to_path_buf(), e));
+    }
+    if !rk_db::dump_complete(&tmp).unwrap_or(false) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(invalid_export(file, format!("{DUMP_ENTRY} is incomplete")));
     }
     std::fs::rename(&tmp, out).map_err(|e| io_error(out.to_path_buf(), e))
 }
@@ -749,7 +758,7 @@ mod tests {
     fn an_export_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let dump = dir.path().join("dump.sql");
-        std::fs::write(&dump, "-- player data\n").unwrap();
+        std::fs::write(&dump, "-- player data\n-- Dump completed on 2026-11-19\n").unwrap();
         let realm = ExportedRealm {
             format: EXPORT_FORMAT,
             emulator: "azerothcore".into(),
@@ -770,14 +779,17 @@ mod tests {
             &dump,
         )
         .unwrap();
-        assert_eq!(size, 15);
+        assert_eq!(size, 47);
         let (read, bindings, dump_size) = read_export_head(&out).unwrap();
         assert_eq!(read, realm);
         assert_eq!(bindings.unwrap()["mod-ah-bot"]["account"], 3);
-        assert_eq!(dump_size, 15);
+        assert_eq!(dump_size, 47);
         let back = dir.path().join("back.sql");
         extract_dump(&out, &back).unwrap();
-        assert_eq!(std::fs::read_to_string(back).unwrap(), "-- player data\n");
+        assert_eq!(
+            std::fs::read_to_string(back).unwrap(),
+            "-- player data\n-- Dump completed on 2026-11-19\n"
+        );
     }
 
     #[test]

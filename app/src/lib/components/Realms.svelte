@@ -245,6 +245,7 @@
         <p>{t("realms.duplicateBody")}</p>
       {:else if dialog.kind === "import"}
         <p>{t("realms.importBody")}</p>
+        <p class="trust">{t("realms.importTrust")}</p>
         <dl class="summary">
           <div>
             <dt>{t("home.stat.modules")}</dt>
@@ -289,6 +290,11 @@
 {/if}
 
 <style>
+  .trust {
+    border-left: 3px solid var(--accent);
+    padding-left: var(--space-2);
+  }
+
   .realm-bar {
     display: flex;
     flex-wrap: wrap;

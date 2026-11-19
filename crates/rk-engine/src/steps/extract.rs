@@ -309,7 +309,14 @@ pub(crate) fn unzip(
             dirs.insert(out);
             continue;
         }
-        if !seen.insert(out.clone()) {
+        // Windows file names ignore case: `A.dll` and `a.dll` are one file,
+        // the second entry would silently replace the first.
+        let key = if cfg!(windows) {
+            out.to_string_lossy().to_lowercase()
+        } else {
+            out.to_string_lossy().into_owned()
+        };
+        if !seen.insert(key) {
             return Err(ExtractError::Duplicate(out.display().to_string()));
         }
         if let Some(parent) = out.parent() {

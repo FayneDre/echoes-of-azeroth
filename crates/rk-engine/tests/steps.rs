@@ -126,6 +126,35 @@ async fn unsafe_entries_are_rejected_before_writing() {
     }
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn entries_differing_only_by_case_are_refused_on_windows() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("case.zip");
+    make_zip(
+        &archive,
+        &[("bin/Game.dll", b"one"), ("bin/game.DLL", b"two")],
+        zip::CompressionMethod::Stored,
+    );
+    let target = dir.path().join("out").join("target");
+    let err = extract(
+        Extract::new("extract", &archive, &target),
+        &dir.path().join("state"),
+    )
+    .await
+    .unwrap_err();
+    let EngineError::StepFailed { source, .. } = &err else {
+        panic!("{err:?}")
+    };
+    assert!(
+        matches!(
+            source.downcast_ref::<ExtractError>(),
+            Some(ExtractError::Duplicate(_))
+        ),
+        "{err}"
+    );
+}
+
 #[tokio::test]
 async fn corrupted_entry_fails_and_leaves_nothing() {
     let dir = tempfile::tempdir().unwrap();

@@ -133,9 +133,20 @@ pub async fn remove(realm: &str, log: &std::path::Path) -> Result<(), FirewallEr
     elevated(&remove_script(realm, log), log).await
 }
 
-/// `'text'` for PowerShell: single quotes doubled.
+/// `'text'` for PowerShell: every quote doubled. PowerShell also ends a
+/// single-quoted string at the typographic quotes U+2018 to U+201B (a
+/// folder named `Player’s games` would otherwise break the script).
 fn quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "''"))
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('\'');
+    for c in text.chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
 }
 
 fn status_script(realm: &str, lan: Option<&str>) -> String {
@@ -325,6 +336,16 @@ mod tests {
             path: PathBuf::from(path),
             port,
         }
+    }
+
+    #[test]
+    fn quotes_double_every_kind_of_single_quote() {
+        assert_eq!(quote("a'b"), "'a''b'");
+        assert_eq!(quote("Player\u{2019}s"), "'Player\u{2019}\u{2019}s'");
+        assert_eq!(
+            quote("\u{2018}x\u{201A}\u{201B}"),
+            "'\u{2018}\u{2018}x\u{201A}\u{201A}\u{201B}\u{201B}'"
+        );
     }
 
     #[test]

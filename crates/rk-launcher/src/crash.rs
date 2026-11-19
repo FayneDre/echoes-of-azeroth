@@ -22,27 +22,51 @@ pub fn dir(root: &Path) -> PathBuf {
     root.join("crash-reports")
 }
 
-/// Replaces the user's folders by their variable names, and the user name
-/// wherever it still appears.
+/// Replaces the user's folders by their variable names, and the user and
+/// computer names wherever they still appear. Windows paths are not case
+/// sensitive (`c:\users\…` in one log, `C:\Users\…` in another), so the
+/// matching is not either.
 pub fn redact(text: &str) -> String {
+    let var = |name: &str| std::env::var_os(name).map(|v| v.to_string_lossy().into_owned());
     let mut out = text.to_owned();
-    for var in ["LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOME"] {
-        if let Some(value) = std::env::var_os(var) {
-            let value = value.to_string_lossy();
-            if value.len() > 3 {
-                out = out.replace(value.as_ref(), &format!("%{var}%"));
-                out = out.replace(&value.replace('\\', "/"), &format!("%{var}%"));
-            }
+    for name in ["LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOME"] {
+        if let Some(value) = var(name).filter(|v| v.len() > 3) {
+            let by = format!("%{name}%");
+            out = replace_ignore_case(&out, &value, &by);
+            out = replace_ignore_case(&out, &value.replace('\\', "/"), &by);
         }
     }
-    for var in ["USERNAME", "USER"] {
-        if let Some(value) = std::env::var_os(var) {
-            let value = value.to_string_lossy();
-            if value.len() > 2 {
-                out = out.replace(value.as_ref(), "<user>");
-            }
+    for (name, by) in [
+        ("USERNAME", "<user>"),
+        ("USER", "<user>"),
+        ("COMPUTERNAME", "<computer>"),
+    ] {
+        if let Some(value) = var(name).filter(|v| v.len() > 2) {
+            out = replace_ignore_case(&out, &value, by);
         }
     }
+    out
+}
+
+/// Replaces every occurrence of `needle` in `text`, ASCII case ignored.
+fn replace_ignore_case(text: &str, needle: &str, by: &str) -> String {
+    if needle.is_empty() {
+        return text.to_owned();
+    }
+    let lower_text = text.to_ascii_lowercase();
+    let lower_needle = needle.to_ascii_lowercase();
+    // ASCII lower-casing keeps every byte offset, so positions match.
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for (at, _) in lower_text.match_indices(&lower_needle) {
+        if at < last {
+            continue;
+        }
+        out.push_str(&text[last..at]);
+        out.push_str(by);
+        last = at + needle.len();
+    }
+    out.push_str(&text[last..]);
     out
 }
 
@@ -140,5 +164,21 @@ mod tests {
         let home = home.to_string_lossy().into_owned();
         let text = redact(&format!("at {home}\\x.rs"));
         assert!(!text.contains(&home), "{text}");
+        let lower = home.to_ascii_lowercase();
+        let text = redact(&format!("at {lower}\\x.rs"));
+        assert!(!text.to_ascii_lowercase().contains(&lower), "{text}");
+    }
+
+    #[test]
+    fn replacing_ignores_ascii_case_only() {
+        assert_eq!(
+            replace_ignore_case(r"C:\Users\Ann and c:\users\ann", r"c:\users\ann", "%H%"),
+            "%H% and %H%"
+        );
+        assert_eq!(
+            replace_ignore_case("Élodie élodie", "élodie", "<u>"),
+            "Élodie <u>"
+        );
+        assert_eq!(replace_ignore_case("aaa", "aa", "b"), "ba");
     }
 }

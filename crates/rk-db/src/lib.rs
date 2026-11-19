@@ -28,7 +28,7 @@ mod instance;
 mod secrets;
 mod settings;
 
-pub use dump::dump_databases;
+pub use dump::{dump_complete, dump_databases};
 pub use error::DbError;
 pub use instance::{Binaries, Instance};
 pub use secrets::{generate_password, validate_identifier};

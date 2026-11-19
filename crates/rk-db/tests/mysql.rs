@@ -95,6 +95,185 @@ async fn lifecycle_init_provision_backup_restore_restart() {
     );
 }
 
+/// Stops a test server even when the test fails (a panic would leave it
+/// running, and the test binary waiting for it).
+struct StopOnDrop<'a>(&'a Instance);
+
+impl Drop for StopOnDrop<'_> {
+    fn drop(&mut self) {
+        let instance = self.0.clone();
+        let _ = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let _ = runtime.block_on(instance.stop());
+        })
+        .join();
+    }
+}
+
+/// A dump from someone else (an imported realm) restores its data, but its
+/// client commands, statements on other databases and server accounts, and
+/// definers never run (ADR 0016, amended).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_untrusted_dump_only_restores_its_own_database() {
+    let Some(basedir) = std::env::var_os("RK_MYSQL_BASEDIR") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let instance = Instance::new(
+        dir.path().join("mysql"),
+        Binaries::from_basedir(basedir),
+        ServerSettings {
+            port: free_port(),
+            buffer_pool_mib: 128,
+            ..Default::default()
+        },
+    );
+    instance.initialize().await.unwrap();
+    instance.start().await.unwrap();
+    let _stop = StopOnDrop(&instance);
+    let databases = ["acore_auth", "acore_characters"];
+    for db in databases {
+        instance.create_database(db).await.unwrap();
+    }
+    let password = generate_password(24).unwrap();
+    instance
+        .ensure_user("rk", &password, &databases)
+        .await
+        .unwrap();
+    instance
+        .execute(
+            "CREATE TABLE acore_auth.account (id INT PRIMARY KEY) ENGINE=InnoDB;\n\
+             INSERT INTO acore_auth.account VALUES (1);\n\
+             CREATE TABLE acore_characters.characters (guid INT PRIMARY KEY, name VARCHAR(12)) ENGINE=InnoDB;\n\
+             INSERT INTO acore_characters.characters VALUES (1, 'Thrall');\n\
+             CREATE TRIGGER acore_characters.renamed BEFORE UPDATE ON acore_characters.characters \
+             FOR EACH ROW SET NEW.name = UPPER(NEW.name);",
+        )
+        .await
+        .unwrap();
+    let dump = dir.path().join("realm.sql");
+    instance.backup(&databases, &dump).await.unwrap();
+    let text = std::fs::read_to_string(&dump).unwrap();
+    assert!(
+        text.contains("DEFINER=`root`@`localhost`"),
+        "a trigger with a definer"
+    );
+
+    // The genuine dump: the characters come back, the trigger now belongs
+    // to the service account.
+    instance
+        .execute("DELETE FROM acore_characters.characters;")
+        .await
+        .unwrap();
+    instance
+        .restore_database(&dump, "acore_characters", "rk", &password)
+        .await
+        .unwrap();
+    let names = instance
+        .execute("SELECT name FROM acore_characters.characters;")
+        .await
+        .unwrap();
+    assert_eq!(names.trim(), "Thrall");
+    let definer = instance
+        .execute("SELECT DEFINER FROM information_schema.TRIGGERS WHERE TRIGGER_NAME = 'renamed';")
+        .await
+        .unwrap();
+    assert!(definer.trim().starts_with("rk@"), "{definer}");
+
+    // Crafted ones: each attack alone, at the start of the characters part
+    // (the client stops at the first error, so one attack per dump).
+    let marker = dir.path().join("ran.txt");
+    let tee = dir.path().join("tee.bat");
+    // The service account may reach the realm's other databases (they are
+    // restored from the same dump anyway): the boundary is the computer,
+    // the server's accounts and the other realms.
+    let attacks = [
+        format!("system echo ran > \"{}\"", marker.display()),
+        format!("\\! echo ran > \"{}\"", marker.display()),
+        format!("tee {}\nSELECT 'echo pwned';", tee.display()),
+        format!("source {}", dump.display()),
+        "CREATE USER 'evil'@'%' IDENTIFIED BY 'evil';".to_owned(),
+        "GRANT ALL ON *.* TO 'rk'@'127.0.0.1';".to_owned(),
+        "INSERT INTO mysql.db (Host, Db, User) VALUES ('%', '%', 'evil');".to_owned(),
+        "CREATE SCHEMA other_realm;".to_owned(),
+        "CREATE SCHEMA acoreXauth;".to_owned(),
+        "SELECT 'x' INTO OUTFILE 'C:/rk-outfile.txt';".to_owned(),
+    ];
+    let evil = dir.path().join("evil.sql");
+    for attack in &attacks {
+        let crafted = text.replace(
+            "USE `acore_characters`;\n",
+            &format!("USE `acore_characters`;\n{attack}\n"),
+        );
+        std::fs::write(&evil, crafted).unwrap();
+        let result = instance
+            .restore_database(&evil, "acore_characters", "rk", &password)
+            .await;
+        assert!(result.is_err(), "refused: {attack}");
+        assert!(!marker.exists(), "no program ran: {attack}");
+        assert!(!tee.exists(), "no file written: {attack}");
+        let accounts = instance
+            .execute("SELECT COUNT(*) FROM acore_auth.account;")
+            .await
+            .unwrap();
+        assert_eq!(accounts.trim(), "1", "other databases untouched: {attack}");
+        let users = instance
+            .execute("SELECT COUNT(*) FROM mysql.user WHERE user = 'evil';")
+            .await
+            .unwrap();
+        assert_eq!(users.trim(), "0", "no server account made: {attack}");
+        for other in ["other_realm", "acoreXauth"] {
+            assert!(!instance.database_exists(other).await.unwrap(), "{attack}");
+        }
+        let grants = instance
+            .execute("SHOW GRANTS FOR 'rk'@'127.0.0.1';")
+            .await
+            .unwrap();
+        assert!(
+            !grants.contains("ON *.*") || grants.contains("GRANT USAGE ON *.*"),
+            "{grants}"
+        );
+        assert!(
+            !grants.contains("GRANT ALL PRIVILEGES ON *.*"),
+            "{attack}: {grants}"
+        );
+        assert!(
+            !std::path::Path::new("C:/rk-outfile.txt").exists(),
+            "{attack}"
+        );
+    }
+
+    // A definer other than the service account is refused.
+    let escalation = dir.path().join("definer.sql");
+    std::fs::write(
+        &escalation,
+        text.replace(
+            "DEFINER=`root`@`localhost`",
+            "DEFINER=CURRENT_USER */ /*!50017 DEFINER=root@localhost",
+        ),
+    )
+    .unwrap();
+    assert!(instance
+        .restore_database(&escalation, "acore_characters", "rk", &password)
+        .await
+        .is_err());
+
+    // A cut dump is refused before anything runs.
+    let cut = dir.path().join("cut.sql");
+    std::fs::write(&cut, &text[..text.len() / 2]).unwrap();
+    assert!(matches!(
+        instance
+            .restore_database(&cut, "acore_characters", "rk", &password)
+            .await,
+        Err(rk_db::DbError::DumpIncomplete(_))
+    ));
+    assert!(!dir.path().join("mysql").join("restore.cnf").exists());
+    instance.stop().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn occupied_port_is_reported() {
     let Some(basedir) = std::env::var_os("RK_MYSQL_BASEDIR") else {

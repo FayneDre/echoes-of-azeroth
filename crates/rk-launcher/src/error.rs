@@ -43,6 +43,8 @@ pub enum LauncherError {
     BackupNotFound(String),
     #[error("the backup '{0}' holds no player database of this realm")]
     BackupUnusable(String),
+    #[error("the backup '{0}' is incomplete")]
+    BackupIncomplete(String),
     #[error("{}: {reason}", path.display())]
     InvalidLocation {
         path: std::path::PathBuf,
@@ -187,6 +189,7 @@ impl LauncherError {
             L::InvalidAddress(_) => ("lan.invalidAddress", none()),
             L::BackupNotFound(_) => ("backup.notFound", none()),
             L::BackupUnusable(_) => ("backup.unusable", none()),
+            L::BackupIncomplete(_) => ("backup.incomplete", none()),
             L::InvalidLocation { path, .. } => (
                 "location.invalid",
                 vec![("path", path.display().to_string())],
@@ -254,6 +257,7 @@ fn gigabytes(bytes: u64) -> String {
 fn db_code(e: &rk_db::DbError) -> (&'static str, Vec<(&'static str, String)>) {
     match e {
         rk_db::DbError::PortInUse { port } => ("port.inUse", vec![("port", port.to_string())]),
+        rk_db::DbError::DumpIncomplete(_) => ("backup.incomplete", Vec::new()),
         _ => ("database.failed", Vec::new()),
     }
 }

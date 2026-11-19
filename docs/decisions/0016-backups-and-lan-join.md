@@ -60,6 +60,27 @@
    - `db-import` migrates the restored databases to the current build.
    - A dump with no player database of the realm is refused
      (`backup.unusable`).
+   - *Amended 2026-11-19 (0.3.2):* a dump may come from another computer
+     (an imported `.rkrealm`, ADR 0020), so it is untrusted. Replayed as it
+     was, as root, its `mysql` client commands ran (`system` started a
+     program, `tee` wrote any file) and its SQL reached the whole server.
+     Now `db-restore`:
+     - refuses a dump that does not end with `-- Dump completed`
+       (`backup.incomplete`);
+     - extracts the part of each database in Rust (header settings, then
+       the lines while it is the current database, `USE` and
+       `CREATE DATABASE` left out, `DEFINER=` clauses removed);
+     - replays that part as the realm's **service account** (rights on the
+       realm's databases only; `_` escaped in its grants), with
+       `--commands=OFF --skip-system-command`. Client options alone do not
+       work: `--commands=OFF` and `--binary-mode` also turn off the
+       `--one-database` filter, and without them `tee` still runs.
+
+     The dump can still write in the realm's other databases, which the
+     same dump replaces anyway. It cannot run a program, write a file
+     (`secure_file_priv` is `NULL`), make a server account or reach
+     another realm. The rollback dumps (`before-*`, made here) replay as
+     root, with the client commands off.
 4. **Backups tab.** It lists the backups, newest first, with:
    - their kind, date and size, and the total disk use;
    - Back up now, Open the folder;

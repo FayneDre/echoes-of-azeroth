@@ -292,12 +292,16 @@ impl<C: Sync> Step<C> for DbBackup {
 /// the following dbimport migrates the result to the current build.
 ///
 /// Only the databases the dump really contains are touched, so a dump
-/// without one never empties it. Rerunning it from the start is the
-/// resume; `undo` is the job of the `db-backup` made before it.
+/// without one never empties it. The dump may come from another computer:
+/// it is replayed as the realm's service account (`user`), never as root
+/// (see [`rk_db::Instance::restore_database`]). Rerunning it from the
+/// start is the resume; `undo` is the job of the `db-backup` made before it.
 pub struct DbRestore {
     pub db: Arc<rk_db::Instance>,
     pub databases: Vec<String>,
     pub dump: PathBuf,
+    pub user: String,
+    pub password: String,
 }
 
 impl<C: Sync> Step<C> for DbRestore {
@@ -331,7 +335,9 @@ impl<C: Sync> Step<C> for DbRestore {
                     .execute(&format!("DROP DATABASE IF EXISTS `{name}`;"))
                     .await?;
                 self.db.create_database(name).await?;
-                self.db.restore_database(&self.dump, name).await?;
+                self.db
+                    .restore_database(&self.dump, name, &self.user, &self.password)
+                    .await?;
             }
             Ok(())
         })

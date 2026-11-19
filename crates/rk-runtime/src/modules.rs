@@ -248,6 +248,8 @@ pub fn restore_operation(
             db: plan.db.clone(),
             databases,
             dump: dump.to_path_buf(),
+            user: secrets.db_user.clone(),
+            password: secrets.db_password.clone(),
         })
         .step(plan.import)
         .step(DbStop { db: plan.db }))
