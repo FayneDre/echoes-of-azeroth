@@ -130,9 +130,21 @@ Durations assume one full-time developer and are rough.
   enchanter, assistant, reagent bank) with their NPCs placed, safe realm import, bilingual release notes, title bar update
   button (2026-11-19)
 
+## Phase 7: second emulator prototype (started 2026-11-19, ADR 0024)
+
+Mists of Pandaria 5.4.8 with Playerbots (LoA-Pandaria-Playerbots), to prove
+that an emulator is data + a driver.
+
+- [x] Upstream facts verified; `v1.1.1` dumps import into MySQL 8.4.13 (94 s)
+- [ ] CI build of the pinned commit (servers + extractors), published in the index
+- [ ] Catalog: client `wow-5-4-8`, emulator `pandaria`, flavor `playerbot`
+- [ ] Resumable game data extraction step from the player's client (mmaps: hours)
+- [ ] `drivers/pandaria`: accounts, realm list, start on MySQL 8.4
+- [ ] Login with a 5.4.8 client, bots online
+
 ## Later
 
 - v1.x: simplified module settings, server/module updates, Internet play
 - v2: catalog growth, multi-instance polish, addons management, import/export
-- Second emulator to validate the abstraction (prototype early)
+- Second emulator to validate the abstraction: see phase 7
 - Linux / macOS

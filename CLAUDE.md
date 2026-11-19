@@ -91,6 +91,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | The `mysql` 8.4 client runs its own commands from a piped file (`system` starts a program, `tee` writes a file, `source`). `--skip-system-command` stops only `system`; `--commands=OFF` stops all but `USE`/`DELIMITER` yet **disables the `--one-database` filter** (so does `--binary-mode`). The portable server has `secure_file_priv = NULL`, `local_infile = 0`. A database grant on `acore_auth` also covers `acoreXauth` (`_` is a wildcard). | local tests on `pubtest` and `rk-db` tests (2026-11-19) |
 | `.npc add` (and every `.npc` subcommand) is `Console::No`: it needs a character in game, the GM panel cannot place NPCs. Fork `creature` table: `guid, id, map, ..., position_x/y/z, orientation, spawntimesecs, ..., Comment` (column `id`, not `id1`); max guid 5 300 678 with every module; `game_tele` has `Stormwind` (0, -8833.38, 628.628, 94.0066) and `Orgrimmar` (1, 1629.85, -4373.64, 31.5573). | fork `cs_npc.cpp`, `pubtest` world DB (2026-11-19) |
 | Server file logs (`Appender.*=2,...,<file>,w`) are opened in mode `w`: reset at each start. `Logger.playerbots=5` (debug) writes `Playerbots.log` at ~1.2 MB/h with 500 bots; `MaxFileSize` (optional3) renames the full file to `<file>.<time>` and keeps every copy (no pruning), so it is not used. The supervisor's `<process>.console.log` starts over past 64 MiB (`.previous.log`). | fork `AppenderFile.cpp` @ 32fd347, `pubtest` logs (2026-11-19) |
+| LoA-Pandaria-Playerbots `v1.1.1` `database` dumps (`auth`, `characters`, `world`, `playerbots`; sha256 `cb283195…`) import without error into MySQL 8.4.13 in 94 s; no client commands, no `DEFINER`. Upstream Windows CI links the MySQL 8.4 client, Boost 1.87, OpenSSL 3.1.1, `-DTOOLS=ON`. | local test, upstream `windows-build-release.yml` (2026-11-19) |
 | PowerShell ends a single-quoted string at U+2018-U+201B too (`'Player’s'` is a parse error); doubling them escapes them like `''`. | local test (2026-11-19) |
 
 Update this table when a fact is (re)verified; date it.
@@ -202,6 +203,13 @@ Update this table when a fact is (re)verified; date it.
   enabled modules from `game_tele` joined with `creature_template`
   (`.npc add` is `Console::No`). Transmog, enchanter, reagent bank in
   Stormwind and Orgrimmar.
+- **0024** Second emulator prototype: Mists of Pandaria 5.4.8 (build 18414,
+  enUS) from `1LineAtaTime/LoA-Pandaria-Playerbots`, built by our CI (never
+  upstream binaries, extractors included), on the `mysql-8-4` component
+  (8.0 only if 8.4 fails), dumps as snapshot + built-in updater, game data
+  (dbc/maps/vmaps/mmaps, hours) extracted from the player's client into the
+  store by a resumable step, `drivers/pandaria`. Emulator-specific code in
+  the engine counts as an abstraction defect.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
