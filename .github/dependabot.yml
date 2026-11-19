@@ -1,0 +1,36 @@
+# Dependency update pull requests. Actions are pinned by commit SHA
+# (supply chain): Dependabot keeps the SHA and the version comment in step.
+# Grouped weekly so that a review covers one coherent set of bumps.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: build

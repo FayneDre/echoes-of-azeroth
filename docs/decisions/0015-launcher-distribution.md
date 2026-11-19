@@ -51,6 +51,10 @@ Facts:
      release build.
    - **How it is signed.** The update signature is made after SignPath, over
      the final installer bytes.
+     *Amended 2026-11-19:* `createUpdaterArtifacts` is no longer set, so
+     `tauri build` runs without the private key (every dependency's build
+     script runs in that step). Only the later `tauri signer sign` step,
+     which builds nothing, gets the key.
    - **Where the feed lives.** `latest.json` is in the rolling
      `app-latest` release. It is updated only by non-draft releases, so a
      beta never reaches players.

@@ -1,0 +1,47 @@
+# cargo-deny: checked by CI (ci.yml, "Dependencies") and locally with
+# `cargo deny check`. RealmKeeper is GPL-3.0-or-later: every licence below
+# may be combined with it (list made from `cargo deny list`, 2026-11-19).
+
+[graph]
+all-features = true
+
+[advisories]
+# RustSec advisories: a vulnerable or yanked crate fails the check. An
+# advisory accepted on purpose goes in `ignore` with its reason.
+yanked = "deny"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "GPL-3.0-or-later",
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "LGPL-2.1-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[bans]
+# Several versions of one crate come with Tauri's tree (windows-sys, syn, toml...):
+# not actionable here, so not reported.
+multiple-versions = "allow"
+wildcards = "deny"
+# The workspace crates depend on each other by path.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

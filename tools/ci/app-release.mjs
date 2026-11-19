@@ -54,7 +54,6 @@ switch (command) {
   case "config": {
     const config = { bundle: {} };
     if (options.pubkey) {
-      config.bundle.createUpdaterArtifacts = true;
       config.plugins = {
         updater: {
           pubkey: options.pubkey,

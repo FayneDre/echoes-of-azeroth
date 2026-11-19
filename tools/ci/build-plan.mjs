@@ -69,10 +69,14 @@ const section = (from, to) => {
   }
   return workflow.slice(start, end);
 };
+// Action versions are left out too: actions are pinned by SHA and bumped by
+// Dependabot, and checkout or cache never change the binaries; a bump must
+// not rebuild the server and offer every realm an identical update.
 const withoutComments = (yaml) =>
   yaml
     .split("\n")
     .filter((line) => !/^\s*#/.test(line))
+    .map((line) => line.replace(/^(\s*(?:-\s*)?uses:\s*[^@\s]+)@.*$/, "$1"))
     .join("\n");
 const recipe = [
   withoutComments(section("\nenv:\n", "\njobs:\n")),
