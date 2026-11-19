@@ -3651,6 +3651,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rk-driver-pandaria"
+version = "0.3.2"
+dependencies = [
+ "hex",
+ "rk-conf",
+ "rk-core",
+ "rk-db",
+ "rk-runtime",
+ "sha1",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "rk-engine"
 version = "0.3.2"
 dependencies = [
@@ -3681,6 +3694,7 @@ dependencies = [
  "rk-core",
  "rk-db",
  "rk-driver-azerothcore",
+ "rk-driver-pandaria",
  "rk-engine",
  "rk-runtime",
  "rk-store",

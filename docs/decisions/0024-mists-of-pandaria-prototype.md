@@ -92,3 +92,43 @@ MySQL 8.0 reached its end of life in April 2026.
   extraction time and size; bots online.
 - Only a genuine 5.4.8 client is supported: detection checks the version
   resource of the game executable (build 18414) and the enUS data.
+
+## Implementation notes (2026-11-19)
+
+Generic changes made for this prototype (none is MoP-specific):
+
+- Emulator manifest `experimental`: the emulator is listed and installable
+  only with `RK_EXPERIMENTAL=1` (`error.emulator.experimental` otherwise),
+  so the prototype can ship in the catalog without being offered.
+- Emulator manifest `dataExtraction` and the `extract-data` engine step:
+  tools of the server build run one after another in
+  `server-data/<client>/extract-<emulator>-<version>.partial` with the
+  player's registered client (read only), placeholders `${client.root}`,
+  `${client.data}`, `${cpu.count}`; a finished tool is marked and skipped on
+  resume, the folder is renamed into place once its declared `contents`
+  exist. It runs after the realm's server files are installed (the tools
+  come from the build) and again on `resume`. Client checks before any tool
+  runs: path length (`maxClientPath`, fixed buffers in the extractors) and
+  locale folder. An interrupted mmaps generation restarts from zero: per-map
+  resume is future work.
+- `instance.dbImport` is optional (the worldserver's built-in updater
+  migrates: `Updates.EnableDatabases = 15`), and a client's `serverData` is
+  optional (an emulator may extract instead); `rk-catalog` checks that every
+  emulator has one source.
+- `drivers/pandaria`: `sha_pass_hash` = upper-case hex SHA-1 of
+  `NAME:PASSWORD` (upper-cased, 16 characters at most); `v`/`s` stay empty,
+  the authserver computes them at the first logon (`AuthSession::SetVSFields`).
+  GM levels in `account_access`. Realm 1 gets the address, world port,
+  `GameType` icon and build 18414 before each start (`flag` has no default
+  in this schema). Statements replayed against the v1.1.1 auth schema.
+
+Still open before the prototype can leave `experimental`:
+
+- **Clean stop.** On Windows the console reads with `ReadConsoleW`, which
+  fails on a pipe: closing stdin never stops the worldserver
+  (`CliRunnable.cpp`, `Util.cpp` at the pinned commit). The manifest uses
+  `Console.Enable = 0` and `terminate`, which loses unsaved progress: a
+  clean stop method (SOAP `server shutdown`, or a console the supervisor
+  can drive) is needed first (principle 5).
+- **Databases of a new realm**: the CI-made snapshot from the upstream dumps
+  (decision 4) is not wired yet.

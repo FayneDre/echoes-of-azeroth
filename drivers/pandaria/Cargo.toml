@@ -1,0 +1,19 @@
+[package]
+name = "rk-driver-pandaria"
+description = "LoA Pandaria (Mists of Pandaria 5.4.8) driver: game accounts, realm list (ADR 0024)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rk-conf.workspace = true
+rk-core.workspace = true
+rk-db.workspace = true
+rk-runtime.workspace = true
+hex.workspace = true
+sha1.workspace = true
+thiserror.workspace = true

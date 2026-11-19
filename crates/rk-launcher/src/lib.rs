@@ -199,6 +199,7 @@ pub fn set_data_root(folder: &Path) -> Result<PathBuf> {
 pub fn driver(name: &str) -> Result<Arc<dyn EmulatorDriver>> {
     match name {
         "azerothcore" => Ok(Arc::new(rk_driver_azerothcore::AzerothCore)),
+        "pandaria" => Ok(Arc::new(rk_driver_pandaria::Pandaria)),
         other => Err(LauncherError::NoDriver(other.to_owned())),
     }
 }

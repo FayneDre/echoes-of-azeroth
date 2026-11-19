@@ -23,6 +23,7 @@ rk-runtime = { path = "crates/rk-runtime" }
 rk-client = { path = "crates/rk-client" }
 rk-launcher = { path = "crates/rk-launcher" }
 rk-driver-azerothcore = { path = "drivers/azerothcore" }
+rk-driver-pandaria = { path = "drivers/pandaria" }
 
 # External crates
 anyhow = "1"

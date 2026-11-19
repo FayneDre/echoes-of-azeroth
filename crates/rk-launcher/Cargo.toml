@@ -15,6 +15,7 @@ rk-client.workspace = true
 rk-core.workspace = true
 rk-db.workspace = true
 rk-driver-azerothcore.workspace = true
+rk-driver-pandaria.workspace = true
 rk-engine.workspace = true
 rk-runtime.workspace = true
 rk-store.workspace = true

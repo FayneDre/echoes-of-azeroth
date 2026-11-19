@@ -93,6 +93,8 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | Server file logs (`Appender.*=2,...,<file>,w`) are opened in mode `w`: reset at each start. `Logger.playerbots=5` (debug) writes `Playerbots.log` at ~1.2 MB/h with 500 bots; `MaxFileSize` (optional3) renames the full file to `<file>.<time>` and keeps every copy (no pruning), so it is not used. The supervisor's `<process>.console.log` starts over past 64 MiB (`.previous.log`). | fork `AppenderFile.cpp` @ 32fd347, `pubtest` logs (2026-11-19) |
 | LoA-Pandaria-Playerbots `v1.1.1` `database` dumps (`auth`, `characters`, `world`, `playerbots`; sha256 `cb283195…`) import without error into MySQL 8.4.13 in 94 s; no client commands, no `DEFINER`. Upstream Windows CI links the MySQL 8.4 client, Boost 1.87, OpenSSL 3.1.1, `-DTOOLS=ON`. | local test, upstream `windows-build-release.yml` (2026-11-19) |
 | PowerShell ends a single-quoted string at U+2018-U+201B too (`'Player’s'` is a parse error); doubling them escapes them like `''`. | local test (2026-11-19) |
+| LoA Pandaria accounts: `sha_pass_hash` = upper-case hex SHA-1 of `NAME:PASSWORD` (upper-cased, at most 16 characters each); empty `v`/`s` are computed by the authserver at the first logon; GM levels in `account_access`; `realmlist.flag` has no default. On Windows its console reads with `ReadConsoleW` (fails on a pipe): closing stdin does not stop the worldserver. | fork `AccountMgr.cpp`, `AuthSession.cpp`, `CliRunnable.cpp`, `Util.cpp` @ 2f9aebde; v1.1.1 auth schema (2026-11-19) |
+| LoA Pandaria extractors: `mapextractor` keeps paths in `char[128]` (client path under 128 characters); `vmap4extractor -d <client>/Data` writes `./Buildings`; `vmap4assembler Buildings vmaps`; `mmaps_generator --threads N [map]` reads `maps`/`vmaps` and writes `mmaps` in the working directory. | fork `src/tools` @ 2f9aebde (2026-11-19) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -235,7 +237,8 @@ reduced in-game settings) unless the user asks.
 │  ├─ rk-launcher/          player actions for app + CLI: errors, progress, sessions, crash reports
 │  └─ rk-cli/               `rk` binary (CI, support, power users)
 ├─ drivers/
-│  └─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
+│  ├─ azerothcore/           AzerothCore driver: accounts (SRP6), realm list
+│  └─ pandaria/              LoA Pandaria driver (ADR 0024 prototype): accounts (sha_pass_hash), realm list
 ├─ app/
 │  ├─ src/                   Svelte 5 UI (lib/api.ts, lib/i18n/)
 │  └─ src-tauri/             thin Tauri adapter (commands.rs)
