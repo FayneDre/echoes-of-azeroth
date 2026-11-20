@@ -22,8 +22,8 @@ use rk_launcher::progress::{EventObserver, OperationEvent};
 use rk_launcher::realms::ExportSummary;
 use rk_launcher::session::{Session, SessionControl, SessionEvent};
 use rk_launcher::{
-    InstallRequest, InstanceSummary, Launcher, LauncherError, ModuleOptions, SettingsView,
-    SpaceEstimate, UiError, UninstallReport, UpdateOutcome,
+    InstallRequest, InstanceSummary, Launcher, LauncherError, ModuleOptions, ServerUpdate,
+    SettingsView, SpaceEstimate, UiError, UninstallReport, UpdateOutcome,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -525,6 +525,13 @@ pub async fn update_instance(
         },
     )
     .await
+}
+
+/// What the signed index offers the realm (only the index is downloaded).
+#[tauri::command]
+pub async fn server_update(state: State<'_, AppState>, id: String) -> Result<ServerUpdate> {
+    let launcher = state.launcher()?;
+    launcher.server_update(&id).await.map_err(ui)
 }
 
 #[tauri::command]

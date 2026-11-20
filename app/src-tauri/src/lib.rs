@@ -62,6 +62,7 @@ pub fn run() {
             commands::install_space,
             commands::install_instance,
             commands::update_instance,
+            commands::server_update,
             commands::repair_instance,
             commands::resume_instance,
             commands::rebuilds_for,

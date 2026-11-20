@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand};
 use rk_engine::install;
 use rk_engine::CancelToken;
 use rk_launcher::session::{Game, Session, SessionEvent};
-use rk_launcher::{InstallRequest, Launcher, UpdateOutcome};
+use rk_launcher::{InstallRequest, Launcher, ServerUpdate, UpdateOutcome};
 
 #[derive(Parser)]
 #[command(name = "rk", version, about = "RealmKeeper command-line interface")]
@@ -99,6 +99,9 @@ enum Command {
         server: Option<PathBuf>,
         #[arg(long)]
         index: Option<String>,
+        /// Only say whether the published index offers another build.
+        #[arg(long, conflicts_with_all = ["server", "index"])]
+        check: bool,
         #[arg(long, default_value = "catalog")]
         catalog: PathBuf,
         #[arg(long, default_value = ".local/rk")]
@@ -1044,10 +1047,36 @@ fn main() -> Result<ExitCode> {
         }
         Command::Update {
             id,
+            check: true,
+            catalog,
+            root,
+            ..
+        } => {
+            let launcher = open(&catalog, &root)?;
+            match block_on(launcher.server_update(&id))?? {
+                ServerUpdate::UpToDate { build } => println!("up to date (build {build})"),
+                ServerUpdate::Available {
+                    current,
+                    build,
+                    download,
+                } => println!(
+                    "update available: build {} -> {build} ({download} bytes to download)",
+                    current.as_deref().unwrap_or("(unknown)")
+                ),
+                ServerUpdate::NotPublished { current } => println!(
+                    "no build published yet for this catalog (installed: {})",
+                    current.as_deref().unwrap_or("(unknown)")
+                ),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Update {
+            id,
             server,
             index,
             catalog,
             root,
+            ..
         } => update_instance(&catalog, &root, &id, server, index.as_deref()),
         Command::Uninstall {
             id,

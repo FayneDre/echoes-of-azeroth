@@ -287,6 +287,23 @@ pub struct SpaceEstimate {
 }
 
 /// `rk update` result.
+/// What the signed index offers an installed realm (`Launcher::server_update`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "status")]
+pub enum ServerUpdate {
+    /// The installed build is the one published for this launcher.
+    UpToDate { build: String },
+    /// Another build is published: `download` bytes to fetch.
+    #[serde(rename_all = "camelCase")]
+    Available {
+        current: Option<String>,
+        build: String,
+        download: u64,
+    },
+    /// Nothing published yet for this launcher's catalog pins.
+    NotPublished { current: Option<String> },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum UpdateOutcome {
@@ -516,6 +533,59 @@ impl Launcher {
         observer: &dyn Observer,
         cancel: &CancelToken,
     ) -> Result<(PathBuf, Option<PathBuf>)> {
+        let build = self.select_build(record, index).await?.ok_or_else(|| {
+            LauncherError::Index(format!(
+                "no published server build matches {}/{} on {} with this catalog's pins",
+                record.emulator,
+                record.flavor,
+                install::platform()
+            ))
+        })?;
+        let with_snapshot = match (&build.db_snapshot, want_snapshot) {
+            (Some(snapshot), true) => {
+                install::index::snapshot_usable(&self.catalog, record, snapshot)?
+            }
+            _ => false,
+        };
+        let (op, files) =
+            install::index::build_operation(self.store.clone(), &build, with_snapshot);
+        self.run(&op, observer, cancel).await?;
+        Ok((files.server, files.db_snapshot))
+    }
+
+    /// Whether the signed index offers `id` another server build than the
+    /// installed one (nothing is downloaded but the index). Builds follow
+    /// the catalog pins of this launcher: a newer server comes with a newer
+    /// launcher, or is published after it.
+    pub async fn server_update(&self, id: &str) -> Result<ServerUpdate> {
+        let (record, _) = install::open_existing(&self.layout, id)?;
+        let Some(build) = self.select_build(&record, None).await? else {
+            return Ok(ServerUpdate::NotPublished {
+                current: record.build,
+            });
+        };
+        Ok(
+            if record.build.as_deref() == Some(build.build_key.as_str()) {
+                ServerUpdate::UpToDate {
+                    build: build.build_key,
+                }
+            } else {
+                ServerUpdate::Available {
+                    current: record.build,
+                    build: build.build_key,
+                    download: build.server.size,
+                }
+            },
+        )
+    }
+
+    /// The build of the signed index matching the catalog pins of `record`;
+    /// `None` when none is published for them (yet).
+    async fn select_build(
+        &self,
+        record: &InstanceRecord,
+        index: Option<&str>,
+    ) -> Result<Option<rk_catalog::index::Build>> {
         let source = index.unwrap_or(rk_catalog::index::DEFAULT_URL);
         let envelope = if source.starts_with("https://") || source.starts_with("http://") {
             self.store
@@ -526,23 +596,17 @@ impl Launcher {
         };
         let keys = rk_catalog::index::trusted_keys();
         let accepted = install::index::accept_index(&self.layout, &envelope, &keys)?;
-        let build = rk_catalog::index::select(
+        match rk_catalog::index::select(
             &accepted,
             &self.catalog,
             &record.emulator,
             &record.flavor,
             &install::platform(),
-        )
-        .map_err(|e| LauncherError::Index(e.to_string()))?;
-        let with_snapshot = match (&build.db_snapshot, want_snapshot) {
-            (Some(snapshot), true) => {
-                install::index::snapshot_usable(&self.catalog, record, snapshot)?
-            }
-            _ => false,
-        };
-        let (op, files) = install::index::build_operation(self.store.clone(), build, with_snapshot);
-        self.run(&op, observer, cancel).await?;
-        Ok((files.server, files.db_snapshot))
+        ) {
+            Ok(build) => Ok(Some(build.clone())),
+            Err(rk_catalog::index::IndexError::NoBuild { .. }) => Ok(None),
+            Err(e) => Err(LauncherError::Index(e.to_string())),
+        }
     }
 
     // -------------------------------------------------- pending actions
