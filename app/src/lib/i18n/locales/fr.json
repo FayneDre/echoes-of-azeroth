@@ -503,5 +503,6 @@
   "party.freeSlot": "Place libre",
   "party.leftEmpty": "Place laissée vide.",
   "client.language": "Langue du jeu",
-  "client.languageHint": "Le jeu démarre dans cette langue à la prochaine partie."
+  "client.languageHint": "Le jeu démarre dans cette langue à la prochaine partie.",
+  "options.language": "Langue du launcher"
 }

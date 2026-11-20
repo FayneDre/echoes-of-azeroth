@@ -288,5 +288,7 @@
   .language .segmented button {
     padding-inline: var(--space-3);
     font-size: 0.85rem;
+    /* Language codes keep their case (enUS, frFR). */
+    text-transform: none;
   }
 </style>

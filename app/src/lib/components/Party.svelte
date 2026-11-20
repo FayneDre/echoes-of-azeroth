@@ -248,7 +248,7 @@
       {#each slots as slot, index (index)}
         <li class="card slot" class:empty={!slot.role}>
           <span class="tag">{t("party.freeSlot")}</span>
-          <div class="segmented roles" role="group" aria-label={`${t("party.role")} ${index + 1}`}>
+          <div class="roles" role="group" aria-label={`${t("party.role")} ${index + 1}`}>
             {#each ROLES as role (role)}
               <button
                 class:active={slot.role === role}
@@ -262,12 +262,10 @@
             <button
               class:active={!slot.role}
               aria-pressed={!slot.role}
-              title={t("party.role.none")}
-              aria-label={t("party.role.none")}
               disabled={busy}
               onclick={() => update(index, { role: "" })}
             >
-              —
+              {t("party.role.none")}
             </button>
           </div>
           {#if slot.role}
@@ -396,15 +394,43 @@
     font-weight: normal;
   }
 
+  /* Two by two: the labels never squeeze each other in a narrow card. */
   .roles {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
   }
 
   .roles button {
-    flex: 1 1 0;
     min-width: 0;
-    padding-inline: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--button-bg);
+    border: 1px solid var(--frame);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-family: var(--font-display);
     font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+
+  .roles button:hover:not(:disabled) {
+    color: var(--title);
+  }
+
+  .roles button.active {
+    color: var(--title);
+    border-color: var(--accent);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  .roles button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
   }
 
   .card label {

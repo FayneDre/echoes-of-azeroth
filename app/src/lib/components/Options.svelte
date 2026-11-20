@@ -3,7 +3,7 @@
   // what happens when the game starts and closes, automatic backups. Each
   // change is saved at once in preferences.json.
   import { asCommandError, type CommandError, type Preferences } from "../api";
-  import { t, type MessageKey } from "../i18n/i18n.svelte";
+  import { i18n, LOCALES, t, type MessageKey } from "../i18n/i18n.svelte";
   import { preferences } from "../preferences.svelte";
   import Modal from "./Modal.svelte";
   import Notify from "./Notify.svelte";
@@ -40,6 +40,18 @@
 </script>
 
 <Modal title={t("options.title")} {onclose} width="560px">
+  <h4>{t("options.language")}</h4>
+  <div class="segmented languages" role="group" aria-label={t("nav.language")}>
+    {#each LOCALES as locale (locale.id)}
+      <button
+        class:active={i18n.locale === locale.id}
+        aria-pressed={i18n.locale === locale.id}
+        onclick={() => (i18n.locale = locale.id)}
+      >
+        {locale.label}
+      </button>
+    {/each}
+  </div>
   {#if preferences.value}
     {@const value = preferences.value}
     {#each SECTIONS as section (section.title)}
@@ -75,6 +87,11 @@
 
   h4:first-child {
     margin-top: 0;
+  }
+
+  .languages {
+    width: fit-content;
+    margin-bottom: var(--space-2);
   }
 
   .option {

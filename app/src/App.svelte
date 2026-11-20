@@ -30,7 +30,7 @@
   import WhatsNew from "./lib/components/WhatsNew.svelte";
   import MissingLocation from "./lib/components/MissingLocation.svelte";
   import { loadPreferences } from "./lib/preferences.svelte";
-  import { i18n, LOCALES, t, type MessageKey } from "./lib/i18n/i18n.svelte";
+  import { i18n, t, type MessageKey } from "./lib/i18n/i18n.svelte";
   import { processLabel } from "./lib/labels";
 
   type CatalogState =
@@ -175,19 +175,6 @@
       </button>
     {/if}
 
-    <div class="segmented" role="group" aria-label={t("nav.language")}>
-      {#each LOCALES as locale (locale.id)}
-        <button
-          class:active={i18n.locale === locale.id}
-          aria-pressed={i18n.locale === locale.id}
-          title={locale.label}
-          onclick={() => (i18n.locale = locale.id)}
-        >
-          {locale.id.toUpperCase()}
-        </button>
-      {/each}
-    </div>
-
     <WindowControls />
   </header>
 
@@ -327,8 +314,8 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     padding: 0;
     background: transparent;
     border: 1px solid var(--border);
@@ -362,8 +349,9 @@
   }
 
   .brand {
-    /* The title is never squeezed: the tabs make room. */
-    flex: none;
+    /* The title gives way first (tagline, then text): the window controls
+       must always stay in view. */
+    flex: 0 1 auto;
     min-width: 0;
     display: flex;
     align-items: center;
@@ -397,6 +385,11 @@
 
   .brand-text {
     min-width: 0;
+    overflow: hidden;
+  }
+
+  .brand h1 {
+    white-space: nowrap;
   }
 
   .wordmark .cap {
@@ -421,11 +414,26 @@
     margin-left: auto;
   }
 
-  /* Narrow windows (down to the 1024 px minimum): the logo stays, the title
-     text goes, so the tabs never wrap. */
-  @media (max-width: 1100px) {
+  /* Narrower windows (down to the 1024 px minimum): the tagline goes, then
+     the title text and the tabs get tighter; the logo, tabs, options and
+     window controls always fit (the language is in the Options window). */
+  @media (max-width: 1700px) {
+    .brand p {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1220px) {
     .brand-text {
       display: none;
+    }
+
+    .titlebar {
+      gap: var(--space-3);
+    }
+    .titlebar :global(.segmented button) {
+      padding-inline: var(--space-2);
+      letter-spacing: 0.04em;
     }
   }
 
