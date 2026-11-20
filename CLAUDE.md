@@ -96,6 +96,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | LoA Pandaria accounts: `sha_pass_hash` = upper-case hex SHA-1 of `NAME:PASSWORD` (upper-cased, at most 16 characters each); empty `v`/`s` are computed by the authserver at the first logon; GM levels in `account_access`; `realmlist.flag` has no default. On Windows its console reads with `ReadConsoleW` (fails on a pipe): closing stdin does not stop the worldserver. | fork `AccountMgr.cpp`, `AuthSession.cpp`, `CliRunnable.cpp`, `Util.cpp` @ 2f9aebde; v1.1.1 auth schema (2026-11-19) |
 | LoA Pandaria extractors: `mapextractor` keeps paths in `char[128]` (client path under 128 characters); `vmap4extractor -d <client>/Data` writes `./Buildings`; `vmap4assembler Buildings vmaps`; `mmaps_generator --threads N [map]` reads `maps`/`vmaps` and writes `mmaps` in the working directory. | fork `src/tools` @ 2f9aebde (2026-11-19) |
 | Playerbots `RandomBotCountMode = 0` (default): the number of random bots online is drawn once at server start between `MinRandomBots` and `MaxRandomBots` (500/2500 gave 1340). `.playerbots bot` (add, `addclass`) is `Console::No`; `.playerbots exec <bot> <command>` is `Console::Yes`; `PlayerbotMgr::HandlePlayerbotCommand(args, master)` is public; an `addclass` bot is re-levelled to its master (more than 3 levels apart) and geared; `talents spec <name>` uses the `PremadeSpecName` names. | `conf/playerbots.conf.dist`, `PlayerbotCommandScript.cpp`, `PlayerbotMgr.cpp/.h`, `ChangeTalentsAction.cpp` @ 405f811 (2026-11-20) |
+| dbimport aborts when `acore_auth.realmlist` is missing (`Could not prepare statements of the Login database`): a backup from another server may leave it out on purpose. | local restore of a backup from another AzerothCore server (2026-11-20) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -220,6 +221,10 @@ Update this table when a fact is (re)verified; date it.
   premade spec and gear set by the module; `RKPARTY` reply lines); manifest
   `party` (classes, spec numbers, roles); `SessionControl::ask` gathers the
   reply; Bots tab sub-tabs Settings | Party.
+- **0026** Restore from another server: manifest `realmTables` (`realmlist`)
+  kept across `db-restore`; the restore runs post-install again with the
+  bindings looked up by name (old `bindings.json` put back on rollback) and
+  renders the configs, keeping those the realm's older build lacks.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,
