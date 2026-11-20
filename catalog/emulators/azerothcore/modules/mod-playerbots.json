@@ -82,6 +82,10 @@
         "en": "Minimum random bots",
         "fr": "Nombre minimum de bots aléatoires"
       },
+      "help": {
+        "en": "At each server start, the number of bots online is drawn at random between the minimum and the maximum. Set both to the same value for a fixed number.",
+        "fr": "À chaque démarrage du serveur, le nombre de bots en ligne est tiré au hasard entre le minimum et le maximum. Mets la même valeur aux deux pour un nombre fixe."
+      },
       "target": {
         "file": "modules/playerbots.conf",
         "key": "Playerbots.MinRandomBots"
@@ -96,6 +100,10 @@
       "label": {
         "en": "Maximum random bots",
         "fr": "Nombre maximum de bots aléatoires"
+      },
+      "help": {
+        "en": "At each server start, the number of bots online is drawn at random between the minimum and the maximum. Set both to the same value for a fixed number.",
+        "fr": "À chaque démarrage du serveur, le nombre de bots en ligne est tiré au hasard entre le minimum et le maximum. Mets la même valeur aux deux pour un nombre fixe."
       },
       "target": {
         "file": "modules/playerbots.conf",

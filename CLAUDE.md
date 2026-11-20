@@ -95,6 +95,7 @@ emulators, clients and modules later **as data + a small driver**, never as rewr
 | PowerShell ends a single-quoted string at U+2018-U+201B too (`'Player’s'` is a parse error); doubling them escapes them like `''`. | local test (2026-11-19) |
 | LoA Pandaria accounts: `sha_pass_hash` = upper-case hex SHA-1 of `NAME:PASSWORD` (upper-cased, at most 16 characters each); empty `v`/`s` are computed by the authserver at the first logon; GM levels in `account_access`; `realmlist.flag` has no default. On Windows its console reads with `ReadConsoleW` (fails on a pipe): closing stdin does not stop the worldserver. | fork `AccountMgr.cpp`, `AuthSession.cpp`, `CliRunnable.cpp`, `Util.cpp` @ 2f9aebde; v1.1.1 auth schema (2026-11-19) |
 | LoA Pandaria extractors: `mapextractor` keeps paths in `char[128]` (client path under 128 characters); `vmap4extractor -d <client>/Data` writes `./Buildings`; `vmap4assembler Buildings vmaps`; `mmaps_generator --threads N [map]` reads `maps`/`vmaps` and writes `mmaps` in the working directory. | fork `src/tools` @ 2f9aebde (2026-11-19) |
+| Playerbots `RandomBotCountMode = 0` (default): the number of random bots online is drawn once at server start between `MinRandomBots` and `MaxRandomBots` (500/2500 gave 1340). `.playerbots bot` (add, `addclass`) is `Console::No`; `.playerbots exec <bot> <command>` is `Console::Yes`; `PlayerbotMgr::HandlePlayerbotCommand(args, master)` is public; an `addclass` bot is re-levelled to its master (more than 3 levels apart) and geared; `talents spec <name>` uses the `PremadeSpecName` names. | `conf/playerbots.conf.dist`, `PlayerbotCommandScript.cpp`, `PlayerbotMgr.cpp/.h`, `ChangeTalentsAction.cpp` @ 405f811 (2026-11-20) |
 
 Update this table when a fact is (re)verified; date it.
 
@@ -318,6 +319,7 @@ cargo run -p rk-cli -- start <id>            # foreground: console on stdin, Ctr
 cargo run -p rk-cli -- account create <id> <name> [--password <p>] [--gm 3]
 cargo run -p rk-cli -- module enable|disable <id> <module>...   # servers stopped
 cargo run -p rk-cli -- update <id> [--server <artifact.zip>]   # new catalog release; dumps every DB first
+cargo run -p rk-cli -- update <id> --check     # only say whether the signed index offers another build
 cargo run -p rk-cli -- repair <id>           # reinstall server files + configs of the current release
 cargo run -p rk-cli -- uninstall <id> [--no-backup]   # remove a realm (ADR 0017)
 cargo run -p rk-cli -- resume <id>           # finish an interrupted install/update/repair/module change, or fix a moved realm's paths
