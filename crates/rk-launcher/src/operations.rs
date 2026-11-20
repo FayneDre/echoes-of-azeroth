@@ -390,6 +390,7 @@ impl Launcher {
             self.save_pending(id, &pending)?;
             return self.finish(record, pending, observer, cancel).await;
         }
+        let import_op = format!("import-{id}");
         match summary.unfinished.as_deref() {
             Some(op) if op == install::modules_operation_id(id) => {
                 self.apply(record.clone(), &record, observer, cancel).await
@@ -403,13 +404,15 @@ impl Launcher {
                 self.apply(record.clone(), &record, observer, cancel).await
             }
             // Finished by `resume` after this (`import.json`).
-            Some(op) if op == format!("import-{id}") && summary.installed => Ok(record),
-            Some(_) => Err(LauncherError::Invalid(format!(
+            Some(op) if op == import_op && summary.installed => Ok(record),
+            Some(op) if op != import_op => Err(LauncherError::Invalid(format!(
                 "no record of the interrupted change of '{id}'"
             ))),
             // Rolled back before it completed, without its inputs (made by
-            // an older launcher): install again from the index.
-            None if !summary.installed => {
+            // an older launcher), or an import whose install stopped after
+            // its record but before its plan (no matching build in the index
+            // yet, failed download): install again from the index.
+            _ if !summary.installed => {
                 let (server, db_snapshot) = self
                     .fetch_build(&record, None, true, observer, cancel)
                     .await?;
@@ -420,7 +423,7 @@ impl Launcher {
                 self.save_pending(id, &pending)?;
                 self.finish(record, pending, observer, cancel).await
             }
-            None => Ok(record),
+            _ => Ok(record),
         }
     }
 
