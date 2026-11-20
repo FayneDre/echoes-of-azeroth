@@ -16,12 +16,22 @@ const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 impl Launcher {
     /// The party the realm's server offers: `None` when its build has no
     /// party module (installed before it existed: a server update adds it).
+    /// The module is usually required by the flavor, so it is looked for
+    /// among every running module, not only the ones the player chose; and
+    /// it must be in the realm's build (its `.conf.dist` is there), which
+    /// may be older than the catalog.
     pub fn party(&self, id: &str) -> Result<Option<Party>> {
         let (record, _) = install::open_existing(&self.layout, id)?;
-        Ok(record.modules.iter().find_map(|module| {
-            self.catalog
-                .module(&record.emulator, module)
-                .and_then(|m| m.party.clone())
+        let dist = self.layout.instance(id).bin.join("configs");
+        let modules = rk_runtime::modules::enabled_modules(&self.catalog, &record)?;
+        Ok(modules.iter().find_map(|module| {
+            let manifest = self.catalog.module(&record.emulator, module)?;
+            let built = manifest
+                .config
+                .files
+                .iter()
+                .all(|file| dist.join(&file.dist).is_file());
+            manifest.party.clone().filter(|_| built)
         }))
     }
 
