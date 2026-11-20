@@ -213,6 +213,13 @@ Update this table when a fact is (re)verified; date it.
   (dbc/maps/vmaps/mmaps, hours) extracted from the player's client into the
   store by a resumable step, `drivers/pandaria`. Emulator-specific code in
   the engine counts as an abstraction defect.
+- **0025** Bot party from the launcher: our module `mod-realmkeeper`
+  (`github.com/FayneDre/mod-realmkeeper`, GPL-2.0-or-later, required by the
+  `playerbot` flavor, cloned next to this repository) adds `.rk party
+  add|remove|list` console commands (bot from the addclass pool, then level,
+  premade spec and gear set by the module; `RKPARTY` reply lines); manifest
+  `party` (classes, spec numbers, roles); `SessionControl::ask` gathers the
+  reply; Bots tab sub-tabs Settings | Party.
 - Scope v1: solo + LAN; Internet later. Linux/macOS later (keep code portable).
 
 Never re-propose rejected options (MariaDB, Docker/WSL2, per-combination builds,

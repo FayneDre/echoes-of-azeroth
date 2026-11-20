@@ -29,6 +29,7 @@ A changed decision gets a new ADR that supersedes the old one.
 | [0022](0022-live-backups-assets-firewall.md) | Backups while the servers run (`savePlayers`), pruning `assets/`, optional LAN firewall rule, smoke test logon / bots / AHBot | Accepted |
 | [0023](0023-module-npc-spawns.md) | Module NPCs (`spawns`) placed by the driver at `game_tele` places before each start, reserved guid range | Accepted |
 | [0024](0024-mists-of-pandaria-prototype.md) | Mists of Pandaria 5.4.8 prototype (LoA-Pandaria-Playerbots): built by our CI, MySQL 8.4, game data extracted from the player's client, `pandaria` driver | Accepted |
+| [0025](0025-bot-party-from-the-launcher.md) | A party of bots formed from the launcher: our `mod-realmkeeper` module (`.rk party` console commands, `RKPARTY` replies), manifest `party` (classes, specs, roles), Party page in the Bots tab | Accepted |
 
 Template:
 
