@@ -26,6 +26,7 @@
   import Rail from "./lib/components/Rail.svelte";
   import ServerSettings from "./lib/components/ServerSettings.svelte";
   import WindowControls from "./lib/components/WindowControls.svelte";
+  import Options from "./lib/components/Options.svelte";
   import WhatsNew from "./lib/components/WhatsNew.svelte";
   import MissingLocation from "./lib/components/MissingLocation.svelte";
   import { loadPreferences } from "./lib/preferences.svelte";
@@ -103,6 +104,8 @@
     setTimeout(() => (diagnostic = "idle"), 4000);
   }
 
+  let optionsOpen = $state(false);
+
   $effect(() => {
     if (!inDesktopApp()) {
       catalog = { status: "unavailable" };
@@ -156,6 +159,22 @@
       <WhatsNew />
     {/if}
 
+    {#if inDesktopApp()}
+      <button
+        class="options-button"
+        title={t("options.open")}
+        aria-label={t("options.open")}
+        onclick={() => (optionsOpen = true)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.2" />
+          <path
+            d="M12 2.5l1.6 2.6 3-.7.7 3 2.6 1.6-1.4 2.7 1.4 2.7-2.6 1.6-.7 3-3-.7L12 21.5l-1.6-2.6-3 .7-.7-3-2.6-1.6 1.4-2.7-1.4-2.7 2.6-1.6.7-3 3 .7z"
+          />
+        </svg>
+      </button>
+    {/if}
+
     <div class="segmented" role="group" aria-label={t("nav.language")}>
       {#each LOCALES as locale (locale.id)}
         <button
@@ -171,6 +190,10 @@
 
     <WindowControls />
   </header>
+
+  {#if optionsOpen}
+    <Options onclose={() => (optionsOpen = false)} />
+  {/if}
 
   <div class="body">
     <Rail {realms} selected={realm?.id ?? null} onselect={(id) => (selectedId = id)} />
@@ -298,6 +321,34 @@
     height: 100vh;
     overflow: hidden;
     border: 1px solid var(--frame);
+  }
+
+  .options-button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 4px);
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .options-button:hover {
+    color: var(--title);
+    border-color: var(--accent);
+  }
+
+  .options-button svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
   }
 
   .titlebar {

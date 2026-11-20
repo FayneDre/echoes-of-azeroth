@@ -1,8 +1,8 @@
 <script lang="ts">
-  // "Party" page of the Bots tab (ADR 0025): the character the player plays,
-  // the bots already in its party, and new bots by role, class and spec at
-  // the level chosen (the character's by default). Works while the servers
-  // run and the player is in the world.
+  // "Party" page of the Bots tab (ADR 0025): the party as a row of places,
+  // the character played first, then the bots already in it, then the free
+  // places, each with the role, class, spec and level the player wants.
+  // Works while the servers run and the player is in the world.
   import { untrack } from "svelte";
   import {
     api,
@@ -64,17 +64,6 @@
     players?.find((c) => c.name === picked) ?? (players?.length === 1 ? players[0] : undefined) ?? null,
   );
 
-  /** Bots level: the character's until the player changes it. */
-  let level = $state(1);
-  let levelFor = "";
-  $effect(() => {
-    const p = player;
-    if (p && p.name !== levelFor) {
-      levelFor = p.name;
-      level = p.level;
-    }
-  });
-
   let members = $state<PartyMember[]>([]);
   let error = $state<CommandError | null>(null);
   let done = $state<string | null>(null);
@@ -104,53 +93,63 @@
   });
 
   const ROLES: PartyRole[] = ["tank", "healer", "dps"];
-  type Slot = { role: PartyRole | ""; cls: string; spec: number };
+  /** One free place: what the player asks for it (no role: left empty). */
+  type Slot = { role: PartyRole | ""; cls: string; spec: number; level: number };
   const DEFAULT_ROLES: (PartyRole | "")[] = ["tank", "healer", "dps", "dps"];
   let slots = $state<Slot[]>([]);
 
   const free = $derived(Math.max(0, party.size - 1 - members.length));
+  const playerLevel = $derived(player?.level ?? 1);
 
-  function classesFor(role: PartyRole | ""): PartyClass[] {
-    if (!role) return [];
-    return party.classes.filter((c) => (c.minLevel ?? 1) <= level && c.specs.some((s) => s.role === role));
+  function classesFor(slot: Slot): PartyClass[] {
+    if (!slot.role) return [];
+    return party.classes.filter((c) => (c.minLevel ?? 1) <= slot.level && c.specs.some((s) => s.role === slot.role));
   }
 
-  /** A slot with a class and spec that fit its role (the first ones). */
+  /** A slot whose class and spec fit its role and level (the first ones). */
   function fit(slot: Slot): Slot {
-    const classes = classesFor(slot.role);
+    const classes = classesFor(slot);
     const cls = classes.find((c) => c.id === slot.cls) ?? classes[0];
-    if (!cls) return { role: slot.role, cls: "", spec: 0 };
+    if (!cls) return { ...slot, cls: "", spec: 0 };
     const specs = cls.specs.filter((s) => s.role === slot.role);
     const spec = specs.find((s) => s.number === slot.spec) ?? specs[0];
-    return { role: slot.role, cls: cls.id, spec: spec?.number ?? 0 };
+    return { ...slot, cls: cls.id, spec: spec?.number ?? 0 };
   }
 
-  // As many slots as free places; a new slot takes the next default role.
+  // As many slots as free places; a new slot takes the next default role
+  // and the character's level.
   $effect(() => {
     const count = free;
+    const level = playerLevel;
     untrack(() => {
       const next = slots.slice(0, count);
-      while (next.length < count) next.push(fit({ role: DEFAULT_ROLES[next.length] ?? "dps", cls: "", spec: 0 }));
+      while (next.length < count) next.push(fit({ role: DEFAULT_ROLES[next.length] ?? "dps", cls: "", spec: 0, level }));
       slots = next;
     });
   });
 
-  // A level under a class's minimum (death knight) changes its class.
+  // Another character: every slot starts again at its level.
+  let levelFor = "";
   $effect(() => {
-    void level;
-    untrack(() => (slots = slots.map(fit)));
+    const p = player;
+    if (p && p.name !== levelFor) {
+      levelFor = p.name;
+      untrack(() => (slots = slots.map((slot) => fit({ ...slot, level: p.level }))));
+    }
   });
 
-  function setRole(index: number, role: PartyRole | "") {
-    slots[index] = fit({ ...slots[index]!, role });
+  function update(index: number, change: Partial<Slot>) {
+    const slot = { ...slots[index]!, ...change };
+    if (change.cls !== undefined) slot.spec = -1;
+    slots[index] = fit(slot);
   }
 
-  function setClass(index: number, cls: string) {
-    slots[index] = fit({ ...slots[index]!, cls, spec: -1 });
+  function setLevel(index: number, raw: string) {
+    const level = Math.round(Number(raw));
+    if (Number.isFinite(level) && raw !== "") update(index, { level: Math.min(Math.max(level, 1), 255) });
   }
 
   const wanted = $derived(slots.filter((s) => s.role && s.cls));
-  const levelValid = $derived(Number.isInteger(level) && level >= 1 && level <= 255);
 
   async function form() {
     if (!id || !player) return;
@@ -160,7 +159,7 @@
     let added = 0;
     try {
       for (const slot of wanted) {
-        await api.partyAdd(id, player.name, slot.cls, slot.spec, level);
+        await api.partyAdd(id, player.name, slot.cls, slot.spec, slot.level);
         added += 1;
       }
     } catch (raw) {
@@ -210,176 +209,227 @@
     <p class="muted">{t("party.noPlayer")}</p>
   </section>
 {:else}
-  <div class="split">
-    <section class="panel">
-      <h3 class="panel-title">{t("party.title")}</h3>
+  <section class="panel">
+    <h3 class="panel-title">{t("party.title")}</h3>
+    <div class="head">
       <p class="muted">{t("party.body")}</p>
-      <div class="fields">
-        <label>
-          <span>{t("party.player")}</span>
-          <select
-            value={player?.name ?? ""}
-            disabled={busy || !players}
-            onchange={(e) => (picked = e.currentTarget.value)}
-          >
-            {#if !player}<option value="">—</option>{/if}
-            {#each players ?? [] as c (c.name)}
-              <option value={c.name}>{c.name} ({t("gm.level", { level: c.level })})</option>
+      <label class="player">
+        <span>{t("party.player")}</span>
+        <select
+          value={player?.name ?? ""}
+          disabled={busy || !players}
+          onchange={(e) => (picked = e.currentTarget.value)}
+        >
+          {#if !player}<option value="">—</option>{/if}
+          {#each players ?? [] as c (c.name)}
+            <option value={c.name}>{c.name} ({t("gm.level", { level: c.level })})</option>
+          {/each}
+        </select>
+      </label>
+    </div>
+
+    <ol class="roster" style:--size={party.size}>
+      <li class="card you">
+        <span class="tag">{t("party.you")}</span>
+        <strong class="name">{player?.name ?? "—"}</strong>
+        {#if player}
+          <span class="muted">{t("gm.level", { level: player.level })} · {className(player.class)}</span>
+        {/if}
+      </li>
+
+      {#each members as m (m.name)}
+        <li class="card member">
+          <span class="tag">{m.ready ? t("party.inParty") : t("party.joining")}</span>
+          <strong class="name">{m.name}</strong>
+          <span class="muted">{t("gm.level", { level: m.level })} · {className(m.class)}</span>
+        </li>
+      {/each}
+
+      {#each slots as slot, index (index)}
+        <li class="card slot" class:empty={!slot.role}>
+          <span class="tag">{t("party.freeSlot")}</span>
+          <div class="segmented roles" role="group" aria-label={`${t("party.role")} ${index + 1}`}>
+            {#each ROLES as role (role)}
+              <button
+                class:active={slot.role === role}
+                aria-pressed={slot.role === role}
+                disabled={busy}
+                onclick={() => update(index, { role })}
+              >
+                {t(`party.role.${role}`)}
+              </button>
             {/each}
-          </select>
-        </label>
-        <label>
-          <span>{t("party.level")}</span>
-          <input type="number" min="1" max="255" step="1" disabled={busy} bind:value={level} />
-          <small class="muted">{t("party.levelHint")}</small>
-        </label>
-      </div>
-
-      <h4>{t("party.members")}</h4>
-      {#if members.length === 0}
-        <p class="muted">{t("party.none")}</p>
-      {:else}
-        <ul class="members">
-          {#each members as m (m.name)}
-            <li>
-              <strong>{m.name}</strong>
-              <span class="muted">{t("gm.level", { level: m.level })} · {className(m.class)}</span>
-              {#if !m.ready}<span class="joining">{t("party.joining")}</span>{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      <div class="actions">
-        <button class="btn" disabled={busy || !player || members.length === 0} onclick={dismiss}>
-          {t("party.dismiss")}
-        </button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h3 class="panel-title">{t("party.new")}</h3>
-      {#if free === 0}
-        <p class="muted">{t("party.full", { size: party.size })}</p>
-      {:else}
-        <p class="muted">{t("party.free", { count: free })}</p>
-        <div class="slots">
-          <span class="head">{t("party.role")}</span>
-          <span class="head">{t("party.class")}</span>
-          <span class="head">{t("party.spec")}</span>
-          {#each slots as slot, index (index)}
-            <select
-              aria-label={`${t("party.role")} ${index + 1}`}
-              value={slot.role}
+            <button
+              class:active={!slot.role}
+              aria-pressed={!slot.role}
+              title={t("party.role.none")}
+              aria-label={t("party.role.none")}
               disabled={busy}
-              onchange={(e) => setRole(index, e.currentTarget.value as PartyRole | "")}
+              onclick={() => update(index, { role: "" })}
             >
-              <option value="">{t("party.role.none")}</option>
-              {#each ROLES as role (role)}
-                <option value={role}>{t(`party.role.${role}`)}</option>
-              {/each}
-            </select>
-            <select
-              aria-label={`${t("party.class")} ${index + 1}`}
-              value={slot.cls}
-              disabled={busy || !slot.role}
-              onchange={(e) => setClass(index, e.currentTarget.value)}
-            >
-              {#each classesFor(slot.role) as cls (cls.id)}
-                <option value={cls.id}>{localized(cls.name)}</option>
-              {/each}
-            </select>
-            <select
-              aria-label={`${t("party.spec")} ${index + 1}`}
-              value={slot.spec}
-              disabled={busy || !slot.cls}
-              onchange={(e) => (slots[index] = { ...slot, spec: Number(e.currentTarget.value) })}
-            >
-              {#each party.classes.find((c) => c.id === slot.cls)?.specs.filter((s) => s.role === slot.role) ?? [] as spec (spec.number)}
-                <option value={spec.number}>{localized(spec.name)}</option>
-              {/each}
-            </select>
-          {/each}
-        </div>
-        <div class="actions">
-          <button
-            class="btn btn-play"
-            disabled={busy || !player || wanted.length === 0 || !levelValid}
-            onclick={form}
-          >
-            {busy ? t("party.joiningAll") : t("party.form")}
-          </button>
-        </div>
+              —
+            </button>
+          </div>
+          {#if slot.role}
+            <label>
+              <span>{t("party.class")}</span>
+              <select value={slot.cls} disabled={busy} onchange={(e) => update(index, { cls: e.currentTarget.value })}>
+                {#each classesFor(slot) as cls (cls.id)}
+                  <option value={cls.id}>{localized(cls.name)}</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              <span>{t("party.spec")}</span>
+              <select
+                value={slot.spec}
+                disabled={busy || !slot.cls}
+                onchange={(e) => update(index, { spec: Number(e.currentTarget.value) })}
+              >
+                {#each party.classes
+                  .find((c) => c.id === slot.cls)
+                  ?.specs.filter((s) => s.role === slot.role) ?? [] as spec (spec.number)}
+                  <option value={spec.number}>{localized(spec.name)}</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              <span>{t("party.level")}</span>
+              <input
+                type="number"
+                min="1"
+                max="255"
+                step="1"
+                value={slot.level}
+                disabled={busy}
+                onchange={(e) => setLevel(index, e.currentTarget.value)}
+              />
+            </label>
+          {:else}
+            <p class="muted leave">{t("party.leftEmpty")}</p>
+          {/if}
+        </li>
+      {/each}
+    </ol>
+
+    <div class="actions">
+      <button class="btn" disabled={busy || !player || members.length === 0} onclick={dismiss}>
+        {t("party.dismiss")}
+      </button>
+      {#if free > 0}
+        <button class="btn btn-play" disabled={busy || !player || wanted.length === 0} onclick={form}>
+          {busy ? t("party.joiningAll") : t("party.form", { count: wanted.length })}
+        </button>
       {/if}
-    </section>
-  </div>
+    </div>
+  </section>
   <Notify text={done} />
   <Notify {error} />
 {/if}
 
 <style>
-  .split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-    gap: var(--space-4);
-    align-items: start;
+  .head {
+    display: flex;
+    gap: var(--space-6);
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
   }
 
-  .fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-    margin: var(--space-3) 0;
+  .head p {
+    margin: 0;
+    max-width: 60ch;
   }
 
-  label {
+  .player {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    min-width: 260px;
   }
 
-  h4 {
-    margin: var(--space-4) 0 var(--space-2);
-    color: var(--title);
-    font-family: var(--font-display);
-    font-weight: normal;
-  }
-
-  .members {
+  .roster {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--size), minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .card {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .members li {
-    display: flex;
     gap: var(--space-2);
-    align-items: baseline;
+    min-height: 270px;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
   }
 
-  .joining {
-    color: var(--accent);
-    font-size: 0.85rem;
+  .card.you {
+    border-color: var(--accent);
   }
 
-  .slots {
-    display: grid;
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr);
-    gap: var(--space-2) var(--space-3);
-    margin-top: var(--space-3);
+  .card.slot.empty {
+    border-style: dashed;
+    background: transparent;
   }
 
-  .head {
-    font-size: 0.8rem;
-    letter-spacing: 0.06em;
+  .tag {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
 
+  .you .tag,
+  .member .tag {
+    color: var(--accent);
+  }
+
+  .name {
+    color: var(--title);
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: normal;
+  }
+
+  .roles {
+    display: flex;
+  }
+
+  .roles button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-1);
+    font-size: 0.8rem;
+  }
+
+  .card label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: 0.85rem;
+  }
+
+  .card label span {
+    color: var(--text-muted);
+  }
+
+  .card input[type="number"] {
+    width: 6em;
+  }
+
+  .leave {
+    margin: auto 0;
+    text-align: center;
+  }
+
   .actions {
     display: flex;
+    gap: var(--space-3);
     justify-content: flex-end;
     margin-top: var(--space-4);
   }

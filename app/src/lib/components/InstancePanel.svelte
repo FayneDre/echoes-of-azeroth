@@ -36,13 +36,6 @@
   /** The realm's folder was renamed or moved: its paths are written again. */
   const moved = $derived(instance.moved && !incomplete);
 
-  let keepRunning = $state(false);
-  // The default of each realm (`lan` below: a LAN realm stays up for the
-  // others when the host closes the game); then the player's choice stays.
-  $effect(() => {
-    void id;
-    keepRunning = lan;
-  });
   let error = $state<CommandError | null>(null);
   let updateNote = $state<string | null>(null);
 
@@ -135,6 +128,9 @@
 
   /** LAN realms: whether the Windows firewall lets other computers in (ADR 0022). */
   const lan = $derived(instance.record.network === "lan");
+  // Launcher option (Options window, saved); a LAN realm stays up for the
+  // others when the host closes the game.
+  const keepRunning = $derived(lan || (preferences.value?.keepServersRunning ?? false));
   let firewall = $state<FirewallStatus | null>(null);
   let firewallBusy = $state(false);
   $effect(() => {
@@ -267,22 +263,6 @@
           </button>
         {/if}
       </div>
-      {#if status !== "unfinished" && status !== "moved" && session?.game !== "running"}
-        <label class="keep">
-          <input type="checkbox" bind:checked={keepRunning} />
-          <small>{t("home.keepRunning")}</small>
-        </label>
-      {/if}
-      {#if preferences.value}
-        <label class="keep" title={t("home.hideWhilePlayingHint")}>
-          <input
-            type="checkbox"
-            checked={preferences.value.hideWhilePlaying}
-            onchange={(e) => void preferences.set({ hideWhilePlaying: e.currentTarget.checked })}
-          />
-          <small>{t("home.hideWhilePlaying")}</small>
-        </label>
-      {/if}
     </div>
   </div>
 
@@ -491,13 +471,6 @@
     display: flex;
     gap: var(--space-3);
     align-items: center;
-  }
-
-  .keep {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    cursor: pointer;
   }
 
   .stats {

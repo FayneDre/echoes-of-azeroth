@@ -15,6 +15,9 @@ pub struct Preferences {
     pub daily_backup: bool,
     /// Hide the launcher in the notification area while the game runs.
     pub hide_while_playing: bool,
+    /// Leave the servers running when the game closes (a LAN realm always
+    /// does: other players may still be on it).
+    pub keep_servers_running: bool,
 }
 
 impl Default for Preferences {
@@ -22,6 +25,7 @@ impl Default for Preferences {
         Self {
             daily_backup: true,
             hide_while_playing: true,
+            keep_servers_running: false,
         }
     }
 }
@@ -60,6 +64,7 @@ mod tests {
         let changed = Preferences {
             daily_backup: true,
             hide_while_playing: false,
+            keep_servers_running: true,
         };
         save(dir.path(), &changed).unwrap();
         assert_eq!(load(dir.path()), changed);
