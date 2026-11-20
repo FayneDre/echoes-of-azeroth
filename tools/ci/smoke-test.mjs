@@ -496,9 +496,12 @@ async function round(label, allowed, enabled, maxImportSeconds = Infinity, live 
   }
   if (world.exitCodeValue !== null) fail(`worldserver (${label}) crashed after startup (code ${world.exitCodeValue})`);
   note(`✅ worldserver (${label}) still running after the checks`);
-  // ADR 0025: the party module registered its commands (it says so at startup).
-  const worldLog = readFileSync(join(logs, `worldserver-${label}.log`), "utf8");
-  if (!worldLog.includes("RKPARTY module ready")) fail(`mod-realmkeeper did not load in worldserver (${label}): no "RKPARTY module ready" line`);
+  // ADR 0025: the party module registered its commands (it says so at
+  // startup, just after "ready"). Read from Server.log, flushed line by
+  // line (reset at each start): the piped console output is block-buffered
+  // and its end is lost when the server is killed.
+  const serverLog = readFileSync(join(logs, "Server.log"), "utf8");
+  if (!serverLog.includes("RKPARTY module ready")) fail(`mod-realmkeeper did not load in worldserver (${label}): no "RKPARTY module ready" line in Server.log`);
   note(`✅ party commands of mod-realmkeeper loaded (${label})`);
   await stopServers();
 }
