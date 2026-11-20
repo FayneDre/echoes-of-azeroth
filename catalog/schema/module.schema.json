@@ -121,7 +121,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["creature", "places"],
+        "required": [
+          "creature",
+          "places"
+        ],
         "properties": {
           "creature": {
             "description": "Creature template id defined by the module's SQL.",
@@ -142,6 +145,121 @@
         },
         "additionalProperties": false
       }
+    },
+    "party": {
+      "description": "Bot party the launcher can form for a player in the world, through console commands this module provides (ADR 0025).",
+      "type": "object",
+      "required": [
+        "size",
+        "commands",
+        "classes"
+      ],
+      "properties": {
+        "size": {
+          "description": "Characters in a party, the player included.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 40
+        },
+        "commands": {
+          "description": "Console command templates. {player}, {class}, {spec} and {level} are replaced by checked values.",
+          "type": "object",
+          "required": [
+            "add",
+            "remove",
+            "list"
+          ],
+          "properties": {
+            "add": {
+              "type": "string",
+              "pattern": "^[.][a-z].*[{]player[}].*$"
+            },
+            "remove": {
+              "type": "string",
+              "pattern": "^[.][a-z].*[{]player[}].*$"
+            },
+            "list": {
+              "type": "string",
+              "pattern": "^[.][a-z].*[{]player[}].*$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "classId",
+              "token",
+              "name",
+              "specs"
+            ],
+            "properties": {
+              "id": {
+                "description": "Launcher class id (as in the online character list).",
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{1,31}$"
+              },
+              "classId": {
+                "description": "The emulator's class number (MEMBER replies).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255
+              },
+              "token": {
+                "description": "Class word of the add command.",
+                "type": "string",
+                "pattern": "^[a-z]{1,32}$"
+              },
+              "name": {
+                "$ref": "common.schema.json#/$defs/localizedText"
+              },
+              "minLevel": {
+                "description": "Lowest level a bot of this class can have.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255
+              },
+              "specs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "number",
+                    "role",
+                    "name"
+                  ],
+                  "properties": {
+                    "number": {
+                      "description": "Premade spec number of the add command.",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "role": {
+                      "enum": [
+                        "tank",
+                        "healer",
+                        "dps"
+                      ]
+                    },
+                    "name": {
+                      "$ref": "common.schema.json#/$defs/localizedText"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

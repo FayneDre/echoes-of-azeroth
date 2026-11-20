@@ -1,12 +1,14 @@
 <script lang="ts">
-  // "Bots" tab: the options of the realm's bot modules (catalog category
-  // "bots", e.g. Playerbots), applied with the servers stopped.
+  // "Bots" tab, two pages: the options of the realm's bot modules (catalog
+  // category "bots", e.g. Playerbots), applied with the servers stopped, and
+  // the party of bots formed for the character played (ADR 0025).
   import { untrack } from "svelte";
   import { api, asCommandError, type CommandError, type EmulatorOverview, type ModuleOptions } from "../api";
   import { localized, t } from "../i18n/i18n.svelte";
   import { launcher } from "../launcher.svelte";
   import Notify from "./Notify.svelte";
   import OptionsPanel from "./OptionsPanel.svelte";
+  import Party from "./Party.svelte";
 
   let { realm }: { realm: EmulatorOverview } = $props();
 
@@ -17,6 +19,8 @@
     running || launcher.progress !== null || !!instance?.unfinished || !instance?.installed,
   );
   const botModules = $derived(realm.modules.filter((m) => m.category === "bots"));
+
+  let page = $state<"settings" | "party">("settings");
 
   let options = $state<ModuleOptions[]>([]);
   let error = $state<CommandError | null>(null);
@@ -49,7 +53,16 @@
 
 <Notify {error} />
 
-{#if !instance}
+{#if instance && realm.party}
+  <nav class="segmented pages" aria-label={t("bots.pages")}>
+    <button class:active={page === "settings"} onclick={() => (page = "settings")}>{t("bots.settings")}</button>
+    <button class:active={page === "party"} onclick={() => (page = "party")}>{t("party.tab")}</button>
+  </nav>
+{/if}
+
+{#if instance && realm.party && page === "party"}
+  <Party {realm} party={realm.party} />
+{:else if !instance}
   <section class="panel">
     <h3 class="panel-title">{t("bots.title")}</h3>
     <p class="muted">{t("settings.installFirst")}</p>
@@ -81,6 +94,10 @@
 {/if}
 
 <style>
+  .pages {
+    align-self: flex-start;
+  }
+
   .intro {
     margin: 0;
   }

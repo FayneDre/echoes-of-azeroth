@@ -515,6 +515,40 @@ impl Running {
         done
     }
 
+    /// Sends `line` to the console and gathers the console lines that hold
+    /// `marker` until one of them satisfies `last` (ADR 0025). `None` when
+    /// there is no console, the line could not be sent or the last line did
+    /// not come within `timeout`.
+    pub async fn ask(
+        &self,
+        line: &str,
+        marker: &str,
+        last: fn(&str) -> bool,
+        timeout: Duration,
+    ) -> Option<Vec<String>> {
+        let console = self.console()?;
+        // Subscribed before the command is sent, so the answer is not missed.
+        let mut lines = self.server.subscribe();
+        console.send_line(line).await.ok()?;
+        let answer = async {
+            let mut kept = Vec::new();
+            loop {
+                match lines.recv().await {
+                    Ok(seen) if seen.process == console.id() && seen.text.contains(marker) => {
+                        let done = last(&seen.text);
+                        kept.push(seen.text);
+                        if done {
+                            return Some(kept);
+                        }
+                    }
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                }
+            }
+        };
+        tokio::time::timeout(timeout, answer).await.ok().flatten()
+    }
+
     /// Waits until any process exits (a crash, or a shutdown typed in its
     /// console) and returns which one.
     pub async fn wait_any_exit(&self) -> (String, Exit) {

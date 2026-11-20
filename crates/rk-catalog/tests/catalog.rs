@@ -27,7 +27,10 @@ fn repository_catalog_is_consistent() {
 fn playerbots_is_always_installed() {
     let resolution = resolve(&catalog(), "azerothcore", None, &[]).expect("resolves");
     assert_eq!(resolution.flavor, "playerbot");
-    assert_eq!(resolution.modules, vec!["mod-playerbots"]);
+    assert_eq!(
+        resolution.modules,
+        vec!["mod-playerbots", "mod-realmkeeper"]
+    );
 }
 
 #[test]
@@ -35,7 +38,7 @@ fn playerbots_is_mandatory() {
     let catalog = catalog();
     assert_eq!(
         catalog.mandatory_modules("azerothcore", "playerbot"),
-        vec!["mod-playerbots"]
+        vec!["mod-playerbots", "mod-realmkeeper"]
     );
     assert!(
         !catalog
@@ -56,7 +59,12 @@ fn optional_modules_resolve_with_core_overrides() {
     .expect("resolves");
     assert_eq!(
         resolution.modules,
-        vec!["mod-ah-bot", "mod-individual-progression", "mod-playerbots"]
+        vec![
+            "mod-ah-bot",
+            "mod-individual-progression",
+            "mod-playerbots",
+            "mod-realmkeeper"
+        ]
     );
     let worldserver = &resolution.core_overrides["worldserver.conf"];
     assert_eq!(
@@ -157,4 +165,40 @@ fn server_data_comes_from_a_download_or_an_extraction() {
             "{expected} in {messages:?}"
         );
     }
+}
+
+/// ADR 0025: the party module offers a tank, a healer and damage for the
+/// classes that have those specs, with Playerbots' premade spec numbers.
+#[test]
+fn party_offers_every_role() {
+    use rk_core::manifest::PartyRole;
+    let catalog = catalog();
+    let party = catalog
+        .module("azerothcore", "mod-realmkeeper")
+        .and_then(|m| m.party.as_ref())
+        .expect("party");
+    assert_eq!(party.size, 5);
+    assert_eq!(party.classes.len(), 10);
+    for role in [PartyRole::Tank, PartyRole::Healer, PartyRole::Dps] {
+        assert!(party
+            .classes
+            .iter()
+            .any(|c| c.specs.iter().any(|s| s.role == role)));
+    }
+    let warrior = party.classes.iter().find(|c| c.id == "warrior").unwrap();
+    let prot = warrior
+        .specs
+        .iter()
+        .find(|s| s.role == PartyRole::Tank)
+        .unwrap();
+    assert_eq!(prot.number, 2, "Playerbots.PremadeSpecName.1.2 = prot pve");
+    let dk = party
+        .classes
+        .iter()
+        .find(|c| c.id == "death-knight")
+        .unwrap();
+    assert_eq!(
+        (dk.class_id, dk.token.as_str(), dk.min_level),
+        (6, "dk", 55)
+    );
 }

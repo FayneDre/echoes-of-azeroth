@@ -145,7 +145,7 @@ fn modules_not_chosen_are_disabled_and_their_sql_not_allowed() {
         effective(&plans, "dbimport.conf", "Updates.AllowedModules")
             .unwrap()
             .0,
-        text("mod-playerbots,mod-ah-bot,mod-transmog")
+        text("mod-playerbots,mod-realmkeeper,mod-ah-bot,mod-transmog")
     );
     assert_eq!(
         effective(&plans, "modules/transmog.conf", "Transmogrification.Enable"),
@@ -200,6 +200,7 @@ fn chosen_modules_are_enabled_with_their_overrides() {
             "mod-ah-bot",
             "mod-individual-progression",
             "mod-playerbots",
+            "mod-realmkeeper",
             "mod-transmog"
         ]
     );

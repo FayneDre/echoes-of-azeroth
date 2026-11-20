@@ -31,6 +31,57 @@ fn is_safe_relative(path: &str) -> bool {
         })
 }
 
+/// Placeholders each party command may use, and must use.
+const PARTY_COMMANDS: [(&str, &[&str]); 3] = [
+    ("add", &["player", "class", "spec", "level"]),
+    ("remove", &["player"]),
+    ("list", &["player"]),
+];
+
+/// A party (ADR 0025): commands with exactly their placeholders, unique
+/// classes, and every class with a spec, each spec number once.
+fn party_issues(party: &rk_core::manifest::Party) -> Vec<String> {
+    let mut issues = Vec::new();
+    for (name, wanted) in PARTY_COMMANDS {
+        let command = match name {
+            "add" => &party.commands.add,
+            "remove" => &party.commands.remove,
+            _ => &party.commands.list,
+        };
+        let used: BTreeSet<&str> = rk_core::console::placeholders(command)
+            .into_iter()
+            .collect();
+        let wanted: BTreeSet<&str> = wanted.iter().copied().collect();
+        if used != wanted {
+            issues.push(format!(
+                "party command '{name}' must use exactly {{{}}}",
+                wanted.into_iter().collect::<Vec<_>>().join("}, {")
+            ));
+        }
+    }
+    let mut ids = BTreeSet::new();
+    let mut tokens = BTreeSet::new();
+    let mut class_ids = BTreeSet::new();
+    for class in &party.classes {
+        if !ids.insert(&class.id)
+            || !tokens.insert(&class.token)
+            || !class_ids.insert(class.class_id)
+        {
+            issues.push(format!("party class '{}' declared twice", class.id));
+        }
+        let mut numbers = BTreeSet::new();
+        for spec in &class.specs {
+            if !numbers.insert(spec.number) {
+                issues.push(format!(
+                    "party class '{}' declares spec {} twice",
+                    class.id, spec.number
+                ));
+            }
+        }
+    }
+    issues
+}
+
 /// Checks references between manifests. Returns every issue found (empty = valid).
 pub fn validate(catalog: &Catalog) -> Vec<Issue> {
     let mut issues = Vec::new();
@@ -315,8 +366,31 @@ pub fn validate(catalog: &Catalog) -> Vec<Issue> {
             }
         }
 
+        // At most one module offers bot parties (ADR 0025): the launcher has
+        // one Party page per realm.
+        let party_modules: Vec<&str> = entry
+            .modules
+            .values()
+            .filter(|m| m.party.is_some())
+            .map(|m| m.id.as_str())
+            .collect();
+        if party_modules.len() > 1 {
+            push(
+                here.clone(),
+                format!(
+                    "several modules offer a party: {}",
+                    party_modules.join(", ")
+                ),
+            );
+        }
+
         for module in entry.modules.values() {
             let here = format!("{emu_id}/module/{}", module.id);
+            if let Some(party) = &module.party {
+                for issue in party_issues(party) {
+                    push(here.clone(), issue);
+                }
+            }
             for flavor in &module.compatible_flavors {
                 if !entry.flavors.contains_key(flavor) {
                     push(

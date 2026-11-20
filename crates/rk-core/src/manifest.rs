@@ -339,6 +339,71 @@ pub struct ModuleManifest {
     /// (ADR 0023).
     #[serde(default)]
     pub spawns: Vec<Spawn>,
+    /// Bot party the launcher forms for a player in the world through this
+    /// module's console commands (ADR 0025).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub party: Option<Party>,
+}
+
+/// A party of bots: console commands and the classes they accept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Party {
+    /// Characters in a party, the player included.
+    pub size: u32,
+    pub commands: PartyCommands,
+    pub classes: Vec<PartyClass>,
+}
+
+/// Console command templates; `{player}`, `{class}`, `{spec}` and
+/// `{level}` are replaced by checked values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PartyCommands {
+    pub add: String,
+    pub remove: String,
+    pub list: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PartyClass {
+    /// Launcher class id, as in the online character list (`death-knight`).
+    pub id: String,
+    /// The emulator's class number, as the `MEMBER` replies give it.
+    pub class_id: u8,
+    /// Class word of the add command.
+    pub token: String,
+    pub name: LocalizedText,
+    /// Lowest level a bot of this class can have.
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub min_level: u32,
+    pub specs: Vec<PartySpec>,
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn is_one(value: &u32) -> bool {
+    *value == 1
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PartySpec {
+    /// Premade spec number of the add command.
+    pub number: u32,
+    pub role: PartyRole,
+    pub name: LocalizedText,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PartyRole {
+    Tank,
+    Healer,
+    Dps,
 }
 
 /// One NPC of a module, placed at named places of the world.

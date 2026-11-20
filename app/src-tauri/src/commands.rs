@@ -810,6 +810,91 @@ pub fn run_console_action(
     }
 }
 
+// -------------------------------------------------------------------- party
+
+/// The session control of a running realm.
+fn control(state: &State<'_, AppState>, id: &str) -> Result<rk_launcher::session::SessionControl> {
+    state
+        .sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(id)
+        .map(|session| session.control())
+        .ok_or_else(|| app_error("server.notRunning", id))
+}
+
+/// Whether the realm's server can form a bot party (ADR 0025): `false`
+/// when its build predates the party module.
+#[tauri::command]
+pub fn party_offered(state: State<'_, AppState>, id: String) -> Result<bool> {
+    Ok(state.launcher()?.party(&id).map_err(ui)?.is_some())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartyMemberView {
+    name: String,
+    class: String,
+    level: u32,
+    ready: bool,
+}
+
+/// Adds a bot to `player`'s party; returns its name.
+#[tauri::command]
+pub async fn party_add(
+    state: State<'_, AppState>,
+    id: String,
+    player: String,
+    class: String,
+    spec: u32,
+    level: u32,
+) -> Result<String> {
+    let control = control(&state, &id)?;
+    state
+        .launcher()?
+        .party_add(&control, &id, &player, &class, spec, level)
+        .await
+        .map_err(ui)
+}
+
+/// Sends `player`'s bots away; returns their names.
+#[tauri::command]
+pub async fn party_remove(
+    state: State<'_, AppState>,
+    id: String,
+    player: String,
+) -> Result<Vec<String>> {
+    let control = control(&state, &id)?;
+    state
+        .launcher()?
+        .party_remove(&control, &id, &player)
+        .await
+        .map_err(ui)
+}
+
+/// `player`'s bots, set up or still joining.
+#[tauri::command]
+pub async fn party_members(
+    state: State<'_, AppState>,
+    id: String,
+    player: String,
+) -> Result<Vec<PartyMemberView>> {
+    let control = control(&state, &id)?;
+    Ok(state
+        .launcher()?
+        .party_members(&control, &id, &player)
+        .await
+        .map_err(ui)?
+        .into_iter()
+        .map(|m| PartyMemberView {
+            name: m.name,
+            class: m.class,
+            level: m.level,
+            ready: m.ready,
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------- lan
 
 /// Points the game at a realm hosted on another computer and launches it;

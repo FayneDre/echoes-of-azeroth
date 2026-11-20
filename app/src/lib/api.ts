@@ -50,6 +50,44 @@ export interface EmulatorOverview {
   modules: ModuleSummary[];
   /** Ready-made console commands of the GM panel. */
   consoleActions: ConsoleAction[];
+  /** Bot party the launcher can form (ADR 0025), when a module offers one. */
+  party: Party | null;
+}
+
+export type PartyRole = "tank" | "healer" | "dps";
+
+export interface PartySpec {
+  /** Premade spec number of the add command. */
+  number: number;
+  role: PartyRole;
+  name: LocalizedText;
+}
+
+export interface PartyClass {
+  /** Launcher class id, as in the online character list. */
+  id: string;
+  classId: number;
+  token: string;
+  name: LocalizedText;
+  /** Lowest level a bot of this class can have (1 when absent). */
+  minLevel?: number;
+  specs: PartySpec[];
+}
+
+export interface Party {
+  /** Characters in a party, the player included. */
+  size: number;
+  classes: PartyClass[];
+}
+
+/** A bot of the player's party. */
+export interface PartyMember {
+  name: string;
+  /** Launcher class id. */
+  class: string;
+  level: number;
+  /** Logged in and set up; `false` while it is joining. */
+  ready: boolean;
 }
 
 /** Failure returned by a command: `code` maps to the `error.<code>` message. */
@@ -414,6 +452,14 @@ export const api = {
   /** Types the action's command in the server console; returns the line sent. */
   runConsoleAction: (id: string, action: string, values: Record<string, string>) =>
     invoke<string>("run_console_action", { id, action, values }),
+  /** `false` when the realm's server build predates the party module. */
+  partyOffered: (id: string) => invoke<boolean>("party_offered", { id }),
+  /** Adds a bot to the player's party; returns its name. */
+  partyAdd: (id: string, player: string, cls: string, spec: number, level: number) =>
+    invoke<string>("party_add", { id, player, class: cls, spec, level }),
+  /** Sends the player's bots away; returns their names. */
+  partyRemove: (id: string, player: string) => invoke<string[]>("party_remove", { id, player }),
+  partyMembers: (id: string, player: string) => invoke<PartyMember[]>("party_members", { id, player }),
   overview: () => invoke<LauncherOverview>("launcher_overview"),
   registerClient: (client: string, path: string, locale: string | null) =>
     invoke<ClientView>("register_client", { client, path, locale }),

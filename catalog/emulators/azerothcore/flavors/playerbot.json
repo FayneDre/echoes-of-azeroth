@@ -16,5 +16,5 @@
     "ref": "Playerbot",
     "commit": "32fd3472aa74961c91cb9bc942ee3e0a44b36779"
   },
-  "requiredModules": ["mod-playerbots"]
+  "requiredModules": ["mod-playerbots", "mod-realmkeeper"]
 }

@@ -22,6 +22,7 @@ pub mod firewall;
 pub mod location;
 mod operations;
 pub mod overview;
+mod party;
 pub mod preferences;
 pub mod progress;
 mod realm_backups;

@@ -2,7 +2,7 @@
 //! processes, modules and GM panel commands. Shared by the app (and any
 //! future `--json` output of the CLI), so the Tauri layer only forwards it.
 
-use rk_core::manifest::{ConsoleAction, ModuleCategory, StopMethod};
+use rk_core::manifest::{ConsoleAction, ModuleCategory, Party, StopMethod};
 use rk_core::LocalizedText;
 use serde::Serialize;
 
@@ -46,6 +46,9 @@ pub struct EmulatorOverview {
     pub modules: Vec<ModuleSummary>,
     /// Ready-made console commands of the GM panel (ADR 0020).
     pub console_actions: Vec<ConsoleAction>,
+    /// The bot party the launcher can form (ADR 0025), from the module of
+    /// the default flavor that offers one.
+    pub party: Option<Party>,
 }
 
 impl Launcher {
@@ -103,6 +106,11 @@ impl Launcher {
                         .find(|p| matches!(p.stop, StopMethod::CloseStdin { .. }))
                         .map(|p| p.id.clone()),
                     console_actions: manifest.console_actions.clone(),
+                    party: entry
+                        .modules
+                        .values()
+                        .filter(|m| m.compatible_flavors.contains(&manifest.default_flavor))
+                        .find_map(|m| m.party.clone()),
                     modules,
                 }
             })
@@ -126,6 +134,7 @@ mod tests {
             .any(|m| m.id == "mod-playerbots"));
         assert!(ac.modules[first_optional..].iter().all(|m| !m.mandatory));
         assert!(ac.client.as_ref().is_some_and(|c| c.build == 12340));
+        assert!(ac.party.as_ref().is_some_and(|p| p.size == 5));
     }
 
     #[test]

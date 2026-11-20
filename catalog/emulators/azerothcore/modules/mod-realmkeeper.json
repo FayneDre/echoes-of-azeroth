@@ -1,0 +1,414 @@
+{
+  "$schema": "../../../schema/module.schema.json",
+  "schemaVersion": 1,
+  "id": "mod-realmkeeper",
+  "emulator": "azerothcore",
+  "name": {
+    "en": "RealmKeeper party",
+    "fr": "Groupe RealmKeeper"
+  },
+  "description": {
+    "en": "Lets the launcher form a party of bots for the character you play: role, class, spec and level of each bot.",
+    "fr": "Permet au launcher de former un groupe de bots pour le personnage que tu joues : rôle, classe, spé et niveau de chaque bot."
+  },
+  "category": "bots",
+  "homepage": "https://github.com/FayneDre/mod-realmkeeper",
+  "license": "GPL-2.0-or-later",
+  "source": {
+    "repo": "https://github.com/FayneDre/mod-realmkeeper",
+    "ref": "main",
+    "commit": "60d2022e8194c9db340d7baffff2bb2e3110eb45"
+  },
+  "compatibleFlavors": [
+    "playerbot"
+  ],
+  "requires": [
+    "mod-playerbots"
+  ],
+  "conflicts": [],
+  "removable": false,
+  "activation": {
+    "mode": "always"
+  },
+  "database": {
+    "dbimportId": "mod-realmkeeper",
+    "touches": []
+  },
+  "config": {
+    "files": [
+      {
+        "file": "modules/mod_realmkeeper.conf",
+        "dist": "modules/mod_realmkeeper.conf.dist"
+      }
+    ]
+  },
+  "party": {
+    "size": 5,
+    "commands": {
+      "add": ".rk party add {player} {class} {spec} {level}",
+      "remove": ".rk party remove {player}",
+      "list": ".rk party list {player}"
+    },
+    "classes": [
+      {
+        "id": "warrior",
+        "classId": 1,
+        "token": "warrior",
+        "name": {
+          "en": "Warrior",
+          "fr": "Guerrier"
+        },
+        "specs": [
+          {
+            "number": 2,
+            "role": "tank",
+            "name": {
+              "en": "Protection",
+              "fr": "Protection"
+            }
+          },
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Arms",
+              "fr": "Armes"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Fury",
+              "fr": "Fureur"
+            }
+          }
+        ]
+      },
+      {
+        "id": "paladin",
+        "classId": 2,
+        "token": "paladin",
+        "name": {
+          "en": "Paladin",
+          "fr": "Paladin"
+        },
+        "specs": [
+          {
+            "number": 1,
+            "role": "tank",
+            "name": {
+              "en": "Protection",
+              "fr": "Protection"
+            }
+          },
+          {
+            "number": 0,
+            "role": "healer",
+            "name": {
+              "en": "Holy",
+              "fr": "Sacré"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Retribution",
+              "fr": "Vindicte"
+            }
+          }
+        ]
+      },
+      {
+        "id": "hunter",
+        "classId": 3,
+        "token": "hunter",
+        "name": {
+          "en": "Hunter",
+          "fr": "Chasseur"
+        },
+        "specs": [
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Beast Mastery",
+              "fr": "Maîtrise des bêtes"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Marksmanship",
+              "fr": "Précision"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Survival",
+              "fr": "Survie"
+            }
+          }
+        ]
+      },
+      {
+        "id": "rogue",
+        "classId": 4,
+        "token": "rogue",
+        "name": {
+          "en": "Rogue",
+          "fr": "Voleur"
+        },
+        "specs": [
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Assassination",
+              "fr": "Assassinat"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Combat",
+              "fr": "Combat"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Subtlety",
+              "fr": "Finesse"
+            }
+          }
+        ]
+      },
+      {
+        "id": "priest",
+        "classId": 5,
+        "token": "priest",
+        "name": {
+          "en": "Priest",
+          "fr": "Prêtre"
+        },
+        "specs": [
+          {
+            "number": 0,
+            "role": "healer",
+            "name": {
+              "en": "Discipline",
+              "fr": "Discipline"
+            }
+          },
+          {
+            "number": 1,
+            "role": "healer",
+            "name": {
+              "en": "Holy",
+              "fr": "Sacré"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Shadow",
+              "fr": "Ombre"
+            }
+          }
+        ]
+      },
+      {
+        "id": "death-knight",
+        "classId": 6,
+        "token": "dk",
+        "name": {
+          "en": "Death Knight",
+          "fr": "Chevalier de la mort"
+        },
+        "minLevel": 55,
+        "specs": [
+          {
+            "number": 0,
+            "role": "tank",
+            "name": {
+              "en": "Blood",
+              "fr": "Sang"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Frost",
+              "fr": "Givre"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Unholy",
+              "fr": "Impie"
+            }
+          }
+        ]
+      },
+      {
+        "id": "shaman",
+        "classId": 7,
+        "token": "shaman",
+        "name": {
+          "en": "Shaman",
+          "fr": "Chaman"
+        },
+        "specs": [
+          {
+            "number": 2,
+            "role": "healer",
+            "name": {
+              "en": "Restoration",
+              "fr": "Restauration"
+            }
+          },
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Elemental",
+              "fr": "Élémentaire"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Enhancement",
+              "fr": "Amélioration"
+            }
+          }
+        ]
+      },
+      {
+        "id": "mage",
+        "classId": 8,
+        "token": "mage",
+        "name": {
+          "en": "Mage",
+          "fr": "Mage"
+        },
+        "specs": [
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Arcane",
+              "fr": "Arcanes"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Fire",
+              "fr": "Feu"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Frost",
+              "fr": "Givre"
+            }
+          }
+        ]
+      },
+      {
+        "id": "warlock",
+        "classId": 9,
+        "token": "warlock",
+        "name": {
+          "en": "Warlock",
+          "fr": "Démoniste"
+        },
+        "specs": [
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Affliction",
+              "fr": "Affliction"
+            }
+          },
+          {
+            "number": 1,
+            "role": "dps",
+            "name": {
+              "en": "Demonology",
+              "fr": "Démonologie"
+            }
+          },
+          {
+            "number": 2,
+            "role": "dps",
+            "name": {
+              "en": "Destruction",
+              "fr": "Destruction"
+            }
+          }
+        ]
+      },
+      {
+        "id": "druid",
+        "classId": 11,
+        "token": "druid",
+        "name": {
+          "en": "Druid",
+          "fr": "Druide"
+        },
+        "specs": [
+          {
+            "number": 1,
+            "role": "tank",
+            "name": {
+              "en": "Feral (bear)",
+              "fr": "Combat farouche (ours)"
+            }
+          },
+          {
+            "number": 2,
+            "role": "healer",
+            "name": {
+              "en": "Restoration",
+              "fr": "Restauration"
+            }
+          },
+          {
+            "number": 0,
+            "role": "dps",
+            "name": {
+              "en": "Balance",
+              "fr": "Équilibre"
+            }
+          },
+          {
+            "number": 3,
+            "role": "dps",
+            "name": {
+              "en": "Feral (cat)",
+              "fr": "Combat farouche (félin)"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

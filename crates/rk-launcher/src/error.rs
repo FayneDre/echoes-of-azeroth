@@ -88,6 +88,8 @@ pub enum LauncherError {
     #[error(transparent)]
     Console(#[from] rk_core::console::ConsoleError),
     #[error(transparent)]
+    Party(#[from] rk_core::party::PartyError),
+    #[error(transparent)]
     Firewall(#[from] crate::firewall::FirewallError),
     #[error("{0}")]
     Invalid(String),
@@ -200,6 +202,7 @@ impl LauncherError {
             L::LocationInUse => ("location.inUse", none()),
             L::Moved(_) => ("instance.moved", none()),
             L::Console(e) => console_code(e),
+            L::Party(e) => party_code(e),
             L::LocationSynced { path, client } => (
                 "location.synced",
                 vec![
@@ -235,6 +238,32 @@ impl LauncherError {
             L::Invalid(_) => ("unknown", none()),
             L::NotReady(_) => ("server.notReady", none()),
         }
+    }
+}
+
+/// Party errors (ADR 0025); the server's refusals by their module code.
+fn party_code(e: &rk_core::party::PartyError) -> (&'static str, Vec<(&'static str, String)>) {
+    use rk_core::party::PartyError as P;
+    match e {
+        P::Character(name) => ("party.character", vec![("name", name.clone())]),
+        P::Class(_) | P::Spec { .. } => ("party.spec", Vec::new()),
+        P::Level { min, max, .. } => (
+            "party.level",
+            vec![("min", min.to_string()), ("max", max.to_string())],
+        ),
+        P::NoAnswer => ("party.noAnswer", Vec::new()),
+        P::Refused(code) => match code.as_str() {
+            "disabled" => ("party.disabled", Vec::new()),
+            "offline" => ("party.offline", Vec::new()),
+            "notPlayer" => ("party.notPlayer", Vec::new()),
+            "class" | "spec" => ("party.spec", Vec::new()),
+            "level" => ("party.levelServer", Vec::new()),
+            "levelDeathKnight" => ("party.levelDeathKnight", Vec::new()),
+            "groupType" => ("party.groupType", Vec::new()),
+            "full" => ("party.full", Vec::new()),
+            "noBot" => ("party.noBot", Vec::new()),
+            other => ("party.refused", vec![("code", other.to_owned())]),
+        },
     }
 }
 

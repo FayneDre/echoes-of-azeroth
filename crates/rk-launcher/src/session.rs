@@ -162,7 +162,18 @@ enum Command {
         work: Work,
         save_players: bool,
     },
+    /// A console line whose reply is gathered (ADR 0025).
+    Ask(Ask),
     Stop,
+}
+
+/// A console request: the line, how its reply lines look and end.
+struct Ask {
+    line: String,
+    marker: &'static str,
+    last: fn(&str) -> bool,
+    timeout: Duration,
+    answer: oneshot::Sender<Option<Vec<String>>>,
 }
 
 /// [`SessionControl::while_running`] work, its result sent on by itself.
@@ -185,6 +196,30 @@ impl SessionControl {
     /// Sends a line to the server console (worldserver).
     pub fn console(&self, line: &str) {
         let _ = self.commands.send(Command::Console(line.to_owned()));
+    }
+
+    /// Sends a console line and returns the reply lines holding `marker`,
+    /// up to the one `last` accepts (ADR 0025). Requests run one after the
+    /// other. `None` when the servers are not ready, the line could not be
+    /// sent or the reply did not end within `timeout`.
+    pub async fn ask(
+        &self,
+        line: &str,
+        marker: &'static str,
+        last: fn(&str) -> bool,
+        timeout: Duration,
+    ) -> Option<Vec<String>> {
+        let (answer, answered) = oneshot::channel();
+        self.commands
+            .send(Command::Ask(Ask {
+                line: line.to_owned(),
+                marker,
+                last,
+                timeout,
+                answer,
+            }))
+            .ok()?;
+        answered.await.ok().flatten()
     }
 
     /// Asks for a clean stop; [`Session::wait`] returns once it is done.
@@ -460,11 +495,29 @@ async fn supervise(
     // at once.
     let mut exclusive: Option<Pin<Box<dyn Future<Output = ()> + Send + '_>>> = None;
     let mut quick = tokio::task::JoinSet::new();
+    // Console requests: one at a time (their replies would mix), in order;
+    // a stop or a crash drops them (their callers get `None`).
+    let mut asks: std::collections::VecDeque<Ask> = std::collections::VecDeque::new();
+    let mut asking: Option<Pin<Box<dyn Future<Output = ()> + Send + '_>>> = None;
     let mut stop_after = false;
     // Every control dropped: nothing more to read.
     let mut closed = false;
     loop {
+        if asking.is_none() {
+            if let Some(ask) = asks.pop_front() {
+                let running = &running;
+                asking = Some(Box::pin(async move {
+                    let reply = running
+                        .ask(&ask.line, ask.marker, ask.last, ask.timeout)
+                        .await;
+                    let _ = ask.answer.send(reply);
+                }));
+            }
+        }
         tokio::select! {
+            () = async { asking.as_mut().expect("guarded").await }, if asking.is_some() => {
+                asking = None;
+            }
             () = async { exclusive.as_mut().expect("guarded").await }, if exclusive.is_some() => {
                 exclusive = None;
                 if stop_after && quick.is_empty() {
@@ -519,6 +572,9 @@ async fn supervise(
                         launch_later(launch, &mut child, &mut prepared, events);
                     }
                 }
+                // Refused once a stop is asked: its caller gets `None`.
+                Some(Command::Ask(_)) if stop_after => {}
+                Some(Command::Ask(ask)) => asks.push_back(ask),
                 Some(Command::Console(line)) => {
                     let line = line.trim();
                     if line.is_empty() {
@@ -562,6 +618,8 @@ async fn supervise(
     }
     // A crash ends a work in progress (its database may go away).
     drop(exclusive);
+    drop(asking);
+    drop(asks);
     quick.abort_all();
     // Work asked for from now on is refused at once, not after the stop.
     commands.close();
@@ -603,6 +661,8 @@ async fn wait_stop(commands: &mut mpsc::UnboundedReceiver<Command>, queued: &mut
             None | Some(Command::Stop) => return,
             Some(Command::Launch(launch)) => *queued = Some(launch),
             Some(Command::Console(_)) => {}
+            // Not ready yet: refused (dropped, its caller gets `None`).
+            Some(Command::Ask(_)) => {}
             // Not ready yet: refused (dropped, its caller gets `None`).
             Some(Command::WhileRunning { .. }) => {}
         }

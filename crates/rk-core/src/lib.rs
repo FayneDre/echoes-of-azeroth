@@ -10,6 +10,7 @@
 pub mod catalog;
 pub mod console;
 pub mod manifest;
+pub mod party;
 pub mod resolve;
 pub mod template;
 pub mod text;
