@@ -49,9 +49,11 @@ Upstream facts (mod-playerbots @ 405f811, 2026-11-20):
      character of the player's faction from the addclass pool and logs it in
      with `AddPlayerBot`. A world update hook then sets up the bot once it is
      in the world: `Randomize` at the level, premade spec, gear for the spec,
-     enchants, pet, ammo, then `ResetStrategies`. At the player's own level the
-     gear is capped like `addclass` does; at another level it follows the
-     random bots' limits.
+     enchants, pet, ammo, then `ResetStrategies`. The gear is random items of
+     the level up to blue, each slot one quality lower with a 35 % chance
+     (module options `RealmKeeper.Party.GearQuality` / `GearLoweringChance`).
+     A first version capped it by the player's gear like `addclass`: a player
+     in green items got bots in green items only (changed 2026-11-20).
    - `.rk party remove <player>` sends away every bot the player controls.
    - `.rk party list <player>` lists them, set up or still joining.
 

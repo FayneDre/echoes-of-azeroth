@@ -17,7 +17,7 @@
   "source": {
     "repo": "https://github.com/FayneDre/mod-realmkeeper",
     "ref": "main",
-    "commit": "60d2022e8194c9db340d7baffff2bb2e3110eb45"
+    "commit": "6df8137502cc5b74a5c3ec1514a798c0e44e8d2f"
   },
   "compatibleFlavors": [
     "playerbot"
