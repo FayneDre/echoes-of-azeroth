@@ -20,6 +20,7 @@
       "id": "auth",
       "name": "acore_auth",
       "playerData": true,
+      "realmTables": ["realmlist"],
       "connections": [
         { "file": "authserver.conf", "key": "LoginDatabaseInfo" },
         { "file": "worldserver.conf", "key": "LoginDatabaseInfo" },

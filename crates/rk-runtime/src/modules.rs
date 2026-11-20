@@ -210,7 +210,8 @@ pub fn update_operation(
 /// Puts the player databases back from a backup (ADR 0016):
 ///
 /// ```text
-/// servers-stopped → db-start → db-backup → db-restore → db-import → db-stop
+/// servers-stopped → db-start → db-backup → db-restore → db-import
+///   → post-install (bindings looked up again) → render-config → db-stop
 /// ```
 ///
 /// Every database is dumped first (`before-<label>.sql`): a failure, or a
@@ -218,6 +219,11 @@ pub fn update_operation(
 /// databases the dump holds (`databases`) are replaced; content databases
 /// stay as the current build and module set made them, and dbimport
 /// migrates the restored ones to the current build.
+///
+/// The realm's own tables (`realmTables`) survive the restore, and the
+/// module accounts and characters (`bindings.json`) are found again by name
+/// in the restored data (or created): the ids the realm had before name
+/// other rows now, or nothing (ADR 0026).
 #[allow(clippy::too_many_arguments)] // the restore inputs, each distinct
 pub fn restore_operation(
     catalog: &Catalog,
@@ -231,7 +237,25 @@ pub fn restore_operation(
 ) -> Result<Operation<()>, RuntimeError> {
     install::ensure_finished(layout, &[install::modules_operation_id(&record.id)])?;
     let plan = install::instance_plan(catalog, layout, record, secrets)?;
-    let (stopped, _) = common_steps(catalog, layout, record, &plan, driver)?;
+    let (stopped, mut post_install) = common_steps(catalog, layout, record, &plan, driver)?;
+    post_install.rebind = true;
+    let entry = catalog
+        .emulator(&record.emulator)
+        .ok_or_else(|| install::PlanError::Unknown(format!("emulator '{}'", record.emulator)))?;
+    let keep = entry
+        .manifest
+        .databases
+        .iter()
+        .chain(
+            plan.resolution
+                .modules
+                .iter()
+                .filter_map(|id| entry.modules.get(id))
+                .flat_map(|m| m.database.extra_databases.iter()),
+        )
+        .filter(|d| d.player_data && !d.realm_tables.is_empty() && databases.contains(&d.name))
+        .map(|d| (d.name.clone(), d.realm_tables.clone()))
+        .collect();
     Ok(Operation::new(install::instance_operation_id(&record.id))
         .step(stopped)
         .step(DbStart {
@@ -250,8 +274,15 @@ pub fn restore_operation(
             dump: dump.to_path_buf(),
             user: secrets.db_user.clone(),
             password: secrets.db_password.clone(),
+            keep,
+            scratch: layout.instance(&record.id).db.join("restore-keep"),
         })
         .maybe_step(plan.import)
+        .step(post_install)
+        .step(install::RenderConfigs {
+            keep_missing: true,
+            ..plan.render
+        })
         .step(DbStop { db: plan.db }))
 }
 
@@ -404,6 +435,7 @@ fn common_steps(
             bindings: layout.instance(&record.id).bindings,
             configs: layout.instance(&record.id).configs,
             modules: steps,
+            rebind: false,
         },
     ))
 }
@@ -461,10 +493,30 @@ struct PostInstall {
     configs: std::path::PathBuf,
     /// Module id -> its steps, in resolution order.
     modules: Vec<(String, Vec<PostInstallStep>)>,
+    /// Look every account and character up again (after a restore) instead
+    /// of trusting the ids already in `bindings.json`.
+    rebind: bool,
 }
 
 impl PostInstall {
+    /// The bindings as they were before a rebind (empty: there were none),
+    /// put back if the operation rolls back: the databases go back too.
+    fn previous_bindings(&self) -> std::path::PathBuf {
+        self.bindings.with_extension("json.before-restore")
+    }
+
     async fn run_steps(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if self.rebind {
+            let previous = self.previous_bindings();
+            if !previous.exists() {
+                let current = match std::fs::read(&self.bindings) {
+                    Ok(bytes) => bytes,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                    Err(e) => return Err(e.into()),
+                };
+                std::fs::write(&previous, current)?;
+            }
+        }
         let cx = DriverContext {
             db: &self.db,
             emulator: &self.emulator,
@@ -483,7 +535,7 @@ impl PostInstall {
                         gm_level,
                     } => {
                         let key = format!("{binding}.id");
-                        if bindings.get(module, &key).is_some() {
+                        if !self.rebind && bindings.get(module, &key).is_some() {
                             continue;
                         }
                         let id = match self.driver.find_account(&cx, username).await? {
@@ -508,7 +560,7 @@ impl PostInstall {
                         class,
                     } => {
                         let key = format!("{binding}.guid");
-                        if bindings.get(module, &key).is_some() {
+                        if !self.rebind && bindings.get(module, &key).is_some() {
                             continue;
                         }
                         let account_id = bindings
@@ -553,11 +605,38 @@ impl<C: Sync> Step<C> for PostInstall {
         "post-install"
     }
     fn fingerprint(&self) -> String {
-        format!("{:?}", self.modules)
+        format!("{:?} {}", self.modules, self.rebind)
     }
     /// Accounts and characters are kept on rollback: they live with player
     /// data and are reused by name the next time.
     fn run<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
         Box::pin(self.run_steps())
+    }
+    /// After a rebind, the bindings that match the databases put back.
+    fn undo<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            let previous = self.previous_bindings();
+            if !self.rebind || !previous.exists() {
+                return Ok(());
+            }
+            if std::fs::metadata(&previous)?.len() == 0 {
+                match std::fs::remove_file(&self.bindings) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                    _ => {}
+                }
+                std::fs::remove_file(&previous)?;
+            } else {
+                std::fs::rename(&previous, &self.bindings)?;
+            }
+            Ok(())
+        })
+    }
+    fn finalize<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            match std::fs::remove_file(self.previous_bindings()) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+                _ => Ok(()),
+            }
+        })
     }
 }

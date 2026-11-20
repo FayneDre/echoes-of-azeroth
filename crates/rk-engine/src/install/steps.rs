@@ -296,12 +296,22 @@ impl<C: Sync> Step<C> for DbBackup {
 /// it is replayed as the realm's service account (`user`), never as root
 /// (see [`rk_db::Instance::restore_database`]). Rerunning it from the
 /// start is the resume; `undo` is the job of the `db-backup` made before it.
+///
+/// The realm's own tables (`keep`, manifest `realmTables`: the realm list)
+/// are saved first and put back after: they describe this realm, not the
+/// players, and a backup from another server may lack them (ADR 0026). The
+/// saved copy outlives an interruption, so a resume puts back the realm's
+/// tables, not the half-restored ones.
 pub struct DbRestore {
     pub db: Arc<rk_db::Instance>,
     pub databases: Vec<String>,
     pub dump: PathBuf,
     pub user: String,
     pub password: String,
+    /// Database name -> its realm tables.
+    pub keep: Vec<(String, Vec<String>)>,
+    /// Where the realm tables wait during the restore.
+    pub scratch: PathBuf,
 }
 
 impl<C: Sync> Step<C> for DbRestore {
@@ -331,6 +341,17 @@ impl<C: Sync> Step<C> for DbRestore {
             }
             for name in &self.databases {
                 rk_db::validate_identifier(name)?;
+                let tables = self
+                    .keep
+                    .iter()
+                    .find(|(db, _)| db == name)
+                    .map(|(_, tables)| tables.as_slice())
+                    .unwrap_or_default();
+                let saved = self.scratch.join(format!("realm-tables-{name}.sql"));
+                if !tables.is_empty() && !saved.exists() {
+                    std::fs::create_dir_all(&self.scratch)?;
+                    self.db.dump_tables(name, tables, &saved).await?;
+                }
                 self.db
                     .execute(&format!("DROP DATABASE IF EXISTS `{name}`;"))
                     .await?;
@@ -338,8 +359,31 @@ impl<C: Sync> Step<C> for DbRestore {
                 self.db
                     .restore_database(&self.dump, name, &self.user, &self.password)
                     .await?;
+                if !tables.is_empty() {
+                    for table in tables {
+                        rk_db::validate_identifier(table)?;
+                        self.db
+                            .execute(&format!("DROP TABLE IF EXISTS `{name}`.`{table}`;"))
+                            .await?;
+                    }
+                    self.db.restore_tables(&saved, name).await?;
+                    std::fs::remove_file(&saved)?;
+                }
             }
+            // Left only when empty.
+            let _ = std::fs::remove_dir(&self.scratch);
             Ok(())
+        })
+    }
+    /// The databases come back with the `db-backup` undo; a saved copy of
+    /// the realm tables must not outlive this attempt (a later restore
+    /// would put back a stale one).
+    fn undo<'a>(&'a self, _cx: &'a StepContext<'a, C>) -> StepFuture<'a> {
+        Box::pin(async move {
+            match std::fs::remove_dir_all(&self.scratch) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+                _ => Ok(()),
+            }
         })
     }
 }
@@ -492,6 +536,11 @@ pub struct RenderConfigs {
     /// `bindings.json` of the instance: expands `set-config` placeholders
     /// at run time (they are only known once post-install steps have run).
     pub bindings: Option<PathBuf>,
+    /// A file whose `.conf.dist` the build lacks keeps its current copy
+    /// instead of failing: the realm's build is older than the catalog (a
+    /// module it does not have yet). Only for a restore, which must work
+    /// before a server update; other changes need the matching build.
+    pub keep_missing: bool,
 }
 
 impl RenderConfigs {
@@ -507,12 +556,31 @@ impl RenderConfigs {
         for plan in &self.files {
             let layers = bindings.resolve(&plan.layers)?;
             let dist = self.dist_dir.join(&plan.dist);
-            let text = std::fs::read_to_string(&dist).map_err(|e| {
-                EngineError::io(&dist)(std::io::Error::new(
-                    e.kind(),
-                    format!("missing from the server build: {e}"),
-                ))
-            })?;
+            let text = match std::fs::read_to_string(&dist) {
+                Ok(text) => text,
+                Err(e) if self.keep_missing && e.kind() == std::io::ErrorKind::NotFound => {
+                    for file in [
+                        PathBuf::from(&plan.file),
+                        Path::new(".rk-rendered").join(&plan.file),
+                    ] {
+                        let (from, to) = (self.target.join(&file), staging.join(&file));
+                        if from.exists() {
+                            if let Some(parent) = to.parent() {
+                                std::fs::create_dir_all(parent).map_err(EngineError::io(parent))?;
+                            }
+                            std::fs::copy(&from, &to).map_err(EngineError::io(&from))?;
+                        }
+                    }
+                    continue;
+                }
+                Err(e) => {
+                    return Err(EngineError::io(&dist)(std::io::Error::new(
+                        e.kind(),
+                        format!("missing from the server build: {e}"),
+                    ))
+                    .into())
+                }
+            };
             let rendered = rk_conf::render(&text, &layers)?;
             for out in [
                 staging.join(&plan.file),

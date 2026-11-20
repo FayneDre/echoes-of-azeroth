@@ -23,6 +23,7 @@
       "id": "auth",
       "name": "mop_auth",
       "playerData": true,
+      "realmTables": ["realmlist"],
       "connections": [
         {
           "file": "authserver.conf",

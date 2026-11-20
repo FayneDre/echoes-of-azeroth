@@ -361,6 +361,15 @@
               },
               "connections": {
                 "$ref": "common.schema.json#/$defs/dbConnections"
+              },
+              "realmTables": {
+                "description": "Tables that describe the realm itself, not its players (e.g. realmlist): a restore keeps the realm's own copy, whatever the backup holds.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]{1,32}$"
+                }
               }
             },
             "additionalProperties": false

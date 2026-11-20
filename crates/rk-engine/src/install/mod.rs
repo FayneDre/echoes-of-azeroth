@@ -664,6 +664,7 @@ pub fn instance_plan(
             target: paths.configs.clone(),
             files,
             bindings: Some(paths.bindings.clone()),
+            keep_missing: false,
         },
         import: emu.instance.db_import.as_ref().map(|tool| RunTool {
             id: "db-import".into(),

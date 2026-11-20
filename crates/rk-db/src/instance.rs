@@ -419,6 +419,79 @@ impl Instance {
         std::fs::rename(&tmp, out).map_err(DbError::io(out))
     }
 
+    /// Dump of `tables` of `database` (structure and rows, each table
+    /// dropped first on replay), written atomically to `out`; replayed with
+    /// [`restore_tables`](Self::restore_tables). Tables that do not exist are
+    /// left out.
+    pub async fn dump_tables(
+        &self,
+        database: &str,
+        tables: &[String],
+        out: &Path,
+    ) -> Result<(), DbError> {
+        validate_identifier(database)?;
+        let mut present = Vec::new();
+        for table in tables {
+            validate_identifier(table)?;
+            let found = self
+                .execute(&format!(
+                    "SELECT COUNT(*) FROM information_schema.TABLES \
+                     WHERE TABLE_SCHEMA = '{database}' AND TABLE_NAME = '{table}';"
+                ))
+                .await?;
+            if found.trim() != "0" {
+                present.push(table.clone());
+            }
+        }
+        let tmp = out.with_extension("partial");
+        if present.is_empty() {
+            // Nothing to keep: an empty file says the dump was made.
+            write_atomic(out, b"-- no table to keep\n")?;
+            return Ok(());
+        }
+        let mut args: Vec<String> = [
+            "--single-transaction",
+            "--hex-blob",
+            "--set-gtid-purged=OFF",
+            "--default-character-set=utf8mb4",
+            "--skip-triggers",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        args.push(format!("--result-file={}", tmp.display()));
+        args.push(database.to_owned());
+        args.extend(present);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        if let Err(error) = self
+            .tool("mysqldump", &self.binaries.mysqldump, &args, Input::None)
+            .await
+        {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(error);
+        }
+        std::fs::rename(&tmp, out).map_err(DbError::io(out))
+    }
+
+    /// Replays a [`dump_tables`](Self::dump_tables) file into `database`.
+    pub async fn restore_tables(&self, file: &Path, database: &str) -> Result<(), DbError> {
+        validate_identifier(database)?;
+        let target = format!("--database={database}");
+        self.tool(
+            "mysql",
+            &self.binaries.mysql,
+            &[
+                "--default-character-set=utf8mb4",
+                "--commands=OFF",
+                "--skip-system-command",
+                &target,
+            ],
+            Input::File(file),
+        )
+        .await
+        .map(drop)
+    }
+
     /// Replays a dump this instance made itself with [`backup`](Self::backup)
     /// (recreates its databases): the rollback of an operation. The file is
     /// streamed to `mysql`, never loaded in memory, with the client's own

@@ -457,3 +457,55 @@ async fn interrupted_adoption_is_resumed() {
     );
     restored.stop().await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn realm_tables_are_kept_and_put_back() {
+    let Some(basedir) = std::env::var_os("RK_MYSQL_BASEDIR") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let instance = Instance::new(
+        dir.path().join("mysql"),
+        Binaries::from_basedir(basedir),
+        ServerSettings {
+            port: free_port(),
+            buffer_pool_mib: 128,
+            ..Default::default()
+        },
+    );
+    instance.initialize().await.unwrap();
+    instance.start().await.unwrap();
+    let _stop = StopOnDrop(&instance);
+    instance.create_database("acore_auth").await.unwrap();
+    instance
+        .execute(
+            "CREATE TABLE acore_auth.realmlist (id INT PRIMARY KEY, name VARCHAR(32)) ENGINE=InnoDB;\n\
+             INSERT INTO acore_auth.realmlist VALUES (1, 'Garona');",
+        )
+        .await
+        .unwrap();
+    let kept = dir.path().join("kept.sql");
+    let tables = ["realmlist".to_owned(), "missing".to_owned()];
+    instance
+        .dump_tables("acore_auth", &tables, &kept)
+        .await
+        .unwrap();
+
+    // A restore from another server: the database comes back without it.
+    instance.execute("DROP DATABASE acore_auth;").await.unwrap();
+    instance.create_database("acore_auth").await.unwrap();
+    instance.restore_tables(&kept, "acore_auth").await.unwrap();
+    let name = instance
+        .execute("SELECT name FROM acore_auth.realmlist WHERE id = 1;")
+        .await
+        .unwrap();
+    assert_eq!(name.trim(), "Garona");
+
+    // Nothing to keep: an empty file that replays to nothing.
+    let none = dir.path().join("none.sql");
+    instance
+        .dump_tables("acore_auth", &["missing".to_owned()], &none)
+        .await
+        .unwrap();
+    instance.restore_tables(&none, "acore_auth").await.unwrap();
+}

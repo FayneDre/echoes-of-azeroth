@@ -56,6 +56,11 @@ pub struct Database {
     /// Player data is never regenerated, only migrated and backed up.
     pub player_data: bool,
     pub connections: Vec<DbConnection>,
+    /// Tables that describe the realm itself, not its players (AzerothCore
+    /// `realmlist`): a restore keeps the realm's own copy, whatever the
+    /// backup holds (a backup from another server may leave them out).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub realm_tables: Vec<String>,
 }
 
 // ---------------------------------------------------------------- emulator
