@@ -107,11 +107,39 @@ async function run() {
     await page.evaluate(`document.querySelector("main .modules > .btn")?.click()`);
     await page.waitFor(`document.querySelector('[role="dialog"]')`, { what: "the module dialog" });
     fs.writeFileSync(path.join(shots, "modules-dialog.png"), await page.screenshot());
+    check(
+      await page.evaluate(
+        `document.querySelector('[role="dialog"] .modal-actions').getBoundingClientRect().bottom <= innerHeight`,
+      ),
+      "module dialog buttons in view (the list scrolls)",
+    );
+    check(
+      await page.evaluate(
+        `[...document.querySelectorAll('[role="dialog"] .segmented')].every((s) => s.scrollWidth <= s.clientWidth)`,
+      ),
+      "every module category reachable",
+    );
     await page.evaluate(
       `document.querySelector('[role="dialog"]').dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`,
     );
     await page.waitFor(`!document.querySelector('[role="dialog"]')`, { what: "the module dialog to close" });
     check(true, "module dialog opens and closes with Escape");
+    // The install button first asks where the server goes; closing that
+    // dialog starts nothing.
+    await page.evaluate(`document.querySelector("main .go .btn-play")?.click()`);
+    const place = await page.waitFor(`document.querySelector('[role="dialog"]')?.innerText`, {
+      what: "the install location dialog",
+    });
+    check(place.toLowerCase().includes("où installer le serveur"), "install asks where to install first");
+    fs.writeFileSync(path.join(shots, "install-location.png"), await page.screenshot());
+    await page.evaluate(
+      `document.querySelector('[role="dialog"]').dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`,
+    );
+    await page.waitFor(`!document.querySelector('[role="dialog"]')`, { what: "the install location dialog to close" });
+    check(
+      await page.evaluate(`document.querySelectorAll("main section.step").length > 0`),
+      "closing it starts nothing (the wizard stays)",
+    );
     check(errors.length === 0, `no script error${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   } catch (error) {
     check(false, String(error?.message ?? error));

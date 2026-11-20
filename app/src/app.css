@@ -22,6 +22,8 @@
   --button-bg: linear-gradient(180deg, #e9dcb8 0%, #cfb98a 100%);
   --play-bg: linear-gradient(180deg, #b3271a 0%, #7c140b 55%, #5a0d07 100%);
   --play-text: #ffe28a;
+  /* Lightens a hovered button (every theme). */
+  --hover-sheen: linear-gradient(rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.09));
   --ok: #2f7d3a;
   --danger: #a3261b;
   --realm-accent: #2f6f9f;
@@ -243,9 +245,16 @@ button {
   cursor: pointer;
 }
 
+/* A sheen painted over the button's own background, not a CSS `filter`:
+   a filter moves the button to its own GPU layer on each hover, and
+   WebView2 could then show a blank (white) frame. */
 .btn:hover:not(:disabled) {
   border-color: var(--accent-strong);
-  filter: brightness(1.15);
+  background: var(--hover-sheen), var(--button-bg);
+}
+
+.btn-play:hover:not(:disabled) {
+  background: var(--hover-sheen), var(--play-bg);
 }
 
 .btn:disabled {
@@ -328,6 +337,7 @@ button {
 input[type="text"],
 input[type="password"],
 input[type="number"],
+input[type="search"],
 select {
   font: inherit;
   color: var(--text);

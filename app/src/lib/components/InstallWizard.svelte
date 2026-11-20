@@ -15,8 +15,10 @@
   import { gigabytes, localized, t } from "../i18n/i18n.svelte";
   import { launcher, runOperation } from "../launcher.svelte";
   import ClientPicker from "./ClientPicker.svelte";
+  import ErrorBox from "./ErrorBox.svelte";
   import Notify from "./Notify.svelte";
   import JoinLan from "./JoinLan.svelte";
+  import Modal from "./Modal.svelte";
   import ModulePicker from "./ModulePicker.svelte";
 
   let { realm, client, instanceId }: { realm: EmulatorOverview; client: ClientView | null; instanceId: string } =
@@ -32,6 +34,8 @@
   let lan = $state(false);
   let error = $state<CommandError | null>(null);
   let location = $state<DataLocation | null>(null);
+  /** The install button first asks where the server goes. */
+  let choosingPlace = $state(false);
 
   let space = $state<SpaceEstimate | null>(null);
 
@@ -51,14 +55,17 @@
       .catch(() => (space = null));
   });
 
+  /** Shown in the location dialog: its retry is choosing again, not installing. */
+  let placeError = $state<CommandError | null>(null);
+
   async function changeLocation(reset: boolean) {
-    error = null;
+    placeError = null;
     try {
       const folder = reset ? null : await pickFolder(t("location.title"));
       if (!reset && folder === null) return;
       location = await api.setDataLocation(folder);
     } catch (raw) {
-      error = asCommandError(raw);
+      placeError = asCommandError(raw);
     }
   }
 
@@ -66,7 +73,16 @@
     chosen = chosen.filter((m) => m !== id);
   }
 
+  /** Where to install comes first; without a known location, as before. */
+  function askPlace() {
+    error = null;
+    placeError = null;
+    if (location) choosingPlace = true;
+    else void install();
+  }
+
   async function install() {
+    choosingPlace = false;
     error = null;
     try {
       await runOperation(instanceId, () =>
@@ -169,39 +185,11 @@
         <span><strong>{t("wizard.lan")}</strong><small class="muted">{t("wizard.lanBody")}</small></span>
       </label>
     </div>
-    {#if location}
-      <div class="location">
-        <span class="muted">{t("location.title")}</span>
-        <code title={location.root}>{location.root}</code>
-        {#if space && space.available !== null}
-          <span class="space" class:short={space.tooSmall}>
-            {t("wizard.space", { needed: gigabytes(space.needed), free: gigabytes(space.available) })}
-          </span>
-        {/if}
-        {#if location.changeable}
-          <span class="space">{t("location.hint")}</span>
-        {/if}
-        {#if location.relocatable}
-          <div class="location-actions">
-            {#if location.changeable && location.root !== location.default}
-              <button class="link" disabled={launcher.progress !== null} onclick={() => changeLocation(true)}>
-                {t("location.reset")}
-              </button>
-            {/if}
-            <button class="link" disabled={launcher.progress !== null} onclick={() => changeLocation(false)}>
-              {t("location.change")} ›
-            </button>
-          </div>
-        {/if}
-      </div>
-    {/if}
     <div class="go foot">
-      <button class="btn btn-play" disabled={launcher.progress !== null || !!space?.tooSmall} onclick={install}>
+      <button class="btn btn-play" disabled={launcher.progress !== null} onclick={askPlace}>
         {t("home.action.install")}
       </button>
-      {#if space?.tooSmall}
-        <small class="short">{t("wizard.spaceShort")}</small>
-      {:else if space}
+      {#if space}
         <small class="muted">{t("wizard.sizeHint", { download: gigabytes(space.download) })}</small>
       {:else}
         <small class="muted">{t("wizard.resumeHint")}</small>
@@ -211,6 +199,42 @@
 </div>
 
 <Notify {error} onretry={install} />
+
+{#if choosingPlace && location}
+  <Modal title={t("location.question")} onclose={() => (choosingPlace = false)}>
+    <div class="place">
+      <code title={location.root}>{location.root}</code>
+      {#if space && space.available !== null}
+        <p class:short={space.tooSmall}>
+          {t("wizard.space", { needed: gigabytes(space.needed), free: gigabytes(space.available) })}
+        </p>
+      {/if}
+      {#if space?.tooSmall}
+        <p class="short">{t("wizard.spaceShort")}</p>
+      {/if}
+      {#if location.changeable}
+        <p class="muted">{t("location.hint")}</p>
+      {/if}
+      {#if location.relocatable}
+        <div class="place-actions">
+          <button class="btn" onclick={() => changeLocation(false)}>{t("location.pick")}</button>
+          {#if location.changeable && location.root !== location.default}
+            <button class="link" onclick={() => changeLocation(true)}>{t("location.reset")}</button>
+          {/if}
+        </div>
+      {/if}
+      {#if placeError}
+        <ErrorBox error={placeError} compact />
+      {/if}
+    </div>
+    {#snippet actions()}
+      <button class="btn" onclick={() => (choosingPlace = false)}>{t("common.cancel")}</button>
+      <button class="btn btn-play" disabled={!!space?.tooSmall} onclick={install}>
+        {t("location.installHere")}
+      </button>
+    {/snippet}
+  </Modal>
+{/if}
 
 {#if picking}
   <ModulePicker
@@ -455,36 +479,35 @@
     font-size: 0.82rem;
   }
 
-
-  .location {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    column-gap: var(--space-2);
-    margin-bottom: var(--space-3);
-    font-size: 0.82rem;
+  /* The install location dialog. */
+  .place {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  .location code {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  .place code {
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    overflow-wrap: anywhere;
   }
 
-  .space {
-    grid-column: 1 / -1;
-    color: var(--text-muted);
+  .place p {
+    margin: 0;
+    font-size: 0.88rem;
   }
 
   .short {
     color: var(--danger);
   }
 
-  .location-actions {
-    grid-column: 1 / -1;
+  .place-actions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: var(--space-3);
+    margin-top: var(--space-1);
   }
 
   .link {

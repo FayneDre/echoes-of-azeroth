@@ -109,12 +109,12 @@
 </section>
 
 <style>
-  /* Fills its column; the buttons stay at the bottom. */
+  /* Fills its column, the buttons at the bottom; never shorter than its
+     options (several panels on a page: the page scrolls, none overlaps). */
   section {
-    flex: 1;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
-    min-height: 0;
   }
 
   .options {

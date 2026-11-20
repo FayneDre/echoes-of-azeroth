@@ -14,7 +14,17 @@
   import { launcher } from "../launcher.svelte";
   import Notify from "./Notify.svelte";
 
-  let { realm }: { realm: EmulatorOverview } = $props();
+  let {
+    realm,
+    view,
+    onpicked,
+  }: {
+    realm: EmulatorOverview;
+    /** One sub-tab of the account page: who is in the world, or the commands. */
+    view: "world" | "commands";
+    /** A character was picked in the world list: the commands come next. */
+    onpicked?: () => void;
+  } = $props();
 
   const instance = $derived(launcher.instanceFor(realm.id));
   const id = $derived(instance?.record.id ?? null);
@@ -85,6 +95,7 @@
     if (!action) return;
     const param = action.params.find((p) => p.type === "character");
     if (param) values = { ...values, [param.id]: name };
+    onpicked?.();
   }
 
   async function run(event: SubmitEvent) {
@@ -122,8 +133,8 @@
     <p class="muted">{t("gm.startFirst")}</p>
   </section>
 {:else}
-  <div class="columns">
-    <section class="panel column">
+  {#if view === "world"}
+    <section class="panel">
       <h3 class="panel-title">{t("gm.online")}</h3>
       {#if characters === null}
         <p class="muted">{t("gm.loading")}</p>
@@ -158,8 +169,8 @@
         {/if}
       {/if}
     </section>
-
-    <section class="panel column">
+  {:else}
+    <section class="panel">
       <h3 class="panel-title">{t("gm.actions")}</h3>
       {#if action}
         <form onsubmit={run}>
@@ -221,22 +232,10 @@
         <p class="muted">{t("gm.none")}</p>
       {/if}
     </section>
-  </div>
+  {/if}
 {/if}
 
 <style>
-  .columns {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--space-4);
-  }
-
-  @media (max-width: 900px) {
-    .columns {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
   .characters {
     list-style: none;
     margin: var(--space-2) 0;

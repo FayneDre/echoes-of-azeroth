@@ -9,9 +9,10 @@
     type EmulatorOverview,
     type FirewallStatus,
     type InstanceView,
+    type ServerUpdate,
   } from "../api";
   import Emblem from "../emblems/Emblem.svelte";
-  import { localized, t, type MessageKey } from "../i18n/i18n.svelte";
+  import { gigabytes, localized, t, type MessageKey } from "../i18n/i18n.svelte";
   import { launcher, runOperation, startSession, type ProcessState } from "../launcher.svelte";
   import { preferences } from "../preferences.svelte";
   import { processLabel } from "../labels";
@@ -91,6 +92,35 @@
       repairNote = t("repair.done");
     });
   }
+
+  /** What the signed index offers this realm; `failed` when it cannot be read (offline). */
+  let serverUpdate = $state<ServerUpdate | "checking" | "failed">("checking");
+  // Checked when the realm is shown and again after each change (an update,
+  // a repair) has finished: only the small signed index is downloaded.
+  $effect(() => {
+    const realm = id;
+    void instance.record.build;
+    if (busy || incomplete) return;
+    serverUpdate = "checking";
+    api
+      .serverUpdate(realm)
+      .then((offer) => {
+        if (realm === id) serverUpdate = offer;
+      })
+      .catch(() => {
+        if (realm === id) serverUpdate = "failed";
+      });
+  });
+  const updateAvailable = $derived(typeof serverUpdate === "object" && serverUpdate.status === "available");
+  const updateText = $derived.by(() => {
+    if (updateNote) return updateNote;
+    if (serverUpdate === "checking") return t("update.checking");
+    if (serverUpdate === "failed") return t("update.checkFailed");
+    if (serverUpdate.status === "available")
+      return t("update.available", { download: gigabytes(serverUpdate.download) });
+    if (serverUpdate.status === "notPublished") return t("update.notPublished");
+    return t("update.current");
+  });
 
   function update() {
     updateNote = null;
@@ -272,6 +302,22 @@
     <div>
       <dt>{t("home.stat.build")}</dt>
       <dd><code>{instance.record.build?.slice(0, 12) ?? "—"}</code></dd>
+      <!-- Always one line (never moves the hero): checked, up to date or not. -->
+      <dd
+        class="build-tag"
+        class:available={updateAvailable}
+        class:current={typeof serverUpdate === "object" && !updateAvailable}
+      >
+        {#if serverUpdate === "checking"}
+          {t("home.stat.buildChecking")}
+        {:else if serverUpdate === "failed"}
+          {t("home.stat.buildUnchecked")}
+        {:else if updateAvailable}
+          {t("home.stat.buildAvailable")}
+        {:else}
+          {t("home.stat.buildCurrent")}
+        {/if}
+      </dd>
     </div>
   </dl>
 </section>
@@ -349,8 +395,14 @@
   <section class="panel column">
     <h3 class="panel-title">{t("maintenance.title")}</h3>
     <div class="task">
-      <p class="muted" title={t("update.body")}>{updateNote ?? t("update.short")}</p>
-      <button class="btn" disabled={busy || running || incomplete} onclick={update}>
+      <p class="muted" class:offer={updateAvailable} title={t("update.body")}>{updateText}</p>
+      <button
+        class="btn"
+        class:offer={updateAvailable}
+        disabled={busy || running || incomplete || (typeof serverUpdate === "object" && !updateAvailable)}
+        title={running && updateAvailable ? t("update.stopFirst") : undefined}
+        onclick={update}
+      >
         {t("update.action")}
       </button>
     </div>
@@ -477,6 +529,35 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Whether the installed server is the published one. */
+  .build-tag {
+    margin-top: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .build-tag.current {
+    color: var(--ok);
+  }
+
+  .build-tag.available {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* A server update is waiting: its line and button stand out. */
+  p.offer {
+    color: var(--title);
+  }
+
+  .btn.offer:not(:disabled) {
+    border-color: var(--accent-strong);
+    color: var(--title);
+    box-shadow: 0 0 10px var(--glow);
   }
 
   /* Fills the rest of the page: three columns of equal height. */

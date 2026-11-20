@@ -292,6 +292,12 @@ export interface AppUpdateProgress {
   total: number | null;
 }
 
+/** What the signed index offers an installed realm. */
+export type ServerUpdate =
+  | { status: "upToDate"; build: string }
+  | { status: "available"; current: string | null; build: string; download: number }
+  | { status: "notPublished"; current: string | null };
+
 export type UpdateOutcome =
   | { status: "upToDate"; build: string }
   | { status: "updated"; from: string | null; to: string };
@@ -417,6 +423,8 @@ export const api = {
   install: (request: { id: string; emulator: string; modules: string[]; lan: boolean }) =>
     invoke<InstanceRecord>("install_instance", { request }),
   update: (id: string) => invoke<UpdateOutcome>("update_instance", { id }),
+  /** Reads the signed index only: nothing else is downloaded. */
+  serverUpdate: (id: string) => invoke<ServerUpdate>("server_update", { id }),
   repair: (id: string) => invoke<InstanceRecord>("repair_instance", { id }),
   resume: (id: string) => invoke<InstanceRecord>("resume_instance", { id }),
   rebuildsFor: (id: string, disable: string[]) => invoke<string[]>("rebuilds_for", { id, disable }),

@@ -50,7 +50,7 @@
   }
 </script>
 
-<Modal title={t("modules.pickTitle")} width="720px" {onclose}>
+<Modal title={t("modules.pickTitle")} width="800px" {onclose}>
   <div class="filters">
     {#if modules.length > 6}
       <input type="search" placeholder={t("modules.search")} aria-label={t("modules.search")} bind:value={query} />
@@ -112,6 +112,21 @@
   .filters input {
     flex: 1;
     min-width: 12rem;
+  }
+
+  /* Every category on one line, the tabs sharing the whole width; on a
+     narrow window the bar wraps into full rows instead of overflowing. */
+  .filters .segmented {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .filters .segmented button {
+    flex: 1 1 auto;
+    padding: var(--space-2);
+    font-size: 0.74rem;
+    letter-spacing: 0.05em;
+    text-align: center;
   }
 
   .list {

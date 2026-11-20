@@ -250,6 +250,7 @@
   }
 
   .other.link:hover:not(:disabled) {
+    background: none;
     text-decoration: underline;
   }
 

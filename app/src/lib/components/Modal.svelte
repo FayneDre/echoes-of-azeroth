@@ -100,10 +100,12 @@
     backdrop-filter: blur(2px);
   }
 
+  /* Capped by the window, not by the grid row (which grows with the
+     content): the body scrolls and the actions stay in view. */
   .panel {
     display: flex;
     flex-direction: column;
-    max-height: 100%;
+    max-height: calc(100vh - 2 * var(--space-6));
     background: var(--bg-elevated);
     outline: none;
   }

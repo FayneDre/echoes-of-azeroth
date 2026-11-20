@@ -64,6 +64,12 @@
   /** Servers starting or stopping: their database may go away, nothing is read. */
   const settling = $derived(session?.phase === "starting" || session?.phase === "stopping");
   const online = $derived(!!instance && launcher.isRunning(instance.record.id) && !settling);
+
+  /** Sub-tabs: the accounts, then the game master tools while online. */
+  type Page = "accounts" | "world" | "commands";
+  let picked = $state<Page>("accounts");
+  // Back to the accounts when the servers stop.
+  const page = $derived<Page>(online ? picked : "accounts");
   /** Listed again only when this changes (realm, servers up or down). */
   const listKey = $derived(
     instance?.installed && !busyElsewhere && !settling ? `${instance.record.id}:${online}` : null,
@@ -111,6 +117,31 @@
   }
 </script>
 
+{#if instance}
+  <nav class="segmented pages" aria-label={t("account.pages")}>
+    <button class:active={page === "accounts"} onclick={() => (picked = "accounts")}>{t("account.list")}</button>
+    <button
+      class:active={page === "world"}
+      disabled={!online}
+      title={online ? undefined : t("gm.startFirst")}
+      onclick={() => (picked = "world")}
+    >
+      {t("gm.online")}
+    </button>
+    <button
+      class:active={page === "commands"}
+      disabled={!online}
+      title={online ? undefined : t("gm.startFirst")}
+      onclick={() => (picked = "commands")}
+    >
+      {t("gm.actions")}
+    </button>
+  </nav>
+{/if}
+
+{#if page !== "accounts"}
+  <GameMaster {realm} view={page} onpicked={() => (picked = "commands")} />
+{:else}
 <section class="panel">
   <h3 class="panel-title">{t("account.title")}</h3>
   {#if !instance}
@@ -186,11 +217,6 @@
     <Notify error={listError} onretry={loadAccounts} />
   </section>
 {/if}
-
-{#if online}
-  <div class="gm">
-    <GameMaster {realm} />
-  </div>
 {/if}
 
 <style>
@@ -222,8 +248,11 @@
   }
 
 
-  section + section,
-  .gm {
+  .pages {
+    align-self: flex-start;
+  }
+
+  section + section {
     margin-top: var(--space-4);
   }
 
