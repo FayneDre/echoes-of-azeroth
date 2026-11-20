@@ -118,6 +118,17 @@
       },
       "additionalProperties": false
     },
+    "localeSetting": {
+      "description": "Settings line that picks the game's language among the installed ones, written before every launch: lines starting with 'prefix' (any case) are replaced by 'line', which is added when missing.",
+      "type": "object",
+      "required": ["file", "prefix", "line"],
+      "properties": {
+        "file": { "type": "string" },
+        "prefix": { "type": "string", "minLength": 1 },
+        "line": { "type": "string", "pattern": "[{]locale[}]" }
+      },
+      "additionalProperties": false
+    },
     "patches": {
       "type": "object",
       "required": [

@@ -196,6 +196,18 @@ pub(crate) fn save(dir: &Path, state: &ClientState) -> Result<(), ClientError> {
     files::write_atomic(&path, &json)
 }
 
+/// Writes the settings line that makes the game start in `state.locale`.
+fn set_locale(manifest: &ClientManifest, state: &ClientState) -> Result<(), ClientError> {
+    match &manifest.locale_setting {
+        Some(setting) => files::set_line(
+            &state.path.join(&setting.file),
+            &setting.prefix,
+            &setting.line.replace("{locale}", &state.locale),
+        ),
+        None => Ok(()),
+    }
+}
+
 /// Detects the client at `root` and registers it for its manifest. The
 /// locale is required when several are installed. Re-registering the same
 /// folder keeps the record of managed files; a new folder starts clean
@@ -251,6 +263,8 @@ pub fn register(
     };
     std::fs::create_dir_all(dir).map_err(ClientError::io(dir))?;
     save(dir, &state)?;
+    // The game starts in the chosen language even when launched by hand.
+    set_locale(manifest, &state)?;
     Ok((state, warning))
 }
 
@@ -319,6 +333,9 @@ pub fn prepare(
             }
         }
     }
+
+    // The language the player chose among the installed ones.
+    set_locale(manifest, state)?;
 
     // The cache holds what the previous server sent (items, creatures).
     if state.last_server.as_deref() != Some(server) {

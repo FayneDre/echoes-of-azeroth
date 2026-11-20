@@ -818,6 +818,11 @@ pub struct ClientManifest {
     pub detection: ClientDetection,
     pub locales: Vec<String>,
     pub realmlist: Realmlist,
+    /// The settings line that picks the game's language among the installed
+    /// ones (3.3.5a: `SET locale "frFR"` in `WTF/Config.wtf`), written
+    /// before every launch with the language the player chose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale_setting: Option<LocaleSetting>,
     pub patches: DirectoryRef,
     #[serde(default)]
     pub cache: Option<DirectoryRef>,
@@ -872,6 +877,16 @@ pub struct SavedSetting {
     pub file: String,
     pub prefix: String,
     /// Line template; `{address}` is replaced.
+    pub line: String,
+}
+
+/// A settings line written whether or not the file already has it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocaleSetting {
+    pub file: String,
+    pub prefix: String,
+    /// Line template; `{locale}` is replaced.
     pub line: String,
 }
 

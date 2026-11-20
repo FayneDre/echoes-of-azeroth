@@ -39,6 +39,11 @@
       "line": "SET realmList \"{address}\""
     }
   },
+  "localeSetting": {
+    "file": "WTF/Config.wtf",
+    "prefix": "SET locale ",
+    "line": "SET locale \"{locale}\""
+  },
   "patches": {
     "directory": "Data"
   },

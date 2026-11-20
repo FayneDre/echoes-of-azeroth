@@ -92,6 +92,24 @@
       {#if registered.problem}
         <ErrorBox error={registered.problem} compact />
       {/if}
+      {#if registered.locales.length > 1}
+        <div class="language">
+          <span class="muted">{t("client.language")}</span>
+          <div class="segmented" role="group" aria-label={t("client.language")}>
+            {#each registered.locales as locale (locale)}
+              <button
+                class:active={registered.locale === locale}
+                aria-pressed={registered.locale === locale}
+                disabled={busy}
+                title={t("client.languageHint")}
+                onclick={() => registered.locale !== locale && register(registered.path, locale)}
+              >
+                {locale}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
       <button class="btn" disabled={busy} onclick={choose}>{t("client.change")}</button>
     </div>
   {:else}
@@ -258,5 +276,17 @@
     display: flex;
     gap: var(--space-2);
     flex-wrap: wrap;
+  }
+
+  .language {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .language .segmented button {
+    padding-inline: var(--space-3);
+    font-size: 0.85rem;
   }
 </style>

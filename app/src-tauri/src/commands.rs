@@ -289,6 +289,8 @@ pub struct ClientView {
     id: String,
     path: PathBuf,
     locale: String,
+    /// Languages installed in the folder (the player may switch between them).
+    locales: Vec<String>,
     managed: Vec<String>,
     /// Why the registered folder no longer works (moved, other build...).
     problem: Option<UiError>,
@@ -308,16 +310,21 @@ fn client_view(launcher: &Launcher, id: &str) -> Result<Option<ClientView>> {
     let Some(state) = launcher.client(id).map_err(ui)? else {
         return Ok(None);
     };
-    let problem = launcher
+    let detected = launcher
         .catalog()
         .clients
         .get(id)
-        .and_then(|manifest| rk_client::detect(manifest, &state.path).err())
-        .map(|e| LauncherError::from(e).to_ui());
+        .map(|manifest| rk_client::detect(manifest, &state.path));
+    let (locales, problem) = match detected {
+        Some(Ok(found)) => (found.locales, None),
+        Some(Err(e)) => (Vec::new(), Some(LauncherError::from(e).to_ui())),
+        None => (Vec::new(), None),
+    };
     Ok(Some(ClientView {
         id: state.client,
         path: state.path,
         locale: state.locale,
+        locales,
         managed: state.managed.into_iter().map(|f| f.path).collect(),
         problem,
     }))

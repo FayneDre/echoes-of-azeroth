@@ -64,6 +64,36 @@ pub(crate) fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<(), ClientEr
     }
 }
 
+/// Makes `wanted` the settings line of `path` that starts with `prefix` (any
+/// case): every such line is replaced, and it is added when there is none
+/// (the file too). Other lines are kept as they are; CRLF like the client.
+pub(crate) fn set_line(path: &Path, prefix: &str, wanted: &str) -> Result<(), ClientError> {
+    let text = match std::fs::read(path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(ClientError::io(path)(e)),
+    };
+    let prefix = prefix.to_ascii_lowercase();
+    let mut found = false;
+    let mut lines: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if line.to_ascii_lowercase().starts_with(&prefix) {
+            if !found {
+                lines.push(wanted);
+            }
+            found = true;
+        } else {
+            lines.push(line);
+        }
+    }
+    if !found {
+        lines.push(wanted);
+    }
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    write_if_changed(path, out.as_bytes())
+}
+
 fn tmp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_owned();
     name.push(".rk-tmp");
@@ -185,6 +215,43 @@ mod tests {
             managed: Vec::new(),
             last_server: None,
         }
+    }
+
+    #[test]
+    fn the_language_line_is_replaced_or_added() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join("WTF/Config.wtf");
+        // No file yet: created with the line.
+        set_line(&config, "SET locale ", "SET locale \"frFR\"").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&config).unwrap(),
+            "SET locale \"frFR\"\r\n"
+        );
+        // Replaced in place (any case), other lines kept, a duplicate dropped.
+        std::fs::write(
+            &config,
+            "SET realmList \"127.0.0.1\"\r\nset LOCALE \"enUS\"\r\nSET gxWindow \"1\"\r\nSET locale \"deDE\"\r\n",
+        )
+        .unwrap();
+        set_line(&config, "SET locale ", "SET locale \"frFR\"").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&config).unwrap(),
+            "SET realmList \"127.0.0.1\"\r\nSET locale \"frFR\"\r\nSET gxWindow \"1\"\r\n"
+        );
+        // Missing from an existing file: added at the end.
+        std::fs::write(&config, "SET gxWindow \"1\"\r\n").unwrap();
+        set_line(&config, "SET locale ", "SET locale \"enUS\"").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&config).unwrap(),
+            "SET gxWindow \"1\"\r\nSET locale \"enUS\"\r\n"
+        );
+        // `SET localeX` is another setting only if the prefix says so: the
+        // prefix ends with a space.
+        std::fs::write(&config, "SET localeOther \"1\"\r\n").unwrap();
+        set_line(&config, "SET locale ", "SET locale \"enUS\"").unwrap();
+        assert!(std::fs::read_to_string(&config)
+            .unwrap()
+            .starts_with("SET localeOther \"1\"\r\n"));
     }
 
     #[test]

@@ -196,6 +196,8 @@ export interface ClientView {
   id: string;
   path: string;
   locale: string;
+  /** Languages installed in the folder. */
+  locales: string[];
   managed: string[];
   problem: CommandError | null;
 }
@@ -310,6 +312,8 @@ export interface Preferences {
   dailyBackup: boolean;
   /** Hide the launcher in the notification area while the game runs. */
   hideWhilePlaying: boolean;
+  /** Leave the servers running when the game closes (LAN realms always do). */
+  keepServersRunning: boolean;
 }
 
 export interface CrashReport {
