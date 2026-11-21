@@ -7,7 +7,7 @@
 //   node tools/ci/ui-smoke.mjs run --exe <app.exe> [--port 9333] [--shots <dir>]
 //       starts the app on a new, empty data root and checks what a first-time
 //       player sees: the shell, the realm rail, the install wizard, tabs that
-//       need a realm disabled, both languages, no page scrollbar, no script
+//       need a realm disabled, both languages (Options window), no page scrollbar, no script
 //       error. Screenshots go to --shots.
 //
 // No network action is taken (nothing is installed).
@@ -77,11 +77,18 @@ async function run() {
     await page.waitFor(`document.querySelector(".realm-bar")`, { what: "the Home page" });
     check(await page.evaluate(`document.title.includes("RealmKeeper")`), "window title");
 
-    for (const [locale, wanted] of [
-      ["EN", ["Import a realm", "Home"]],
-      ["FR", ["Importer un royaume", "Accueil"]],
+    // The launcher language is chosen in the Options window (title bar).
+    for (const [locale, label, wanted] of [
+      ["EN", "English", ["Import a realm", "Home"]],
+      ["FR", "Français", ["Importer un royaume", "Accueil"]],
     ]) {
-      await page.click(locale);
+      await page.evaluate(`document.querySelector(".options-button")?.click()`);
+      await page.waitFor(`document.querySelector('[role="dialog"] .languages')`, { what: "the Options window" });
+      await page.click(label);
+      await page.evaluate(
+        `document.querySelector('[role="dialog"]').dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`,
+      );
+      await page.waitFor(`!document.querySelector('[role="dialog"]')`, { what: "the Options window to close" });
       const text = await page.waitFor(
         `document.body.innerText.toLowerCase().includes(${JSON.stringify(wanted[0].toLowerCase())}) && document.body.innerText`,
         { what: `${locale} strings` },
