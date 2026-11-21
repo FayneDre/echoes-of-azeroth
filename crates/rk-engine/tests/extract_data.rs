@@ -236,7 +236,14 @@ async fn the_client_is_checked_before_any_tool_runs() {
         ExtractDataError::MissingLocale { locale, .. } if locale == "frFR"
     ));
 
-    ex.locale = "enUS".into();
+    assert!(!s.root.join("logs").exists(), "no tool ran");
+
+    // A root of its own: on Linux, a child that another test forks may
+    // briefly hold a copy of the first run's lock file (flock), so a second
+    // run under the same state directory could be refused as busy.
+    let s = setup();
+    let tool = install_shell(&s.tools, "tool");
+    let mut ex = extraction(vec![step("maps", &tool, "mkdir maps", &[])]);
     ex.max_client_path = Some(8);
     let err = run(&s, data_step(&s, ex), &CancelToken::new())
         .await
