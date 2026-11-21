@@ -129,6 +129,9 @@ Durations assume one full-time developer and are rough.
 - [x] RealmKeeper 0.3.2: six optional modules (transmog, autobalance, dungeon clear,
   enchanter, assistant, reagent bank) with their NPCs placed, safe realm import, bilingual release notes, title bar update
   button (2026-11-19)
+- [x] RealmKeeper 0.3.3: a party of bots formed from the launcher (mod-realmkeeper), restore of a
+  backup made by another server, game language choice, launcher options window, server
+  update status (2026-11-21)
 
 ## Phase 7: second emulator prototype (started 2026-11-19, ADR 0024)
 

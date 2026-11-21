@@ -1,4 +1,26 @@
 {
+  "0.3.3": {
+    "en": [
+      "Form a party of bots for the character you play: in Bots > Party, choose a role, class, spec and level (yours by default) for up to four places; the bots join you with random green and blue gear. Your realm's server must be updated first (Update the server, on the Home tab).",
+      "Bots and players now share the same General and Trade channels, whatever language your game is in.",
+      "Choose the game language among the ones installed in your client: the game really starts in it.",
+      "A new Options window in the title bar gathers the launcher language, what happens when the game starts and closes, and daily backups.",
+      "The realm shows whether its server is up to date or a new version is available.",
+      "A backup made by another AzerothCore server can be restored: your realm keeps its own address, and the auction house bot keeps working.",
+      "Installing asks where the server goes first; long dialogs scroll and keep their buttons in view; the Account tab is split into accounts, characters and game master commands.",
+      "The number of random bots online is explained: it is drawn between the minimum and the maximum at each start."
+    ],
+    "fr": [
+      "Formez un groupe de bots pour le personnage que vous jouez : dans Bots > Groupe, choisissez le rôle, la classe, la spécialisation et le niveau (le vôtre par défaut) de jusqu'à quatre places ; les bots vous rejoignent avec un équipement vert et bleu aléatoire. Le serveur de votre royaume doit d'abord être mis à jour (Mettre à jour le serveur, onglet Accueil).",
+      "Les bots et les joueurs partagent maintenant les mêmes canaux Général et Commerce, quelle que soit la langue de votre jeu.",
+      "Choisissez la langue du jeu parmi celles installées dans votre client : le jeu démarre vraiment dans cette langue.",
+      "Une nouvelle fenêtre Options dans la barre de titre réunit la langue du launcher, ce qui se passe quand le jeu démarre et se ferme, et les sauvegardes quotidiennes.",
+      "Le royaume indique si son serveur est à jour ou si une nouvelle version est disponible.",
+      "Une sauvegarde faite par un autre serveur AzerothCore peut être restaurée : votre royaume garde sa propre adresse et le bot de l'hôtel des ventes continue de fonctionner.",
+      "L'installation demande d'abord où placer le serveur ; les longues fenêtres défilent en gardant leurs boutons visibles ; l'onglet Compte est séparé en comptes, personnages et commandes de maître du jeu.",
+      "Le nombre de bots aléatoires en ligne est expliqué : il est tiré entre le minimum et le maximum à chaque démarrage."
+    ]
+  },
   "0.3.2": {
     "en": [
       "Six new optional modules in Server settings: Transmogrification, Auto Balance (dungeons scaled to your group), Dungeon Clear, Enchanter NPC, Assistant and Reagent Bank.",

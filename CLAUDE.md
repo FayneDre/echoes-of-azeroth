@@ -486,4 +486,7 @@ realm's database turn). No beta phase: releases go public directly.
 2026-11-19: 0.3.2 (six optional modules: transmog, autobalance, dungeon
 clear, enchanter, assistant, reagent bank; bilingual release notes in
 `app/src/lib/release-notes.json`, title bar update button).
+2026-11-21: 0.3.3 (bot party from the launcher, ADR 0025; restore from
+another server, ADR 0026; game language choice; launcher Options window,
+which now holds the launcher language; server update status).
 Remaining before a wide release: SignPath (maintainer).
